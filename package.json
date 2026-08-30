@@ -1,0 +1,30 @@
+{
+  "name": "bonodig",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:sync": "node scripts/sync-indexes.js",
+    "db:sync:categories": "node --env-file=.env.local scripts/sync-menu-categories.js --apply",
+    "db:seed-auth": "node --env-file=.env.local scripts/seed-auth.js",
+    "db:reset-auth": "node --env-file=.env.local scripts/reset-auth.js"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.46.0",
+    "cloudinary": "^2.10.1",
+    "mongoose": "^9.9.2",
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.1",
+    "tailwindcss": "^4"
+  }
+}

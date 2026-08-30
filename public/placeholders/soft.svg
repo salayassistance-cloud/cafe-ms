@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#3c3c3c"/>
+  <circle cx="200" cy="120" r="72" fill="#8cfa8c" opacity="0.14"/>
+  <circle cx="200" cy="120" r="48" fill="#FAF5EE" opacity="0.08"/>
+  <text x="200" y="135" font-size="60" text-anchor="middle" dominant-baseline="central">🥤</text>
+  <text x="200" y="238" font-size="24" text-anchor="middle" fill="#FAF5EE" font-family="sans-serif" font-weight="bold">ለስላሳ መጠጦች</text>
+</svg>

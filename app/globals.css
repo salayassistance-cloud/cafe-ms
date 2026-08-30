@@ -1,0 +1,297 @@
+@import "tailwindcss";
+
+/* Tailwind `dark:` variant keyed off the `.dark` class on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   NEW DESIGN SYSTEM — EXACT PALETTE MATCH
+   Light  ref image_4e1843.jpg
+   Dark   ref image_4e6e7b.jpg
+   Tactile + Scrollbar per spec — API/state untouched
+   ============================================================ */
+
+@theme {
+  /* Light palette */
+  --color-light-bg: #F4F5F9;
+  --color-light-header: #FFDC00;
+  --color-light-header-2: #FACC15;
+  --color-light-card: #FFFFFF;
+  --color-light-accent: #FFD600;
+  --color-light-text: #1E293B;
+  --color-light-muted: #64748B;
+
+  /* Dark palette */
+  --color-dark-bg: #12131A;
+  --color-dark-surface: #1C1D24;
+  --color-dark-accent: #FF5E00;
+  --color-dark-accent-2: #F97316;
+  --color-dark-text: #FFFFFF;
+  --color-dark-muted: #94A3B8;
+
+  /* Borders */
+  --color-border-light: #E2E8F0;
+  --color-border-dark: #2A2B36;
+
+  --radius-card: 24px;
+  --radius-button: 20px;
+  --animate-stagger-up: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ---------- LIGHT (base) ---------- */
+:root {
+  color-scheme: light;
+
+  --c-bg: #F4F5F9;
+  --c-surface: #FFFFFF;
+  --c-header: #FFDC00;
+  --c-header-2: #FACC15;
+  --c-card: #FFFFFF;
+  --c-accent: #FFD600;
+  --c-accent-strong: #FACC15;
+  --c-text: #1E293B;
+  --c-muted: #64748B;
+  --c-faint: rgba(100, 116, 139, 0.55);
+  --c-border: #E2E8F0;
+  --c-border-soft: rgba(226, 232, 240, 0.6);
+  --c-badge-bg: rgba(255, 214, 0, 0.14);
+  --c-badge-text: #1E293B;
+  --c-scrollbar-thumb: #CBD5E1;
+  --c-scrollbar-thumb-hover: #94A3B8;
+
+  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+  --shadow-card-hover: 0 14px 30px -5px rgba(0, 0, 0, 0.08), 0 10px 12px -6px rgba(0, 0, 0, 0.04);
+  --shadow-float: var(--shadow-card);
+
+  /* HMS / Manager compatibility — map to light tokens */
+  --hms-bg: #F4F5F9;
+  --hms-surface: #FFFFFF;
+  --hms-soft: rgba(255, 214, 0, 0.10);
+  --hms-border: #E2E8F0;
+  --hms-border-soft: rgba(226, 232, 240, 0.6);
+  --hms-text: #1E293B;
+  --hms-muted: #64748B;
+  --hms-axis: #64748B;
+  --hms-btn: #FFFFFF;
+  --hms-btn-hover: #F8FAFC;
+  --hms-track: #E2E8F0;
+  --hms-grid: rgba(226, 232, 240, 0.9);
+  --hms-line: #FFD600;
+  --hms-drink: #FFD600;
+  --hms-drink-2: #FACC15;
+  --hms-other: rgba(255, 214, 0, 0.14);
+  --hms-other-2: rgba(255, 214, 0, 0.28);
+  --hms-other-text: #1E293B;
+  --hms-badge-bg: rgba(255, 214, 0, 0.14);
+  --hms-glow-a: rgba(255, 214, 0, 0.06);
+  --hms-glow-b: rgba(244, 245, 249, 0.6);
+  --hms-card-shadow: var(--shadow-card);
+  --hms-btn-shadow: var(--shadow-card);
+
+  /* legacy brand aliases (kept for compat, resolve to new palette) */
+  --color-brand-gold: #FFD600;
+  --color-brand-dark: #1E293B;
+  --color-brand-white: #FFFFFF;
+  --color-brand-gray: #64748B;
+  --color-voyage-gold: #FFD600;
+  --color-voyage-dark: #1E293B;
+  --color-voyage-white: #FFFFFF;
+  --color-voyage-gray: #64748B;
+}
+
+/* ---------- DARK ---------- */
+html.dark {
+  color-scheme: dark;
+
+  --c-bg: #12131A;
+  --c-surface: #1C1D24;
+  --c-header: #1C1D24;
+  --c-header-2: #1C1D24;
+  --c-card: #1C1D24;
+  --c-accent: #FF5E00;
+  --c-accent-strong: #F97316;
+  --c-text: #FFFFFF;
+  --c-muted: #94A3B8;
+  --c-faint: rgba(148, 163, 184, 0.55);
+  --c-border: #2A2B36;
+  --c-border-soft: #2A2B36;
+  --c-badge-bg: rgba(255, 94, 0, 0.12);
+  --c-badge-text: #FF5E00;
+  --c-scrollbar-thumb: #2E303E;
+  --c-scrollbar-thumb-hover: #FF5E00;
+
+  --shadow-card: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --shadow-card-hover: 0 16px 36px rgba(0, 0, 0, 0.55);
+  --shadow-float: var(--shadow-card);
+
+  --hms-bg: #12131A;
+  --hms-surface: #1C1D24;
+  --hms-soft: rgba(255, 94, 0, 0.10);
+  --hms-border: #2A2B36;
+  --hms-border-soft: #2A2B36;
+  --hms-text: #FFFFFF;
+  --hms-muted: #94A3B8;
+  --hms-axis: #94A3B8;
+  --hms-btn: #1C1D24;
+  --hms-btn-hover: #252631;
+  --hms-track: #2A2B36;
+  --hms-grid: rgba(42, 43, 54, 0.9);
+  --hms-line: #FF5E00;
+  --hms-drink: #FF5E00;
+  --hms-drink-2: #F97316;
+  --hms-other: rgba(255, 94, 0, 0.14);
+  --hms-other-2: rgba(255, 94, 0, 0.28);
+  --hms-other-text: #FFFFFF;
+  --hms-badge-bg: rgba(255, 94, 0, 0.12);
+  --hms-glow-a: rgba(255, 94, 0, 0.08);
+  --hms-glow-b: rgba(18, 19, 26, 0.9);
+  --hms-card-shadow: var(--shadow-card);
+  --hms-btn-shadow: var(--shadow-card);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+html {
+  background-color: var(--c-bg);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-scrollbar-thumb) transparent;
+}
+
+body {
+  background-color: var(--c-bg);
+  color: var(--c-text);
+  margin: 0;
+  padding: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Noto Sans Ethiopic",
+    "Noto Sans",
+    sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* ---------- Custom Sleek Scrollbar (spec) ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #2E303E;
+  border-radius: 9999px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #FF5E00;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-scrollbar-thumb) transparent;
+}
+html.dark * {
+  scrollbar-color: #2E303E transparent;
+}
+
+/* Fallback thin scrollbars for component scroll areas */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ---------- Tactile + elevation utilities ---------- */
+.tactile {
+  transition: all 150ms ease-out;
+}
+.tactile:hover {
+  transform: translateY(-1px);
+}
+.tactile:active {
+  transform: scale(0.97);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.card-elevated {
+  background-color: var(--c-card);
+  border: 1px solid var(--c-border-soft);
+  box-shadow: var(--shadow-card);
+  transition: all 150ms ease-out;
+}
+.card-elevated:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
+.card-elevated:active {
+  transform: scale(0.97);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+html.dark .card-elevated:active {
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Legacy voyage classes now map to new system */
+.voyage-raised {
+  background-color: var(--c-card);
+  border: 1px solid var(--c-border-soft);
+  box-shadow: var(--shadow-card);
+}
+.voyage-inset {
+  background-color: var(--c-card);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+html.dark .voyage-inset {
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Animations ---------- */
+@keyframes slideUpFade {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.stagger-item {
+  animation: var(--animate-stagger-up);
+  animation-delay: calc(var(--stagger-index, 0) * 70ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item { animation: none; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.25s ease-out both; }
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-pop-in { animation: pop-in 0.22s ease-out both; }
+@keyframes cart-bump {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-10px) scale(1.06); }
+  55% { transform: translateY(0) scale(1); }
+  75% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+.cart-bump { animation: cart-bump 0.45s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .cart-bump { animation: none; }
+}
+
+/* Light-mode legacy literal remap removed — components now use CSS vars + dark: classes directly */
