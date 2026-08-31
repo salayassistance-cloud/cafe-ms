@@ -68,6 +68,7 @@ function buildSearchHaystack(item) {
 }
 
 const SKELETON_COUNT = 8;
+const MENU_HISTORY_GUARD = '__menuHistoryGuard';
 
 // Reuse the existing localization helper to read the multilingual fields already
 // returned by /api/menu (item.name/description are {en,am,om} objects; categories
@@ -119,6 +120,26 @@ export default function MenuPage() {
 
   const filterRef = useRef(null);
   const langBtnRef = useRef(null);
+
+  // Keep direct QR visits inside the customer menu when / is behind this entry.
+  // A same-document sentinel also covers hard navigations from the homepage.
+  useEffect(() => {
+    const menuPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const menuState = {
+      ...(window.history.state || {}),
+      [MENU_HISTORY_GUARD]: true,
+    };
+    const keepMenuEntry = () => window.history.pushState(menuState, '', menuPath);
+
+    if (window.history.state?.[MENU_HISTORY_GUARD] !== true) keepMenuEntry();
+
+    function keepMenuOpen(event) {
+      event.stopImmediatePropagation();
+      keepMenuEntry();
+    }
+    window.addEventListener('popstate', keepMenuOpen, true);
+    return () => window.removeEventListener('popstate', keepMenuOpen, true);
+  }, []);
 
   // Single source of truth — unified MongoDB via /api/menu (Category & MenuItem from /manager/menu-crud).
   // all=true → existing API flag returning the full catalog incl. unavailable
