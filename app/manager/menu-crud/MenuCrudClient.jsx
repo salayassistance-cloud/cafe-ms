@@ -6,10 +6,11 @@
 import { useState, useEffect, useTransition, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createCategory, deleteCategory, createMenuItem, updateMenuItem, deleteMenuItem } from './actions';
+import { createCategory, updateCategory, deleteCategory, createMenuItem, updateMenuItem, deleteMenuItem } from './actions';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import { useLanguage } from '@/app/components/LanguageProvider';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
+import { getLocalizedSingleString } from '@/lib/displayName';
 
 // Exact same pill & card constants as /manager/reports
 const PILL_ACTIVE =
@@ -24,6 +25,8 @@ const BTN_PRIMARY =
   'flex h-10 items-center gap-1.5 rounded-full bg-[#FFD600] dark:bg-[#FF5E00] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner';
 const BTN_SECONDARY =
   'flex h-10 items-center gap-1.5 rounded-full bg-white dark:bg-[#1C1D24] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner hover:bg-[#F8FAFC] dark:hover:bg-[#252631]';
+
+const EMPTY_CATEGORY_FORM = { nameEn: '', nameAm: '', nameOm: '' };
 
 function TogglePill({ checked, onChange, label }) {
   return (
@@ -45,7 +48,7 @@ function TogglePill({ checked, onChange, label }) {
 
 export default function MenuCrudClient({ initialCategories, initialItems, source }) {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [categories, setCategories] = useState(initialCategories || []);
   const [items, setItems] = useState(initialItems || []);
   const [isPending, startTransition] = useTransition();
@@ -96,9 +99,15 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     return cmp !== 0 ? cmp : String(a._id).localeCompare(String(b._id));
   });
 
+  function resetCategoryForm() {
+    setEditingCategoryId(null);
+    setCategoryForm({ ...EMPTY_CATEGORY_FORM });
+  }
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setEditingId(null);
+    resetCategoryForm();
     setForm({
       nameEn: '', nameAm: '', nameOm: '',
       descriptionEn: '', descriptionAm: '', descriptionOm: '',
@@ -114,7 +123,8 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
   };
 
   // Category form
-  const [catName, setCatName] = useState('');
+  const [categoryForm, setCategoryForm] = useState({ ...EMPTY_CATEGORY_FORM });
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [catError, setCatError] = useState('');
   const [catSuccess, setCatSuccess] = useState('');
 
@@ -167,27 +177,77 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     }
   }
 
-  async function handleCreateCategory(e) {
+  async function handleSubmitCategory(e) {
     e.preventDefault();
     setCatError(''); setCatSuccess('');
-    if (!catName.trim()) { setCatError(t('nameRequired')); return; }
+    const nameEn = categoryForm.nameEn.trim();
+    const nameAm = categoryForm.nameAm.trim();
+    const nameOm = categoryForm.nameOm.trim();
+    if (!nameEn && !nameAm && !nameOm) { setCatError(t('nameRequired')); return; }
     startTransition(async () => {
       const fd = new FormData();
-      fd.set('name', catName.trim());
+      fd.set('nameEn', nameEn);
+      fd.set('nameAm', nameAm);
+      fd.set('nameOm', nameOm);
       fd.set('targetStation', activeTab);
-      const res = await createCategory(null, fd);
+      if (editingCategoryId) fd.set('id', editingCategoryId);
+      const res = editingCategoryId
+        ? await updateCategory(null, fd)
+        : await createCategory(null, fd);
       if (!res.success) setCatError(res.error);
       else {
         setCatSuccess(res.message);
-        setCatName('');
-        // Optimistic update with correct station
+        // Keep the local list consistent until the server revalidation completes.
         if (res.category) {
           const station = res.category.targetStation || activeTab;
-          setCategories(prev => [...prev, { _id: res.category._id, name: res.category.name, slug: res.category.slug, type: station === 'BARISTA' ? 'DRINK' : 'FOOD', targetStation: station, station }]);
+          const categoryName = res.category.name && typeof res.category.name === 'object'
+            ? res.category.name
+            : { en: nameEn, am: nameAm, om: nameOm };
+          const nextCategory = {
+            ...res.category,
+            _id: res.category._id || res.category.id,
+            id: res.category.id || res.category._id,
+            name: getLocalizedSingleString(categoryName, 'en'),
+            nameObj: res.category.nameObj || categoryName,
+            nameEn: res.category.nameEn ?? categoryName.en ?? '',
+            nameAm: res.category.nameAm ?? categoryName.am ?? '',
+            nameOm: res.category.nameOm ?? categoryName.om ?? '',
+            type: res.category.type || (station === 'BARISTA' ? 'DRINK' : 'FOOD'),
+            targetStation: station,
+            station,
+          };
+          if (editingCategoryId) {
+            setCategories(prev => prev.map(category => (
+              String(category._id) === String(editingCategoryId)
+                ? { ...category, ...nextCategory }
+                : category
+            )));
+          } else {
+            setCategories(prev => [...prev, nextCategory]);
+          }
         }
+        resetCategoryForm();
         router.refresh();
       }
     });
+  }
+
+  function handleEditCategory(category) {
+    const rawName = category?.nameObj && typeof category.nameObj === 'object'
+      ? category.nameObj
+      : category?.name;
+    const names = rawName && typeof rawName === 'object'
+      ? rawName
+      : { en: rawName || '', am: rawName || '', om: rawName || '' };
+    setEditingCategoryId(String(category._id));
+    setCategoryForm({
+      nameEn: names.en || '',
+      nameAm: names.am || '',
+      nameOm: names.om || '',
+    });
+    setCatError('');
+    setCatSuccess('');
+    setShowCategoryManager(true);
   }
 
   async function handleDeleteCategory(id, name) {
@@ -623,9 +683,9 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               <label className="block text-xs font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8] mb-2">{t('category')} *</label>
               <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-3 text-sm text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40">
                 <option value="">{t('selectCategory')}</option>
-                {filteredCategories.map(cat => (
-                  <option key={String(cat._id)} value={String(cat._id)}>{cat.name} — {cat.slug}</option>
-                ))}
+                 {filteredCategories.map(cat => (
+                   <option key={String(cat._id)} value={String(cat._id)}>{getLocalizedSingleString(cat.nameObj || cat.name, lang)} — {cat.slug}</option>
+                 ))}
               </select>
                   {filteredCategories.length === 0 && <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400">{t('createCategoryFirst')}</p>}
             </div>
@@ -798,12 +858,32 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
 
         {showCategoryManager && (
           <div className="mt-4 space-y-4">
-            <form onSubmit={handleCreateCategory} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <label className="block text-xs font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8] mb-1.5">{t('newCategoryName')}</label>
-                <input value={catName} onChange={e => setCatName(e.target.value)} placeholder="e.g. Special Food, Hot Drinks" className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-4 py-3 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
+            <form onSubmit={handleSubmitCategory} className="space-y-3">
+              <div className="rounded-xl bg-[#F4F5F9] dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8] mb-3">
+                  {editingCategoryId ? t('edit') : t('newCategoryName')} · {t('namesSection')}
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langEnglish')} *</label>
+                    <input value={categoryForm.nameEn} onChange={e => setCategoryForm(f => ({ ...f, nameEn: e.target.value }))} placeholder="e.g. Coffee" className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langAmharic')}</label>
+                    <input value={categoryForm.nameAm} onChange={e => setCategoryForm(f => ({ ...f, nameAm: e.target.value }))} placeholder="ቡና" className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langOromo')}</label>
+                    <input value={categoryForm.nameOm} onChange={e => setCategoryForm(f => ({ ...f, nameOm: e.target.value }))} placeholder="Buna" className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
+                  </div>
+                </div>
               </div>
-              <button disabled={isPending} type="submit" className={BTN_PRIMARY + ' justify-center disabled:opacity-50'}>{t('addCategory')}</button>
+              <div className="flex gap-2">
+                <button disabled={isPending} type="submit" className={BTN_PRIMARY + ' justify-center disabled:opacity-50'}>{editingCategoryId ? t('update') : t('addCategory')}</button>
+                {editingCategoryId && (
+                  <button type="button" onClick={() => { resetCategoryForm(); setCatError(''); setCatSuccess(''); }} className={BTN_SECONDARY}>{t('cancel')}</button>
+                )}
+              </div>
             </form>
             {catError && <p className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2 text-sm font-semibold text-red-600 dark:text-red-300">{catError}</p>}
             {catSuccess && <p className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 px-3 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">{catSuccess}</p>}
@@ -812,10 +892,13 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               {filteredCategories.map(cat => (
                 <div key={String(cat._id)} className="flex items-center justify-between gap-2 rounded-xl bg-[#F4F5F9] dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-4 py-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-[#1E293B] dark:text-white">{cat.name}</p>
+                    <p className="truncate text-sm font-bold text-[#1E293B] dark:text-white">{getLocalizedSingleString(cat.nameObj || cat.name, lang)}</p>
                     <p className="truncate text-xs text-[#64748B] dark:text-[#94A3B8]">{cat.slug} • {cat.type}</p>
                   </div>
-                   <button type="button" onClick={() => handleDeleteCategory(String(cat._id), cat.name)} className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1.5 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900 transition">{t('delete')}</button>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button type="button" onClick={() => handleEditCategory(cat)} className="rounded-full bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white px-3 py-1.5 text-xs font-bold border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm hover:brightness-105 transition">{t('edit')}</button>
+                      <button type="button" onClick={() => handleDeleteCategory(String(cat._id), getLocalizedSingleString(cat.nameObj || cat.name, lang))} className="rounded-full bg-white dark:bg-[#1C1D24] border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 px-3 py-1.5 text-xs font-bold hover:bg-red-50 dark:hover:bg-red-950/30 transition">{t('delete')}</button>
+                    </div>
                 </div>
               ))}
               {filteredCategories.length === 0 && <p className="text-sm text-[#64748B] dark:text-[#94A3B8] col-span-full">{t('noCategories')}</p>}
@@ -826,7 +909,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
         {!showCategoryManager && (
           <div className="mt-3 flex flex-wrap gap-2">
             {filteredCategories.slice(0, 8).map(cat => (
-              <span key={String(cat._id)} className="rounded-full bg-[#F4F5F9] dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1 text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">{cat.name}</span>
+              <span key={String(cat._id)} className="rounded-full bg-[#F4F5F9] dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1 text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">{getLocalizedSingleString(cat.nameObj || cat.name, lang)}</span>
             ))}
             {filteredCategories.length > 8 && <span className="rounded-full bg-[#FFD600]/15 dark:bg-[#FF5E00]/15 border border-[#FFD600]/20 dark:border-[#FF5E00]/20 px-3 py-1 text-xs font-bold text-[#8A6D00] dark:text-[#FF8A3D]">+{filteredCategories.length - 8} more</span>}
           </div>

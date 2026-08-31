@@ -68,17 +68,26 @@ function revalidateAll() {
 export async function createCategory(prevState, formData) {
   const authErr = await assertManager();
   if (authErr) return authErr;
-  const rawName = formData.get("name")?.toString().trim() || "";
-  if (!rawName) return { success: false, error: "Category name required" };
-  const slug = slugify(rawName);
+  const hasLocalizedNames = ["nameEn", "nameAm", "nameOm"].some((key) => formData.has(key));
+  const legacyName = formData.get("name")?.toString().trim() || "";
+  const nameEn = (hasLocalizedNames ? formData.get("nameEn") : legacyName)?.toString().trim() || "";
+  const nameAm = (hasLocalizedNames ? formData.get("nameAm") : legacyName)?.toString().trim() || "";
+  const nameOm = (hasLocalizedNames ? formData.get("nameOm") : legacyName)?.toString().trim() || "";
+  if (!nameEn && !nameAm && !nameOm) return { success: false, error: "Category name required" };
+  // Match Menu Item creation: use the first provided locale for any omitted locale.
+  const primaryName = nameEn || nameAm || nameOm;
+  const finalNameEn = nameEn || primaryName;
+  const finalNameAm = nameAm || primaryName;
+  const finalNameOm = nameOm || primaryName;
+  const slug = slugify(finalNameEn || finalNameAm || finalNameOm);
   const rawStation = formData.get("targetStation")?.toString().trim().toUpperCase();
   const targetStation = rawStation === "BARISTA" ? "BARISTA" : "KITCHEN";
   try {
     const { Category } = await getDbModels();
     const existing = await Category.findOne({ slug }).lean();
-    if (existing) return { success: false, error: `Category "${rawName}" already exists` };
+    if (existing) return { success: false, error: `Category "${primaryName}" already exists` };
     const doc = new Category({
-      name: { am: rawName, en: rawName, om: rawName },
+      name: { en: finalNameEn, am: finalNameAm, om: finalNameOm },
       slug,
       type: targetStation === "BARISTA" ? "DRINK" : "FOOD",
       targetStation,
@@ -88,7 +97,23 @@ export async function createCategory(prevState, formData) {
     });
     await doc.save();
     revalidateAll();
-    return { success: true, message: `Category "${rawName}" created`, category: { _id: String(doc._id), name: rawName, slug, targetStation } };
+    return {
+      success: true,
+      message: `Category "${primaryName}" created`,
+      category: {
+        _id: String(doc._id),
+        id: String(doc._id),
+        name: { en: finalNameEn, am: finalNameAm, om: finalNameOm },
+        nameObj: { en: finalNameEn, am: finalNameAm, om: finalNameOm },
+        nameEn: finalNameEn,
+        nameAm: finalNameAm,
+        nameOm: finalNameOm,
+        slug,
+        type: targetStation === "BARISTA" ? "DRINK" : "FOOD",
+        targetStation,
+        station: targetStation,
+      },
+    };
   } catch (e) {
     return { success: false, error: e.message || "Failed to create category" };
   }
@@ -116,16 +141,32 @@ export async function updateCategory(prevState, formData) {
   const authErr = await assertManager();
   if (authErr) return authErr;
   const id = formData.get("id")?.toString().trim();
-  const rawName = formData.get("name")?.toString().trim();
-  if (!id || !rawName) return { success: false, error: "id and name required" };
-  const slug = slugify(rawName);
+  const hasLocalizedNames = ["nameEn", "nameAm", "nameOm"].some((key) => formData.has(key));
+  const legacyName = formData.get("name")?.toString().trim() || "";
+  if (!id || (!hasLocalizedNames && !legacyName)) return { success: false, error: "id and name required" };
+  const submittedNameEn = (hasLocalizedNames ? formData.get("nameEn") : legacyName)?.toString().trim() || "";
+  const submittedNameAm = (hasLocalizedNames ? formData.get("nameAm") : legacyName)?.toString().trim() || "";
+  const submittedNameOm = (hasLocalizedNames ? formData.get("nameOm") : legacyName)?.toString().trim() || "";
   const rawStation = formData.get("targetStation")?.toString().trim().toUpperCase();
   const targetStation = rawStation === "BARISTA" ? "BARISTA" : rawStation === "KITCHEN" ? "KITCHEN" : null;
   try {
     const { Category } = await getDbModels();
     const cat = await Category.findById(id);
     if (!cat) return { success: false, error: "Category not found" };
-    cat.name = { am: rawName, en: rawName, om: rawName };
+    const existingName = cat.name || {};
+    const isLocalized = typeof existingName === "object" && (existingName.en || existingName.am || existingName.om);
+    const baseEn = isLocalized ? (existingName.en || "") : (typeof existingName === "string" ? existingName : "");
+    const baseAm = isLocalized ? (existingName.am || "") : baseEn;
+    const baseOm = isLocalized ? (existingName.om || "") : baseEn;
+    // Match Menu Item updates: an empty submitted locale keeps its existing value.
+    const finalNameEn = submittedNameEn || baseEn;
+    const finalNameAm = submittedNameAm || baseAm;
+    const finalNameOm = submittedNameOm || baseOm;
+    if (!finalNameEn && !finalNameAm && !finalNameOm) {
+      return { success: false, error: "Category name required" };
+    }
+    const slug = slugify(finalNameEn || finalNameAm || finalNameOm);
+    cat.name = { en: finalNameEn, am: finalNameAm, om: finalNameOm };
     cat.slug = slug;
     if (targetStation) {
       cat.targetStation = targetStation;
@@ -133,7 +174,23 @@ export async function updateCategory(prevState, formData) {
     }
     await cat.save();
     revalidateAll();
-    return { success: true, message: "Category updated" };
+    return {
+      success: true,
+      message: "Category updated",
+      category: {
+        _id: String(cat._id),
+        id: String(cat._id),
+        name: { en: finalNameEn, am: finalNameAm, om: finalNameOm },
+        nameObj: { en: finalNameEn, am: finalNameAm, om: finalNameOm },
+        nameEn: finalNameEn,
+        nameAm: finalNameAm,
+        nameOm: finalNameOm,
+        slug: cat.slug,
+        type: cat.type,
+        targetStation: cat.targetStation,
+        station: cat.targetStation,
+      },
+    };
   } catch (e) {
     return { success: false, error: e.message || "Failed to update category" };
   }
