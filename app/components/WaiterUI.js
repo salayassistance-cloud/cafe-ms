@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { safeFetchJson, sendOrder, updateOrderStatusClient } from '@/lib/clientFetch';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
+import MenuItemImage from '@/app/components/MenuItemImage';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 
 const TABLE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -942,18 +943,13 @@ export default function WaiterUI() {
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {/* IMAGE CONTAINER */}
                     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-transparent dark:bg-transparent border-0">
-                      {item.imageUrl ? (
-                        <img
-                          src={item.imageUrl}
-                          alt={localizedName(item, lang) || t('empty')}
-                          className="h-full w-full object-cover object-center"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[10px] text-[#94A3B8]">
-                          {t('empty')}
-                        </div>
-                      )}
+                      <MenuItemImage
+                        key={`menu-image-${item._id || item.id}-${item.imageUrl || 'none'}`}
+                        src={item.imageUrl}
+                        alt={localizedName(item, lang) || t('empty')}
+                        className="h-full w-full object-cover object-center"
+                        loading="lazy"
+                      />
                     </div>
 
                     {/* TEXT */}

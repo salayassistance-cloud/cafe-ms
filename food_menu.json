@@ -1,0 +1,2026 @@
+[
+  {
+    "id": 1,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Bereha Tibs",
+      "am": "የበረሃ ጥብስ",
+      "om": "Waadii Gamoogii"
+    },
+    "price": 900,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Sautéed tender beef slices infused with onions, green peppers, rosemary, and authentic Ethiopian spices.",
+      "am": "በሽንኩርት፣ በቃሪያ፣ በሮዝመሪ እና በባህላዊ ቅመማ ቅመሞች በፍላጎት በጥንቃቄ የተጠበሰ ጣፋጭ የጥብስ አሰራር።",
+      "om": "Foon lallaafaa shunkurtii, qaaraa fi mi'eessituu aadaatiin mi'aawaa waadame."
+    }
+  },
+  {
+    "id": 2,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Timatim Leb Leb",
+      "am": "ቲማቲም ለብ ለብ",
+      "om": "Timaatiimaa Biilchaataa"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 3,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Tomato Salad",
+      "am": "ቲማቲም ቁርጥ",
+      "om": "Timaatiimaa"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 4,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Kitfo",
+      "am": "ክትፎ",
+      "om": "Kiitfoo"
+    },
+    "price": 1200,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Finely minced lean beef seasoned with spiced clarified butter (niter kibbeh) and mitmita.",
+      "am": "በንጹህ የተንጠረጠረ ቅቤ እና በሚጥሚጣ ተቦክቶ በልዩ ጥራት የሚቀርብ የላቀ የክትፎ ምግብ።",
+      "om": "Foon laafaa dadhiidhaan fi mitmiitaadhaan urgaa'aa qophaa'e."
+    }
+  },
+  {
+    "id": 5,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Tibit",
+      "am": "ትብት",
+      "om": "Tiibitii"
+    },
+    "price": 1000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 6,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Shekla Tibs",
+      "am": "ሸክላ ጥብስ",
+      "om": "Waadii Shaklaa"
+    },
+    "price": 1400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Sautéed tender beef slices infused with onions, green peppers, rosemary, and authentic Ethiopian spices.",
+      "am": "በሽንኩርት፣ በቃሪያ፣ በሮዝመሪ እና በባህላዊ ቅመማ ቅመሞች በፍላጎት በጥንቃቄ የተጠበሰ ጣፋጭ የጥብስ አሰራር።",
+      "om": "Foon lallaafaa shunkurtii, qaaraa fi mi'eessituu aadaatiin mi'aawaa waadame."
+    }
+  },
+  {
+    "id": 7,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Zelzel Tibs",
+      "am": "ዝልዝል ጥብስ",
+      "om": "Waadii Zilzilii"
+    },
+    "price": 1500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Sautéed tender beef slices infused with onions, green peppers, rosemary, and authentic Ethiopian spices.",
+      "am": "በሽንኩርት፣ በቃሪያ፣ በሮዝመሪ እና በባህላዊ ቅመማ ቅመሞች በፍላጎት በጥንቃቄ የተጠበሰ ጣፋጭ የጥብስ አሰራር።",
+      "om": "Foon lallaafaa shunkurtii, qaaraa fi mi'eessituu aadaatiin mi'aawaa waadame."
+    }
+  },
+  {
+    "id": 8,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Gas Light",
+      "am": "ጋዝ ላይት",
+      "om": "Gaaz Laayitii"
+    },
+    "price": 1000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 9,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Avenue Special Big",
+      "am": "አቬኑ እስፔሻል ትልቅ",
+      "om": "Ispeeshali Aveenu Guudaa"
+    },
+    "price": 3000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 10,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Avenue Special Medium",
+      "am": "አቬኑ እስፔሻል ሚዲየም",
+      "om": "Ispesshali Aveenu Xiiqaa"
+    },
+    "price": 1700,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 11,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat & Traditional",
+      "am": "የስጋ እና የባህላዊ ምግቦች",
+      "om": "Nyaata Foonii fi Aadaa"
+    },
+    "name": {
+      "en": "Dulet",
+      "am": "ዱለት",
+      "om": "Koochee"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 12,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Chicken Shish Kebab",
+      "am": "ቺክን ሺሽካባብ",
+      "om": "Shiishi Kibaabi Lukuu"
+    },
+    "price": 1000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 13,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Kanapi",
+      "am": "ካናፒ",
+      "om": "Kaanaapii"
+    },
+    "price": 1500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 14,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Chicken Cotelet",
+      "am": "ቺክን ኮትሌት",
+      "om": "Kotaleetti Lukuu"
+    },
+    "price": 1000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 15,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Chicken Brown",
+      "am": "ቺክን ብራውን",
+      "om": "Biraawni Lukku"
+    },
+    "price": 1750,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 16,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Full Roasted Chicken",
+      "am": "ሙሉ ዶሮ አርስቶ",
+      "om": "Aruusto Lukuu Gutuu"
+    },
+    "price": 3500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 17,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Half Roasted Chicken",
+      "am": "ግማሽ ዶሮ አርስቶ",
+      "om": "Aruusto Lukuu Walakaa"
+    },
+    "price": 1750,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 18,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Full Chicken Saltata",
+      "am": "ሙሉ ቺክን ሳላታ",
+      "om": "Saltaataa Lukuu Gutuu"
+    },
+    "price": 3500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 19,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Half Chicken Saltata",
+      "am": "ግማሽ ቺክን ሳላታ",
+      "om": "Saltaataa Lukuu Walakaa"
+    },
+    "price": 1750,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 20,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Golden Chicken",
+      "am": "ጎልደን ቺክን",
+      "om": "Lukuu Goldaani"
+    },
+    "price": 3500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 21,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Green Chicken",
+      "am": "ግሪን ቺክን",
+      "om": "Lukuu Griin"
+    },
+    "price": 3500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 22,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Half Green Chicken",
+      "am": "ግሪን ቺክን ግማሽ",
+      "om": "Lukuu Griin Walakaa"
+    },
+    "price": 1750,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 23,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Tegabino",
+      "am": "ተጋቢኖ",
+      "om": "Tagaabinoo"
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Slow-simmered spiced chickpea flour stew served bubbling hot in a traditional clay pot.",
+      "am": "በጥንቃቄ ከተፈጨ የሽሮ ዱቄት፣ ነጭ ሽንኩርት እና ቅመሞች ጋር በሸክላ ድስት ፈላ ብሎ የሚቀርብ።",
+      "om": "Shiiroo urgaa'aa fi mi'aawaa okkotee dhoqqeetiin danfee dhihaatu."
+    }
+  },
+  {
+    "id": 24,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Tegabino with Butter",
+      "am": "ተጋቢኖ በቅቤ",
+      "om": "Tagaabinoo dha dhaadhaan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Slow-simmered spiced chickpea flour stew served bubbling hot in a traditional clay pot.",
+      "am": "በጥንቃቄ ከተፈጨ የሽሮ ዱቄት፣ ነጭ ሽንኩርት እና ቅመሞች ጋር በሸክላ ድስት ፈላ ብሎ የሚቀርብ።",
+      "om": "Shiiroo urgaa'aa fi mi'aawaa okkotee dhoqqeetiin danfee dhihaatu."
+    }
+  },
+  {
+    "id": 25,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Bozena",
+      "am": "ቦዘና",
+      "om": "Boozanaa"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 26,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Gomen Tibs",
+      "am": "ጎመን ጥብስ",
+      "om": "Raafu Waadii"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Sautéed tender beef slices infused with onions, green peppers, rosemary, and authentic Ethiopian spices.",
+      "am": "በሽንኩርት፣ በቃሪያ፣ በሮዝመሪ እና በባህላዊ ቅመማ ቅመሞች በፍላጎት በጥንቃቄ የተጠበሰ ጣፋጭ የጥብስ አሰራር።",
+      "om": "Foon lallaafaa shunkurtii, qaaraa fi mi'eessituu aadaatiin mi'aawaa waadame."
+    }
+  },
+  {
+    "id": 27,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Gomen Kitfo",
+      "am": "ጎመን ክትፎ",
+      "om": "Raafu kitfoo"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Finely minced lean beef seasoned with spiced clarified butter (niter kibbeh) and mitmita.",
+      "am": "በንጹህ የተንጠረጠረ ቅቤ እና በሚጥሚጣ ተቦክቶ በልዩ ጥራት የሚቀርብ የላቀ የክትፎ ምግብ።",
+      "om": "Foon laafaa dadhiidhaan fi mitmiitaadhaan urgaa'aa qophaa'e."
+    }
+  },
+  {
+    "id": 28,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Firfir",
+      "am": "ፍርፍር",
+      "om": "Firfiirri"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Shredded injera tossed in rich, seasoned berbere sauce with caramelized onions and garlic.",
+      "am": "በበርበሬ ሶስ፣ በሽንኩርት እና ነጭ ሽንኩርት ተጠብሶ በደንብ የታሸ ባህላዊ የፍርፍር ምግብ።",
+      "om": "Biduena kuutame ittoo berberee fi shunkurtiidhaan makamee qophaa'e."
+    }
+  },
+  {
+    "id": 29,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Firfir with Butter",
+      "am": "ፍርፍር በቅቤ",
+      "om": "Firfiirri dha dhaadhaan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Shredded injera tossed in rich, seasoned berbere sauce with caramelized onions and garlic.",
+      "am": "በበርበሬ ሶስ፣ በሽንኩርት እና ነጭ ሽንኩርት ተጠብሶ በደንብ የታሸ ባህላዊ የፍርፍር ምግብ።",
+      "om": "Biduena kuutame ittoo berberee fi shunkurtiidhaan makamee qophaa'e."
+    }
+  },
+  {
+    "id": 30,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Kuwanta Firfir",
+      "am": "ቋንጣ ፍርፍር",
+      "om": "Firfiirri Qu'anxaa"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Shredded injera tossed in rich, seasoned berbere sauce with caramelized onions and garlic.",
+      "am": "በበርበሬ ሶስ፣ በሽንኩርት እና ነጭ ሽንኩርት ተጠብሶ በደንብ የታሸ ባህላዊ የፍርፍር ምግብ።",
+      "om": "Biduena kuutame ittoo berberee fi shunkurtiidhaan makamee qophaa'e."
+    }
+  },
+  {
+    "id": 31,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Special Tibs Firfir",
+      "am": "እስፔሻል ጥብስ ፍርፍር",
+      "om": "Waadii firfiirri ispeeshaalaa"
+    },
+    "price": 600,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Sautéed tender beef slices infused with onions, green peppers, rosemary, and authentic Ethiopian spices.",
+      "am": "በሽንኩርት፣ በቃሪያ፣ በሮዝመሪ እና በባህላዊ ቅመማ ቅመሞች በፍላጎት በጥንቃቄ የተጠበሰ ጣፋጭ የጥብስ አሰራር።",
+      "om": "Foon lallaafaa shunkurtii, qaaraa fi mi'eessituu aadaatiin mi'aawaa waadame."
+    }
+  },
+  {
+    "id": 32,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Traditional Dishes",
+      "am": "የባህላዊ ምግቦች",
+      "om": "Nyaata Aadaa"
+    },
+    "name": {
+      "en": "Siga Firfir",
+      "am": "ስጋ ፍርፍር",
+      "om": "Firfiirri Fooni"
+    },
+    "price": 450,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Shredded injera tossed in rich, seasoned berbere sauce with caramelized onions and garlic.",
+      "am": "በበርበሬ ሶስ፣ በሽንኩርት እና ነጭ ሽንኩርት ተጠብሶ በደንብ የታሸ ባህላዊ የፍርፍር ምግብ።",
+      "om": "Biduena kuutame ittoo berberee fi shunkurtiidhaan makamee qophaa'e."
+    }
+  },
+  {
+    "id": 33,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat Dishes",
+      "am": "የስጋ ምግቦች",
+      "om": "Nyaata Foonii"
+    },
+    "name": {
+      "en": "Tibs",
+      "am": "ጥብስ",
+      "om": "Waadii"
+    },
+    "price": 750,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Sautéed tender beef slices infused with onions, green peppers, rosemary, and authentic Ethiopian spices.",
+      "am": "በሽንኩርት፣ በቃሪያ፣ በሮዝመሪ እና በባህላዊ ቅመማ ቅመሞች በፍላጎት በጥንቃቄ የተጠበሰ ጣፋጭ የጥብስ አሰራር።",
+      "om": "Foon lallaafaa shunkurtii, qaaraa fi mi'eessituu aadaatiin mi'aawaa waadame."
+    }
+  },
+  {
+    "id": 34,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Chicken Dishes",
+      "am": "የዶሮ ምግቦች",
+      "om": "Nyaata Lukuu"
+    },
+    "name": {
+      "en": "Chicken Breast",
+      "am": "ቺክን ደረት",
+      "om": "Qoomoo lukuu"
+    },
+    "price": 3500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 35,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat Dishes",
+      "am": "የስጋ ምግቦች",
+      "om": "Nyaata Foonii"
+    },
+    "name": {
+      "en": "Veal Roasted",
+      "am": "ጥጃ አርስቶ",
+      "om": "Aruustoo jabii"
+    },
+    "price": 1800,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 36,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Meat Dishes",
+      "am": "የስጋ ምግቦች",
+      "om": "Nyaata Foonii"
+    },
+    "name": {
+      "en": "Veal Cotelet",
+      "am": "ጥጃ ኮትሌት",
+      "om": "Kotaleetii jabii"
+    },
+    "price": 800,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 37,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Soup",
+      "am": "ሾርባ",
+      "om": "Shoorbaa"
+    },
+    "name": {
+      "en": "Tomato Soup",
+      "am": "ቲማቲም ሾርባ",
+      "om": "Shoorbaa timaatiimaa"
+    },
+    "price": 200,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Warm, rich and soothing house-made soup prepared daily with fresh ingredients.",
+      "am": "በየቀኑ ከአዲስ አትክልቶች እና ቅመሞች በቤቱ ልዩ አሰራር የሚዘጋጅ የሚያሞቅ ሾርባ።",
+      "om": "Shoorbaa ho'aa fi qulqulluu kuduraa haarawa irraa hojjetame."
+    }
+  },
+  {
+    "id": 38,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Soup",
+      "am": "ሾርባ",
+      "om": "Shoorbaa"
+    },
+    "name": {
+      "en": "Normal Soup",
+      "am": "ናቹራል ሾርባ",
+      "om": "Shoorbaa Noormaali"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Warm, rich and soothing house-made soup prepared daily with fresh ingredients.",
+      "am": "በየቀኑ ከአዲስ አትክልቶች እና ቅመሞች በቤቱ ልዩ አሰራር የሚዘጋጅ የሚያሞቅ ሾርባ።",
+      "om": "Shoorbaa ho'aa fi qulqulluu kuduraa haarawa irraa hojjetame."
+    }
+  },
+  {
+    "id": 39,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Soup",
+      "am": "ሾርባ",
+      "om": "Shoorbaa"
+    },
+    "name": {
+      "en": "Vegetable Soup",
+      "am": "አትክልት ሾርባ",
+      "om": "Shoorbaa kuduraa fi muduraa"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Warm, rich and soothing house-made soup prepared daily with fresh ingredients.",
+      "am": "በየቀኑ ከአዲስ አትክልቶች እና ቅመሞች በቤቱ ልዩ አሰራር የሚዘጋጅ የሚያሞቅ ሾርባ።",
+      "om": "Shoorbaa ho'aa fi qulqulluu kuduraa haarawa irraa hojjetame."
+    }
+  },
+  {
+    "id": 40,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Soup",
+      "am": "ሾርባ",
+      "om": "Shoorbaa"
+    },
+    "name": {
+      "en": "Onion Soup",
+      "am": "ሽንኩርት ሾርባ",
+      "om": "Shoorbaa shuunkurti"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Warm, rich and soothing house-made soup prepared daily with fresh ingredients.",
+      "am": "በየቀኑ ከአዲስ አትክልቶች እና ቅመሞች በቤቱ ልዩ አሰራር የሚዘጋጅ የሚያሞቅ ሾርባ።",
+      "om": "Shoorbaa ho'aa fi qulqulluu kuduraa haarawa irraa hojjetame."
+    }
+  },
+  {
+    "id": 41,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Soup",
+      "am": "ሾርባ",
+      "om": "Shoorbaa"
+    },
+    "name": {
+      "en": "Chicken Soup",
+      "am": "የዶሮ ሾርባ",
+      "om": "Shoorbaa lukuu"
+    },
+    "price": 450,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Succulent tender chicken prepared with aromatic house herbs, served warm with signature side pairings.",
+      "am": "በልዩ የቤቱ ቅመማ ቅመም የበሰለ፣ እጅግ የሚጣፍጥ እና የሚማርክ የዶሮ ምግብ።",
+      "om": "Nyaata lukuu mi'eessituu addaatiin mi'aawaa fi gogaa qulqulluu qophaa'e."
+    }
+  },
+  {
+    "id": 42,
+    "mainCategory": "Food",
+    "category": {
+      "en": "National Dish",
+      "am": "ባህላዊ ምግብ",
+      "om": "Nyaata Addaa"
+    },
+    "name": {
+      "en": "Shiro",
+      "am": "ሽሮ",
+      "om": "Shiiroo"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Slow-simmered spiced chickpea flour stew served bubbling hot in a traditional clay pot.",
+      "am": "በጥንቃቄ ከተፈጨ የሽሮ ዱቄት፣ ነጭ ሽንኩርት እና ቅመሞች ጋር በሸክላ ድስት ፈላ ብሎ የሚቀርብ።",
+      "om": "Shiiroo urgaa'aa fi mi'aawaa okkotee dhoqqeetiin danfee dhihaatu."
+    }
+  },
+  {
+    "id": 43,
+    "mainCategory": "Food",
+    "category": {
+      "en": "National Dish",
+      "am": "ባህላዊ ምግብ",
+      "om": "Nyaata Addaa"
+    },
+    "name": {
+      "en": "Shiro with Butter",
+      "am": "ሽሮ በቅቤ",
+      "om": "Shiiroo dhadhaan"
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Slow-simmered spiced chickpea flour stew served bubbling hot in a traditional clay pot.",
+      "am": "በጥንቃቄ ከተፈጨ የሽሮ ዱቄት፣ ነጭ ሽንኩርት እና ቅመሞች ጋር በሸክላ ድስት ፈላ ብሎ የሚቀርብ።",
+      "om": "Shiiroo urgaa'aa fi mi'aawaa okkotee dhoqqeetiin danfee dhihaatu."
+    }
+  },
+  {
+    "id": 44,
+    "mainCategory": "Food",
+    "category": {
+      "en": "National Dish",
+      "am": "ባህላዊ ምግብ",
+      "om": "Nyaata Addaa"
+    },
+    "name": {
+      "en": "Special Shiro",
+      "am": "እስፔሻል ሽሮ",
+      "om": "Shiiroo Ispeeshali"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Slow-simmered spiced chickpea flour stew served bubbling hot in a traditional clay pot.",
+      "am": "በጥንቃቄ ከተፈጨ የሽሮ ዱቄት፣ ነጭ ሽንኩርት እና ቅመሞች ጋር በሸክላ ድስት ፈላ ብሎ የሚቀርብ።",
+      "om": "Shiiroo urgaa'aa fi mi'aawaa okkotee dhoqqeetiin danfee dhihaatu."
+    }
+  },
+  {
+    "id": 45,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Fish Dishes",
+      "am": "የአሳ ምግቦች",
+      "om": "Nyaata Qurxuumii"
+    },
+    "name": {
+      "en": "Fish Gulash",
+      "am": "አሳ ጉላሽ",
+      "om": "Qurxuumii Gulaashii"
+    },
+    "price": 550,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Freshly caught fish fillet delicately seasoned and cooked to crispy perfection.",
+      "am": "በልዩ ቅመም ተከሽኖ በፍላጎት በጥንቃቄ የተጠበሰ ወይም የተሰራ ትኩስ የአሳ ምግብ።",
+      "om": "Qurxuumii haarawa mi'eessituudhaan qophaa'ee waadame."
+    }
+  },
+  {
+    "id": 46,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Fast Food",
+      "am": "ፈጣን ምግቦች",
+      "om": "Nyaata Ariifachiisaa"
+    },
+    "name": {
+      "en": "French Fries",
+      "am": "ቺፕስ",
+      "om": "Chiibsii"
+    },
+    "price": 200,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 47,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Sandwich",
+      "am": "ሳንድዊች",
+      "om": "Saanduchii"
+    },
+    "name": {
+      "en": "Vegetable Sandwich",
+      "am": "አትክልት ሳንድዊች",
+      "om": "Saanduchii Kuduraa fi Muduraan"
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Fresh artisan bread filled with seasoned ingredients, crispy greens, and chef's sauce.",
+      "am": "በትኩስ ዳቦ፣ በሰላጣ፣ በሶስ እና በጥንቃቄ በተዘጋጁ እቃዎች የሚቀርብ ፈጣን ምግብ።",
+      "om": "Daabboo haarawa fi foon ykn kuduraa qulqulluudhaan tolfame."
+    }
+  },
+  {
+    "id": 48,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Sandwich",
+      "am": "ሳንድዊች",
+      "om": "Saanduchii"
+    },
+    "name": {
+      "en": "Meat Sandwich",
+      "am": "ስጋ ሳንድዊች",
+      "om": "Saanduchii Fooniin"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Fresh artisan bread filled with seasoned ingredients, crispy greens, and chef's sauce.",
+      "am": "በትኩስ ዳቦ፣ በሰላጣ፣ በሶስ እና በጥንቃቄ በተዘጋጁ እቃዎች የሚቀርብ ፈጣን ምግብ።",
+      "om": "Daabboo haarawa fi foon ykn kuduraa qulqulluudhaan tolfame."
+    }
+  },
+  {
+    "id": 49,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Sandwich",
+      "am": "ሳንድዊች",
+      "om": "Saanduchii"
+    },
+    "name": {
+      "en": "Tuna Sandwich",
+      "am": "ቱና ሳንድዊች",
+      "om": "Saanduchii Tuunaa dhaan"
+    },
+    "price": 600,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Fresh artisan bread filled with seasoned ingredients, crispy greens, and chef's sauce.",
+      "am": "በትኩስ ዳቦ፣ በሰላጣ፣ በሶስ እና በጥንቃቄ በተዘጋጁ እቃዎች የሚቀርብ ፈጣን ምግብ።",
+      "om": "Daabboo haarawa fi foon ykn kuduraa qulqulluudhaan tolfame."
+    }
+  },
+  {
+    "id": 50,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Sandwich",
+      "am": "ሳንድዊች",
+      "om": "Saanduchii"
+    },
+    "name": {
+      "en": "Egg Sandwich",
+      "am": "እንቁላል ሳንድዊች",
+      "om": "Saanduchii Kiilee dhaan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Fresh artisan bread filled with seasoned ingredients, crispy greens, and chef's sauce.",
+      "am": "በትኩስ ዳቦ፣ በሰላጣ፣ በሶስ እና በጥንቃቄ በተዘጋጁ እቃዎች የሚቀርብ ፈጣን ምግብ።",
+      "om": "Daabboo haarawa fi foon ykn kuduraa qulqulluudhaan tolfame."
+    }
+  },
+  {
+    "id": 51,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Burger",
+      "am": "በርገር",
+      "om": "Bargarii"
+    },
+    "name": {
+      "en": "Burger",
+      "am": "በርገር",
+      "om": "Bargarii"
+    },
+    "price": 700,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Fresh artisan bread filled with seasoned ingredients, crispy greens, and chef's sauce.",
+      "am": "በትኩስ ዳቦ፣ በሰላጣ፣ በሶስ እና በጥንቃቄ በተዘጋጁ እቃዎች የሚቀርብ ፈጣን ምግብ።",
+      "om": "Daabboo haarawa fi foon ykn kuduraa qulqulluudhaan tolfame."
+    }
+  },
+  {
+    "id": 52,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Burger",
+      "am": "በርገር",
+      "om": "Bargarii"
+    },
+    "name": {
+      "en": "Special Burger",
+      "am": "ስፔሻል በርገር",
+      "om": "Bargarii Ispeeshaalii"
+    },
+    "price": 850,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Fresh artisan bread filled with seasoned ingredients, crispy greens, and chef's sauce.",
+      "am": "በትኩስ ዳቦ፣ በሰላጣ፣ በሶስ እና በጥንቃቄ በተዘጋጁ እቃዎች የሚቀርብ ፈጣን ምግብ።",
+      "om": "Daabboo haarawa fi foon ykn kuduraa qulqulluudhaan tolfame."
+    }
+  },
+  {
+    "id": 53,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Salad",
+      "am": "ሰላጣ",
+      "om": "Salaaxaa"
+    },
+    "name": {
+      "en": "Salad",
+      "am": "ሰላጣ",
+      "om": "Salaaxaa"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 54,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Salad",
+      "am": "ሰላጣ",
+      "om": "Salaaxaa"
+    },
+    "name": {
+      "en": "Vegetable Salad",
+      "am": "አትክልት ሰላጣ",
+      "om": "Kuduraa fi muduraa"
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 55,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Salad",
+      "am": "ሰላጣ",
+      "om": "Salaaxaa"
+    },
+    "name": {
+      "en": "Special Salad",
+      "am": "ስፔሻል ሰላጣ",
+      "om": "Salaaxaa Ispeeshaalii"
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": true,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 56,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Rice",
+      "am": "ሩዝ",
+      "om": "Ruzii"
+    },
+    "name": {
+      "en": "Rice with Meat",
+      "am": "ሩዝ በስጋ",
+      "om": "Ruzii fooni dhaan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 57,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Macaroni",
+      "am": "መካሮኒ",
+      "om": "Mookooronii"
+    },
+    "name": {
+      "en": "Macaroni with Egg",
+      "am": "መካሮኒ በእንቁላል",
+      "om": "Mookooronii Killeedhan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 58,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Macaroni",
+      "am": "መካሮኒ",
+      "om": "Mookooronii"
+    },
+    "name": {
+      "en": "Macaroni with Vegetable",
+      "am": "መካሮኒ በአትክልት",
+      "om": "Mookooronii kuduraa fi muduraan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 59,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Macaroni",
+      "am": "መካሮኒ",
+      "om": "Mookooronii"
+    },
+    "name": {
+      "en": "Macaroni with Tomato Sauce",
+      "am": "መካሮኒ በሶስ",
+      "om": "Mookooronii Sugoodhan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 60,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Macaroni",
+      "am": "መካሮኒ",
+      "om": "Mookooronii"
+    },
+    "name": {
+      "en": "Macaroni with Tuna",
+      "am": "መካሮኒ በቱና",
+      "om": "Mookooronii Tuunaadhan"
+    },
+    "price": 550,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 61,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Macaroni",
+      "am": "መካሮኒ",
+      "om": "Mookooronii"
+    },
+    "name": {
+      "en": "Macaroni with Meat",
+      "am": "መካሮኒ በስጋ",
+      "om": "Mookooronii fooni dhaan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 62,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Fish Dishes",
+      "am": "የአሳ ምግቦች",
+      "om": "Nyaata Qurxuumii"
+    },
+    "name": {
+      "en": "Fish Cutlet",
+      "am": "አሳ ኮትሌት",
+      "om": "Kootaleetii Qurxuumii"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Freshly caught fish fillet delicately seasoned and cooked to crispy perfection.",
+      "am": "በልዩ ቅመም ተከሽኖ በፍላጎት በጥንቃቄ የተጠበሰ ወይም የተሰራ ትኩስ የአሳ ምግብ።",
+      "om": "Qurxuumii haarawa mi'eessituudhaan qophaa'ee waadame."
+    }
+  },
+  {
+    "id": 63,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Fish Dishes",
+      "am": "የአሳ ምግቦች",
+      "om": "Nyaata Qurxuumii"
+    },
+    "name": {
+      "en": "Fish Lebleb",
+      "am": "አሳ ለብለብ",
+      "om": "Qurxuumii Biilchaataa"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Freshly caught fish fillet delicately seasoned and cooked to crispy perfection.",
+      "am": "በልዩ ቅመም ተከሽኖ በፍላጎት በጥንቃቄ የተጠበሰ ወይም የተሰራ ትኩስ የአሳ ምግብ።",
+      "om": "Qurxuumii haarawa mi'eessituudhaan qophaa'ee waadame."
+    }
+  },
+  {
+    "id": 64,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Fish Dishes",
+      "am": "የአሳ ምግቦች",
+      "om": "Nyaata Qurxuumii"
+    },
+    "name": {
+      "en": "Fish Kitfo",
+      "am": "አሳ ክትፎ",
+      "om": "Kitifoo Qurxuumii"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Finely minced lean beef seasoned with spiced clarified butter (niter kibbeh) and mitmita.",
+      "am": "በንጹህ የተንጠረጠረ ቅቤ እና በሚጥሚጣ ተቦክቶ በልዩ ጥራት የሚቀርብ የላቀ የክትፎ ምግብ።",
+      "om": "Foon laafaa dadhiidhaan fi mitmiitaadhaan urgaa'aa qophaa'e."
+    }
+  },
+  {
+    "id": 65,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Fish Dishes",
+      "am": "የአሳ ምግቦች",
+      "om": "Nyaata Qurxuumii"
+    },
+    "name": {
+      "en": "Fish Shekla",
+      "am": "አሳ ሸክላ",
+      "om": "Shaklaa Qurxuumii"
+    },
+    "price": 550,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": true,
+    "description": {
+      "en": "Freshly caught fish fillet delicately seasoned and cooked to crispy perfection.",
+      "am": "በልዩ ቅመም ተከሽኖ በፍላጎት በጥንቃቄ የተጠበሰ ወይም የተሰራ ትኩስ የአሳ ምግብ።",
+      "om": "Qurxuumii haarawa mi'eessituudhaan qophaa'ee waadame."
+    }
+  },
+  {
+    "id": 66,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Pasta",
+      "am": "ፓስታ",
+      "om": "Paastaa"
+    },
+    "name": {
+      "en": "Spaghetti with Egg",
+      "am": "ፓስታ በእንቁላል",
+      "om": "Paastaa killeedhaan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 67,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Pasta",
+      "am": "ፓስታ",
+      "om": "Paastaa"
+    },
+    "name": {
+      "en": "Spaghetti with Vegetable",
+      "am": "ፓስታ በአትክልት",
+      "om": "Paastaa kuduraa fi muduraa"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 68,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Pasta",
+      "am": "ፓስታ",
+      "om": "Paastaa"
+    },
+    "name": {
+      "en": "Spaghetti with Tomato sauce",
+      "am": "ፓስታ በሶስ",
+      "om": "Paastaa sugoodhan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 69,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Pasta",
+      "am": "ፓስታ",
+      "om": "Paastaa"
+    },
+    "name": {
+      "en": "Spaghetti with Meat",
+      "am": "ፓስታ በስጋ",
+      "om": "Paastaa Foonin"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 70,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Pasta",
+      "am": "ፓስታ",
+      "om": "Paastaa"
+    },
+    "name": {
+      "en": "Spaghetti with Fish",
+      "am": "ፓስታ በአሳ",
+      "om": "Paastaa Qurxumiidhan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Freshly caught fish fillet delicately seasoned and cooked to crispy perfection.",
+      "am": "በልዩ ቅመም ተከሽኖ በፍላጎት በጥንቃቄ የተጠበሰ ወይም የተሰራ ትኩስ የአሳ ምግብ።",
+      "om": "Qurxuumii haarawa mi'eessituudhaan qophaa'ee waadame."
+    }
+  },
+  {
+    "id": 71,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Pasta",
+      "am": "ፓስታ",
+      "om": "Paastaa"
+    },
+    "name": {
+      "en": "Spaghetti with Tuna",
+      "am": "ፓስታ በቱና",
+      "om": "Paastaa Tunaadhaan"
+    },
+    "price": 550,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 72,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Rice",
+      "am": "ሩዝ",
+      "om": "Ruzii"
+    },
+    "name": {
+      "en": "Rice with Egg",
+      "am": "ሩዝ በእንቁላል",
+      "om": "Ruzii Killeedhan"
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 73,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Rice",
+      "am": "ሩዝ",
+      "om": "Ruzii"
+    },
+    "name": {
+      "en": "Rice with Vegetable",
+      "am": "ሩዝ በአትክልት",
+      "om": "Ruzii Kuduraa fi Muduraan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 74,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Rice",
+      "am": "ሩዝ",
+      "om": "Ruzii"
+    },
+    "name": {
+      "en": "Rice with Tomato sauce",
+      "am": "ሩዝ በሶስ",
+      "om": "Ruzii Sugoodhan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 75,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Rice",
+      "am": "ሩዝ",
+      "om": "Ruzii"
+    },
+    "name": {
+      "en": "Rice with Fish",
+      "am": "ሩዝ በአሳ",
+      "om": "Ruzii Qurxumiidhan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Freshly caught fish fillet delicately seasoned and cooked to crispy perfection.",
+      "am": "በልዩ ቅመም ተከሽኖ በፍላጎት በጥንቃቄ የተጠበሰ ወይም የተሰራ ትኩስ የአሳ ምግብ።",
+      "om": "Qurxuumii haarawa mi'eessituudhaan qophaa'ee waadame."
+    }
+  },
+  {
+    "id": 76,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Rice",
+      "am": "ሩዝ",
+      "om": "Ruzii"
+    },
+    "name": {
+      "en": "Rice with Tuna",
+      "am": "ሩዝ በቱና",
+      "om": "Ruzii Tunaadhaan"
+    },
+    "price": 550,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Al dente noodles/rice served with savory signature sauce and aromatic sides.",
+      "am": "በልዩ ሶስ እና አትክልት/ስጋ የታጀበ በጥ በጥ ብሎ የተሰራ ጣፋጭ ምግብ።",
+      "om": "Paastaa/Ruzii sugooo urgaa'aa fi qulqulluudhaan dhihaatu."
+    }
+  },
+  {
+    "id": 77,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Egg",
+      "am": "እንቁላል",
+      "om": "Kiilee"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 78,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Egg Mushroom",
+      "am": "እንቁላል መሽሩም",
+      "om": "Kiilee Mashirum"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 79,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Special Omelet",
+      "am": "ስፔሻል አምሌት",
+      "om": "Omileeti Ispeeshaali"
+    },
+    "price": 450,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 80,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "French Toast",
+      "am": "ፍሬንች ቶስት",
+      "om": "Freenchi Toosti"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Chef's special creation crafted with high quality local ingredients and traditional flavor profiles.",
+      "am": "በሼፉ ልዩ ሙያ ጥራት ባላቸው ግብአቶች በጥንቃቄ የተዘጋጅ የቤት ስፔሻሊቲ።",
+      "om": "Nyaata addaa qulqullina olaanaadhaan qophaa'e."
+    }
+  },
+  {
+    "id": 81,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Spanish Omelet",
+      "am": "እስፓኒሽ አምሌት",
+      "om": "Omileeti Spaanishi"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 82,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Plain Omelet",
+      "am": "ፕሌን አምሌት",
+      "om": "Omileeti Pileeni"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 83,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Fetira with Honey",
+      "am": "ፈቲራ በማር",
+      "om": "Faxiiraa Dayinaan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 84,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Normal Fetira",
+      "am": "ፈቲራ ኖርማል",
+      "om": "Faxiiraa Normaali"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 85,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Special Fetira",
+      "am": "እስፔሻል ፈቲራ",
+      "om": "Faxiiraa Ispeeshaali"
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 86,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Chechebisa with Butter",
+      "am": "ጨጨብሳ በቅቤ",
+      "om": "Cacabsaa Dhadhaadhaan"
+    },
+    "price": 300,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 87,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Chechebisa",
+      "am": "ጨጨብሳ",
+      "om": "Cacabsaa"
+    },
+    "price": 250,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  },
+  {
+    "id": 88,
+    "mainCategory": "Food",
+    "category": {
+      "en": "Breakfast",
+      "am": "ቁርስ",
+      "om": "Ciiree"
+    },
+    "name": {
+      "en": "Egg with Meat",
+      "am": "እንቁላል በስጋ",
+      "om": "Kiilee Fooni dhaan"
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false,
+    "description": {
+      "en": "Delightful breakfast favorite prepared fresh with premium butter, honey, or seasoned eggs.",
+      "am": "በቀን መክፈቻ በቅቤ፣ በማር ወይም በነጭ ሽንኩርት/ቃሪያ አጅቦ በትኩሱ የሚዘጋጅ ልዩ ቁርስ።",
+      "om": "Nyaata ciiree ganamaa dhadhaa fi damma ykn killee qulqulluudhaan qophaa'e."
+    }
+  }
+]

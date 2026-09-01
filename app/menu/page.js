@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { safeFetchJson } from '@/lib/clientFetch';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useLanguage } from '@/app/components/LanguageProvider';
+import MenuItemImage from '@/app/components/MenuItemImage';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import { convertPrice, formatPrice } from '@/lib/currency';
 import { useOrderEvents } from '@/lib/orderEvents';
@@ -647,14 +648,10 @@ export default function MenuPage() {
                         </div>
                       </div>
 
-                      {/* RIGHT — large food image (transparent, frameless) */}
-                       <div className="h-28 w-28 shrink-0 overflow-hidden bg-transparent">
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={localizedName(item, lang)} className="h-full w-full object-contain object-center" loading="lazy" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[10px] text-[#94A3B8]">{tx('empty')}</div>
-                        )}
-                      </div>
+                       {/* RIGHT — large food image (transparent, frameless) */}
+                        <div className="h-28 w-28 shrink-0 overflow-hidden bg-transparent">
+                         <MenuItemImage key={`menu-image-${item._id || item.id}-${item.imageUrl || 'none'}`} src={item.imageUrl} alt={localizedName(item, lang)} className="h-full w-full object-contain object-center" loading="lazy" />
+                       </div>
                     </article>
                   );
                 })}
@@ -723,11 +720,7 @@ export default function MenuPage() {
                   >
                     {/* IMAGE — fixed area inside the fixed-height card; contained, no overflow */}
                     <div className="relative flex min-h-[6rem] flex-1 items-center justify-center overflow-hidden bg-transparent">
-                      {item.imageUrl ? (
-                        <img src={item.imageUrl} alt={localizedName(item, lang)} className="h-full w-full object-contain object-[50%_60%] drop-shadow-md" loading="lazy" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[10px] text-[#94A3B8]">{tx('empty')}</div>
-                      )}
+                      <MenuItemImage key={`menu-image-${item._id || item.id}-${item.imageUrl || 'none'}`} src={item.imageUrl} alt={localizedName(item, lang)} className="h-full w-full object-contain object-[50%_60%] drop-shadow-md" loading="lazy" />
                     </div>
 
                     {/* BOTTOM — name/description (left) · price + Add (right) */}

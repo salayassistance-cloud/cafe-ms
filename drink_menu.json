@@ -1,0 +1,902 @@
+[
+  {
+    "id": 1,
+    "mainCategory": "Drink",
+    "category": { "en": "Alcohol Free Drink", "am": "ከአልኮል ነፃ የሆኑ መጠጦች", "om": "Dhugiwwanii Alkooli Hinqabnee" },
+    "name": { "en": "Buckler", "am": "ብክለር", "om": "Baaklari" },
+    "description": {
+      "en": "Refreshing non-alcoholic malt beverage with a smooth taste.",
+      "am": "ለስላሳ ጣዕም ያለውና የሚያነቃቃ ከአልኮል ነፃ የመልት መጠጥ።",
+      "om": "Dhugaatii maaltii alkooli hinqabnee fi mi'aawaa."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 2,
+    "mainCategory": "Drink",
+    "category": { "en": "Alcohol Free Drink", "am": "ከአልኮል ነፃ የሆኑ መጠጦች", "om": "Dhugiwwanii Alkooli Hinqabnee" },
+    "name": { "en": "Bertate", "am": "ብርታት", "om": "Birtaati" },
+    "description": {
+      "en": "Energizing non-alcoholic malt drink packed with rich flavor.",
+      "am": "በኃይልና በጥሩ ጣዕም የተሞላ ከአልኮል ነፃ የመልት መጠጥ።",
+      "om": "Dhugaatii maaltii annisaa kennu fi alkooli hinqabne."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 3,
+    "mainCategory": "Drink",
+    "category": { "en": "Alcohol Free Drink", "am": "ከአልኮል ነፃ የሆኑ መጠጦች", "om": "Dhugiwwanii Alkooli Hinqabnee" },
+    "name": { "en": "Sofi Malt", "am": "ሶፊ", "om": "Soofi" },
+    "description": {
+      "en": "Classic non-alcoholic malt drink, rich in vitamins and flavor.",
+      "am": "በቪታሚኖችና በጥሩ ጣዕም የበለፀገ ከአልኮል ነፃ የመልት መጠጥ።",
+      "om": "Dhugaatii maaltii vaayitaamiiniin badhaadhee fi alkooli hinqabne."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 4,
+    "mainCategory": "Drink",
+    "category": { "en": "Alcohol Free Drink", "am": "ከአልኮል ነፃ የሆኑ መጠጦች", "om": "Dhugiwwanii Alkooli Hinqabnee" },
+    "name": { "en": "Negus Malt", "am": "ንግሥ", "om": "Niguusi" },
+    "description": {
+      "en": "Premium non-alcoholic malt drink with a deep roasted flavor.",
+      "am": "ጥልቅ የጥብስ ጣዕም ያለው ከፍተኛ ጥራት ያለው ከአልኮል ነፃ የመልት መጠጥ።",
+      "om": "Dhugaatii maaltii qulqullina olaanaa qabu fi alkooli hinqabne."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 5,
+    "mainCategory": "Drink",
+    "category": { "en": "Alcohol Free Drink", "am": "ከአልኮል ነፃ የሆኑ መጠጦች", "om": "Dhugiwwanii Alkooli Hinqabnee" },
+    "name": { "en": "Sinq", "am": "ስንቅ", "om": "Siinqi" },
+    "description": {
+      "en": "Nourishing non-alcoholic malt beverage for natural energy.",
+      "am": "ለተፈጥሯዊ ጉልበት የሚሆን አልሚ ከአልኮል ነፃ የመልት መጠጥ።",
+      "om": "Dhugaatii maaltii madaalawaa annisaa uumamaa kennu."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 6,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Coca-Cola", "am": "ኮካ ኮላ", "om": "Kokaa koolaa" },
+    "description": {
+      "en": "Iconic carbonated soft drink with a bold refreshing taste.",
+      "am": "የታወቀና መንፈስን የሚያድስ ለስላሳ ጋዝ ያለው መጠጥ።",
+      "om": "Dhugaatii lalaafaa gaazii qabu fi qabbaneessaa."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 7,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Mirinda", "am": "ሚሪንዳ", "om": "Miirindaa" },
+    "description": {
+      "en": "Fruity carbonated soft drink with a sweet orange flavor.",
+      "am": "ጣፋጭ የብርቱካን ጣዕም ያለው ለስላሳ ጋዝ ያለው መጠጥ።",
+      "om": "Dhugaatii lalaafaa dhandhama birtiqaana qabu."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 8,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Sprite", "am": "ስፕራይት", "om": "Spiraayiti" },
+    "description": {
+      "en": "Crisp lemon-lime flavored sparkling soft drink.",
+      "am": "ጥሬና የሚያንቀሳቅስ የሎሚ ጣዕም ያለው ለስላሳ መጠጥ።",
+      "om": "Dhugaatii lalaafaa dhandhama loomii qabu."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 9,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Novida", "am": "ኖቪዳ", "om": "Nooviidaa" },
+    "description": {
+      "en": "Delicious apple-flavored non-alcoholic soft drink.",
+      "am": "የሚጥም የፖም ጣዕም ያለው ለስላሳ መጠጥ።",
+      "om": "Dhugaatii lalaafaa dhandhama apple qabu."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 10,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Fanta Orange", "am": "ፋንታ ኦሬንጅ", "om": "Faantaa Oreenji" },
+    "description": {
+      "en": "Vibrant and refreshing orange-flavored sparkling drink.",
+      "am": "የሚያረካ የብርቱካን ጣዕም ያለው ለስላሳ መጠጥ።",
+      "om": "Dhugaatii lalaafaa dhandhama birtiqaana qabu."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 11,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Fanta Pineapple", "am": "ፋንታ አናናስ", "om": "Faantaa Anaanaasi" },
+    "description": {
+      "en": "Tropical and sweet pineapple-flavored soft drink.",
+      "am": "ጣፋጭ የአናናስ ጣዕም ያለው ለስላሳ መጠጥ።",
+      "om": "Dhugaatii lalaafaa dhandhama anaanaasii qabu."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 12,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Mirinda Tonic", "am": "ሚሪንዳ ቶኒክ", "om": "Miirindaa Toonik" },
+    "description": {
+      "en": "Sparkling tonic water with a subtle bitter-sweet kick.",
+      "am": "ትንሽ የመራራነት ጣዕም ያለው የሚያነቃቃ ቶኒክ ውኃ።",
+      "om": "Dhugaatii tooniik gaazii qabu fi qabbaneessaa."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 13,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Seven Up", "am": "ሰቨን አፕ", "om": "Savan'api" },
+    "description": {
+      "en": "Refreshing lemon-lime carbonated soft drink.",
+      "am": "የሚያንቀሳቅስ የሎሚ ጣዕም ያለው ለስላሳ መጠጥ።",
+      "om": "Dhugaatii lalaafaa dhandhama loomii qabu."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 14,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Pepsi", "am": "ፔፕሲ", "om": "Peeppsii" },
+    "description": {
+      "en": "Bold and satisfying cola soft drink.",
+      "am": "ደስ የሚል ጣዕም ያለው ታዋቂ የፔፕሲ ለስላሳ መጠጥ።",
+      "om": "Dhugaatii lalaafaa PEEPPSII beekamaa."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 15,
+    "mainCategory": "Drink",
+    "category": { "en": "Soft Drink", "am": "ለስላሳ መጠጦች", "om": "Lalaafaa" },
+    "name": { "en": "Ambo Water", "am": "አምቦ ውኃ", "om": "Ambo" },
+    "description": {
+      "en": "Naturally carbonated mineral water from Ambo springs.",
+      "am": "ከተፈጥሮ ፍልውኃ የሚቀዳ ጋዝ ያለው የአምቦ ማዕድን ውኃ።",
+      "om": "Bishaan alkoolii malee gaazii uumamaa qabu Ambo."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 16,
+    "mainCategory": "Drink",
+    "category": { "en": "Water Drink", "am": "የውኃ መጠጦች", "om": "Biishaan" },
+    "name": { "en": "Water 1 Liter", "am": "ውኃ 1 ሊትር", "om": "Leetiri 1" },
+    "description": {
+      "en": "Pure and clean bottled drinking water (1 Liter).",
+      "am": "ንፁህ የታሸገ የጠረጴዛ ውኃ (1 ሊትር)።",
+      "om": "Bishaan qulqulluu dhugaatii leetiri 1."
+    },
+    "price": 65,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 17,
+    "mainCategory": "Drink",
+    "category": { "en": "Water Drink", "am": "የውኃ መጠጦች", "om": "Biishaan" },
+    "name": { "en": "Water 2 Liters", "am": "ውኃ 2 ሊትር", "om": "Leetiri 2" },
+    "description": {
+      "en": "Pure and clean bottled drinking water (2 Liters).",
+      "am": "ንፁህ የታሸገ የጠረጴዛ ውኃ (2 ሊትር)።",
+      "om": "Bishaan qulqulluu dhugaatii leetiri 2."
+    },
+    "price": 80,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 18,
+    "mainCategory": "Drink",
+    "category": { "en": "Water Drink", "am": "የውኃ መጠጦች", "om": "Biishaan" },
+    "name": { "en": "Water Half Liter", "am": "ውኃ ግማሽ ሊትር", "om": "Leetiri Walkaa" },
+    "description": {
+      "en": "Convenient pure bottled drinking water (0.5 Liter).",
+      "am": "ንፁህ የታሸገ የጠረጴዛ ውኃ (ግማሽ ሊትር)።",
+      "om": "Bishaan qulqulluu dhugaatii leetiri walkaa."
+    },
+    "price": 55,
+    "isAvailable": true,
+    "isFasting": true,
+    "isSpecial": false
+  },
+  {
+    "id": 19,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Heineken", "am": "ሃይነከን", "om": "Heenikani" },
+    "description": {
+      "en": "Premium international lager with a crisp bitter-sweet finish.",
+      "am": "ከፍተኛ ጥራት ያለው ዓለም አቀፍ የላገር ቢራ።",
+      "om": "Biiraa addunyaa qulqullina olaanaa qabu."
+    },
+    "price": 120,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 20,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Badaee / Bedele", "am": "በደሌ", "om": "Badaee" },
+    "description": {
+      "en": "Rich Ethiopian lager beer with a full-bodied taste.",
+      "am": "ሙሉ ጣዕምና መዓዛ ያለው የኢትዮጵያ በደሌ ቢራ።",
+      "om": "Biiraa Badaee dhandhama cimaa fi gaarii qabu."
+    },
+    "price": 120,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 21,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Dankiiraa / Aradaa", "am": "አራዳ", "om": "Dankiiraa" },
+    "description": {
+      "en": "Crisp and refreshing local lager beer.",
+      "am": "ጥሬና የሚያስደስት የሀገር ውስጥ አራዳ ቢራ።",
+      "om": "Biiraa Aradaa qabbaneessaa fi mi'aawaa."
+    },
+    "price": 120,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 22,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Haarari / Harar", "am": "ሐረር", "om": "Haarari" },
+    "description": {
+      "en": "Distinctive Ethiopian lager with a smooth golden flavor.",
+      "am": "ልዩ የወርቃማ ቀለምና ጣዕም ያለው የሐረር ቢራ።",
+      "om": "Biiraa Haarari dhandhama gaarii qabu."
+    },
+    "price": 120,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 23,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Haabashaa / Habesha", "am": "ሐበሻ", "om": "Haabashaa" },
+    "description": {
+      "en": "Cold-filtered Ethiopian beer with a rich character.",
+      "am": "በቅዝቃዜ የተጣራ ጥልቅ ጣዕም ያለው የሐበሻ ቢራ።",
+      "om": "Biiraa Haabashaa dhandhama qulqulluu qabu."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 24,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Giiwoorgiisi / St. George", "am": "ቅዱስ ጊዮርጊስ", "om": "Giiwoorgiisi" },
+    "description": {
+      "en": "Legendary Ethiopian beer brewed to perfection.",
+      "am": "ታሪካዊና የተወደደ የቅዱስ ጊዮርጊስ ቢራ።",
+      "om": "Biiraa Giiwoorgiisi beekamaa fi mi'aawaa."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 25,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Castel", "am": "ካስቴል", "om": "Kaastili" },
+    "description": {
+      "en": "European-style premium lager beer.",
+      "am": "የአውሮፓ ስታይል ጥራት ያለው ካስቴል ቢራ።",
+      "om": "Biiraa Kaastili qulqullina olaanaa qabu."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 26,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Dashen", "am": "ዳሽን", "om": "Daashini" },
+    "description": {
+      "en": "Smooth-tasting traditional Ethiopian lager.",
+      "am": "ለስላሳ ጣዕም ያለው የታወቀ የዳሽን ቢራ።",
+      "om": "Biiraa Daashini dhandhama lalaafaa qabu."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 27,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Anbesaa (7)", "am": "አንበሳ (7)", "om": "Anbasaa (7)" },
+    "description": {
+      "en": "Strong Ethiopian lager beer with 7% ABV.",
+      "am": "7% አልኮል ያለው የኢትዮጵያ አንበሳ ቢራ።",
+      "om": "Biiraa Anbasaa alkooli 7% qabu."
+    },
+    "price": 100,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 28,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Anbesaa Regular", "am": "አንበሳ", "om": "Anbasaa" },
+    "description": {
+      "en": "Balanced and refreshing local lager beer.",
+      "am": "ተመጣጣኝና ደስ የሚል ጣዕም ያለው አንበሳ ቢራ።",
+      "om": "Biiraa Anbasaa madaalawaa fi mi'aawaa."
+    },
+    "price": 85,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 29,
+    "mainCategory": "Drink",
+    "category": { "en": "Beer", "am": "ቢራ", "om": "Biraa" },
+    "name": { "en": "Draft", "am": "ድራፍት", "om": "Diraafti" },
+    "description": {
+      "en": "Fresh draft beer served chilled from the tap.",
+      "am": "ከቧንቧ በቅዝቃዜ የሚቀዳ ትኩስ ድራፍት ቢራ።",
+      "om": "Biiraa Diraafti qabbanaawaa tap irraa waraabamu."
+    },
+    "price": 60,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 30,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Gordon's Gin (Bottle)", "am": "ጎርደንስ ጂን (ባለ ሙሉ)", "om": "Goordansi" },
+    "description": {
+      "en": "Classic London dry gin bottle with juniper botanicals.",
+      "am": "የታወቀ የለንደን ድራይ ጂን ሙሉ ጠርሙስ።",
+      "om": "Goordansi Jiinii guutuu dhandhama gaarii qabu."
+    },
+    "price": 8000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 31,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Absolute Vodka (Bottle)", "am": "አብሰሉት ቮድካ (ባለ ሙሉ)", "om": "Abisoolut Voodikaa" },
+    "description": {
+      "en": "Premium Swedish vodka bottle, exceptionally smooth.",
+      "am": "የስቪደኑ አብሰሉት ቮድካ ሙሉ ጠርሙስ።",
+      "om": "Voodikaa Abisoolut guutuu qulqullina olaanaa."
+    },
+    "price": 8500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 32,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Camino Tequila (Bottle)", "am": "ካሚኖ ተኪላ (ባለ ሙሉ)", "om": "Kaamiino" },
+    "description": {
+      "en": "Authentic Mexican tequila bottle with bold agave note.",
+      "am": "ሜክሲካዊ የካሚኖ ተኪላ ሙሉ ጠርሙስ።",
+      "om": "Takiilaa Kaamiino guutuu dhandhama cimaa qabu."
+    },
+    "price": 8000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 33,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Stolichnaya Vodka (Bottle)", "am": "ስቶሊችናያ ቮድካ (ባለ ሙሉ)", "om": "Stolishinaayaa" },
+    "description": {
+      "en": "Smooth classical Russian vodka bottle.",
+      "am": "ለስላሳና ታዋቂ የስቶሊችናያ ቮድካ ሙሉ ጠርሙስ።",
+      "om": "Voodikaa Stolishinaayaa guutuu."
+    },
+    "price": 3500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 34,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Black Label Double", "am": "ብላክ ሌብል ድብል", "om": "Bilaaki leebili Dabli" },
+    "description": {
+      "en": "Double shot of blended Scotch whisky Johnnie Walker.",
+      "am": "የብላክ ሌብል ውስኪ ድብል ሾት።",
+      "om": "Bilaaki leebili wuskii dabli shaati."
+    },
+    "price": 500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 35,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Gordon's Double", "am": "ጎርደንስ ድብል", "om": "Goordansi Dabli" },
+    "description": {
+      "en": "Double shot of London dry gin.",
+      "am": "የጎርደንስ ጂን ድብል ሾት።",
+      "om": "Goordansi jiinii dabli shaati."
+    },
+    "price": 450,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 36,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Camino Shot", "am": "ካሚኖ ሾት", "om": "Kaamiino Shaati" },
+    "description": {
+      "en": "Single shot of Camino tequila.",
+      "am": "የካሚኖ ተኪላ አንድ ሾት።",
+      "om": "Kaamiino takiilaa shaati tokko."
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 37,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Absolute Vodka Shot", "am": "አብሰሉት ቮድካ ሾት", "om": "Abisoolut Voodikaa Shaati" },
+    "description": {
+      "en": "Single shot of Absolut vodka.",
+      "am": "የአብሰሉት ቮድካ አንድ ሾት።",
+      "om": "Abisoolut voodikaa shaati tokko."
+    },
+    "price": 400,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 38,
+    "mainCategory": "Drink",
+    "category": { "en": "Spirits & Liquor", "am": "አልኮል መጠጦች", "om": "Alkooli Cimaa" },
+    "name": { "en": "Jagermeister Shot", "am": "ያገርማይስተር ሾት", "om": "Jaagermistari shaati" },
+    "description": {
+      "en": "Single ice-cold shot of herbal liqueur Jagermeister.",
+      "am": "የያገርማይስተር እፅዋት አልኮል አንድ ሾት።",
+      "om": "Jaagermistari shaati tokko."
+    },
+    "price": 350,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 39,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Acacia Wine", "am": "አካሺያ ወይን", "om": "Akeeshiyaa Waayini" },
+    "description": {
+      "en": "Premium Ethiopian wine bottle with elegant aromas.",
+      "am": "በይዘቱ የታወቀ ከፍተኛ ደረጃ የአካሺያ ወይን ጠርሙስ።",
+      "om": "Waayini Akeeshiyaa guutuu qulqullina olaanaa."
+    },
+    "price": 3000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 40,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Rift Valley Wine", "am": "ሪፍት ቫሊ ወይን", "om": "Rifti valiy waayini" },
+    "description": {
+      "en": "High quality Ethiopian Rift Valley wine bottle.",
+      "am": "የሪፍት ቫሊ ከፍተኛ ጥራት ያለው የወይን ጠርሙስ።",
+      "om": "Waayini Rifti valiy guutuu."
+    },
+    "price": 1300,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 41,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Gebeta Wine", "am": "ገበታ ወይን", "om": "Gabbataa waayini" },
+    "description": {
+      "en": "Rich Ethiopian table wine bottle with balanced fruit notes.",
+      "am": "የገበታ ወይን ሙሉ ጠርሙስ።",
+      "om": "Waayini Gabbataa guutuu."
+    },
+    "price": 1500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 42,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Kemila Wine", "am": "ከሚላ ወይን", "om": "Kaamilaa waayini" },
+    "description": {
+      "en": "Smooth local wine bottle with pleasant fruit flavor.",
+      "am": "ለስላሳ ጣዕም ያለው የከሚላ ወይን ጠርሙስ።",
+      "om": "Waayini Kaamilaa guutuu dhandhama mi'aawaa."
+    },
+    "price": 1100,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 43,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Axumit Wine", "am": "አክሱማዊት ወይን", "om": "Aksumit waayini" },
+    "description": {
+      "en": "Classic sweet Ethiopian wine bottle.",
+      "am": "ጣፋጭና ታዋቂ የአክሱማዊት ወይን ጠርሙስ።",
+      "om": "Waayini Aksumit guutuu mi'aawaa."
+    },
+    "price": 1000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 44,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Awash Wine", "am": "አዋሽ ወይን", "om": "Awaach waayini" },
+    "description": {
+      "en": "Traditional popular Ethiopian wine bottle.",
+      "am": "ታሪካዊና የታወቀ የአዋሽ ወይን ጠርሙስ።",
+      "om": "Waayini Awaach guutuu beekamaa."
+    },
+    "price": 700,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 45,
+    "mainCategory": "Drink",
+    "category": { "en": "Wine", "am": "ወይን", "om": "Waayini" },
+    "name": { "en": "Guder Wine", "am": "ጉደር ወይን", "om": "Guudar waayini" },
+    "description": {
+      "en": "Classic red table wine bottle from Ethiopia.",
+      "am": "የታወቀ ቀይ የጉደር ወይን ጠርሙስ።",
+      "om": "Waayini Guudar diimaa guutuu."
+    },
+    "price": 700,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 46,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Blue Label Bottle", "am": "ብሉ ሌብል (ባለ ሙሉ)", "om": "Biluu leebili" },
+    "description": {
+      "en": "Exceptional ultra-premium blended Scotch whisky bottle.",
+      "am": "እጅግ ከፍተኛ ደረጃ ያለው የብሉ ሌብል ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Biluu leebili guutuu qulqullina sadarkaa olaanaa."
+    },
+    "price": 40000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 47,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Blue Label Medium", "am": "ብሉ ሌብል (እኩል/ግማሽ)", "om": "Biluu leebili Walakaa" },
+    "description": {
+      "en": "Half bottle of ultra-premium blended Scotch whisky.",
+      "am": "ግማሽ ጠርሙስ የብሉ ሌብል ውስኪ።",
+      "om": "Wuskii Biluu leebili walakaa."
+    },
+    "price": 20000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 48,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Johnnie Walker 18", "am": "ጆኒ ዎከር 18", "om": "Joohni Wolkari 18" },
+    "description": {
+      "en": "Aged 18 years premium blended Scotch whisky bottle.",
+      "am": "ለ18 ዓመታት የቆየ የጆኒ ዎከር ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Joohni Wolkari waggaa 18 guutuu."
+    },
+    "price": 22000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 49,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Chivas Regal 18", "am": "ቺቫስ ሪጋል 18", "om": "Chiivaas Reegaal 18" },
+    "description": {
+      "en": "Rich aged 18 years blended Scotch whisky bottle.",
+      "am": "ለ18 ዓመታት የቆየ የቺቫስ ሪጋል ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Chiivaas Reegaal waggaa 18 guutuu."
+    },
+    "price": 18000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 50,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Chivas Regal 12", "am": "ቺቫስ ሪጋል 12", "om": "Chiivaas Reegaal 12" },
+    "description": {
+      "en": "Classic aged 12 years blended Scotch whisky bottle.",
+      "am": "ለ12 ዓመታት የቆየ የቺቫስ ሪጋል ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Chiivaas Reegaal waggaa 12 guutuu."
+    },
+    "price": 7500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 51,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Glenfiddich 18", "am": "ግሌንፊዲሽ 18", "om": "Gileenifidiishi 18" },
+    "description": {
+      "en": "Single malt Scotch whisky aged 18 years bottle.",
+      "am": "ለ18 ዓመታት የቆየ የግሌንፊዲሽ ሲንግል መልት ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Gileenifidiishi waggaa 18 guutuu."
+    },
+    "price": 17000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 52,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Glenfiddich 15", "am": "ግሌንፊዲሽ 15", "om": "Gileenifidiishi 15" },
+    "description": {
+      "en": "Single malt Scotch whisky aged 15 years bottle.",
+      "am": "ለ15 ዓመታት የቆየ የግሌንፊዲሽ ሲንግል መልት ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Gileenifidiishi waggaa 15 guutuu."
+    },
+    "price": 12500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 53,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Glenfiddich 12", "am": "ግሌንፊዲሽ 12", "om": "Gileenifidiishi 12" },
+    "description": {
+      "en": "Single malt Scotch whisky aged 12 years bottle.",
+      "am": "ለ12 ዓመታት የቆየ የግሌንፊዲሽ ሲንግል መልት ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Gileenifidiishi waggaa 12 guutuu."
+    },
+    "price": 11500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 54,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Gold Label", "am": "ጎልድ ሌብል", "om": "Gooldi Leebili" },
+    "description": {
+      "en": "Luxurious blended Scotch whisky bottle.",
+      "am": "የላቀ ደረጃ ያለው የጎልድ ሌብል ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Gooldi Leebili guutuu."
+    },
+    "price": 18000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": true
+  },
+  {
+    "id": 55,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Double Black", "am": "ደብል ብላክ", "om": "Dabli Bilaaki" },
+    "description": {
+      "en": "Intensively smoky blended Scotch whisky bottle.",
+      "am": "ጥልቅ የጭስ ጣዕም ያለው የደብል ብላክ ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Dabli Bilaaki guutuu."
+    },
+    "price": 12500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 56,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Black Label", "am": "ብላክ ሌብል", "om": "Bilaak leebili" },
+    "description": {
+      "en": "Iconic 12-year blended Scotch whisky bottle.",
+      "am": "የታወቀ የ12 ዓመት የብላክ ሌብል ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Bilaak leebili waggaa 12 guutuu."
+    },
+    "price": 11000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 57,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Jack Daniel", "am": "ጃክ ዳንኤል", "om": "Jaak Daan'eli" },
+    "description": {
+      "en": "Tennessee sour mash American whiskey bottle.",
+      "am": "የታወቀ የቴነሲ አሜሪካን ጃክ ዳንኤል ውስኪ ሙሉ ጠርሙስ።",
+      "om": "Wuskii Jaak Daan'eli guutuu."
+    },
+    "price": 8000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 58,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Jagermeister", "am": "ያገርማይስተር (ባለ ሙሉ)", "om": "Jaagarmistari" },
+    "description": {
+      "en": "German herbal liqueur bottle with 56 herbs and spices.",
+      "am": "በ56 የዕፅዋት ቅመሞች የተዘጋጀ የያገርማይስተር ሙሉ ጠርሙስ።",
+      "om": "Jaagarmistari guutuu dhandhama urgaa qabu."
+    },
+    "price": 10000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 59,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Fernet-Branca", "am": "ፌርኔት ብራንካ", "om": "Feerneet Biraankaa" },
+    "description": {
+      "en": "Bitter Italian aromatic digestif liqueur bottle.",
+      "am": "ጣፋጭና መራራ የጣሊያን ፌርኔት ብራንካ ሙሉ ጠርሙስ።",
+      "om": "Feerneet Biraankaa guutuu."
+    },
+    "price": 7500,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  },
+  {
+    "id": 60,
+    "mainCategory": "Drink",
+    "category": { "en": "Whiskey", "am": "ውስኪ", "om": "Wuskii" },
+    "name": { "en": "Hendrick's", "am": "ሄንድሪክስ", "om": "Heendiriksi" },
+    "description": {
+      "en": "Premium gin infused with cucumber and rose petal bottle.",
+      "am": "በኪያርና በሮዝ አበባ የተቀመመ የሄንድሪክስ ጂን ሙሉ ጠርሙስ።",
+      "om": "Heendiriksi Jiinii guutuu dhandhama addaa qabu."
+    },
+    "price": 10000,
+    "isAvailable": true,
+    "isFasting": false,
+    "isSpecial": false
+  }
+]
