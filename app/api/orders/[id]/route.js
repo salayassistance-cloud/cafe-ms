@@ -173,7 +173,7 @@ async function patchHandler(request, { params }) {
         }
       }
       if (s === "SERVED") doc = await serveOrder(conn, sanitizedId);
-      else if (s === "PAID") doc = await payOrder(conn, sanitizedId, { paymentMethod });
+      else if (s === "PAID") doc = await payOrder(conn, sanitizedId, { paymentMethod, actorId: auth.payload.staffId });
       else {
         // PREPARING / READY — auditable: record who marked ready
         const opts = {};

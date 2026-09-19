@@ -13,8 +13,8 @@ import {
   IconStackFilled,
 } from '@tabler/icons-react';
 
-// Phase E — UI integration with real Inventory APIs
-// No mock data — fetches from /api/inventory/*, calculates dashboard in UI.
+// Phase F — Recipe System: Menu ↔ Inventory relationship layer
+// No stock deduction, no order hooks, presentation + CRUD only.
 
 const TABS = [
   { key: 'stock', label: 'Stock' },
@@ -36,16 +36,30 @@ function fmtCost(n) {
   return `ETB ${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 }
 
+function getMenuDisplayName(m) {
+  if (!m) return '—';
+  if (typeof m.name === 'string') return m.name;
+  if (m.title) return m.title;
+  if (m.name?.en) return m.name.en;
+  if (m.displayName) return m.displayName;
+  return m.name || '—';
+}
+
 export default function InventoryUI() {
   const [activeTab, setActiveTab] = useState('stock');
 
   // Data
   const [items, setItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [loadingRecipes, setLoadingRecipes] = useState(true);
+  const [loadingMenu, setLoadingMenu] = useState(true);
   const [itemsError, setItemsError] = useState('');
   const [suppliersError, setSuppliersError] = useState('');
+  const [recipesError, setRecipesError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   // Add Item form
@@ -71,6 +85,18 @@ export default function InventoryUI() {
   const [editSupForm, setEditSupForm] = useState({ name: '', contact: '', address: '', status: '' });
   const [editSupBusy, setEditSupBusy] = useState(false);
   const [editSupError, setEditSupError] = useState('');
+
+  // Recipe — Add
+  const [showRecipeAdd, setShowRecipeAdd] = useState(false);
+  const [recipeForm, setRecipeForm] = useState({ menuItemId: '', ingredients: [{ inventoryItemId: '', quantity: '', unit: '' }] });
+  const [recipeBusy, setRecipeBusy] = useState(false);
+  const [recipeError, setRecipeError] = useState('');
+
+  // Recipe — Edit
+  const [editRecipe, setEditRecipe] = useState(null);
+  const [editRecipeForm, setEditRecipeForm] = useState({ menuItemId: '', ingredients: [], isActive: true });
+  const [editRecipeBusy, setEditRecipeBusy] = useState(false);
+  const [editRecipeError, setEditRecipeError] = useState('');
 
   const fetchItems = useCallback(async () => {
     setLoadingItems(true);
@@ -106,10 +132,49 @@ export default function InventoryUI() {
     }
   }, []);
 
+  const fetchRecipes = useCallback(async () => {
+    setLoadingRecipes(true);
+    setRecipesError('');
+    try {
+      const data = await safeFetchJson('/api/recipes', { cache: 'no-store' });
+      const list = data?.data?.recipes || data?.recipes || [];
+      setRecipes(Array.isArray(list) ? list : []);
+    } catch (err) {
+      const m = err?.message || 'Failed to load recipes';
+      if (err?.status === 401) setRecipesError('Unauthorized — please sign in as Manager.');
+      else if (err?.status === 403) setRecipesError('Forbidden — Manager access required.');
+      else setRecipesError(m);
+    } finally {
+      setLoadingRecipes(false);
+    }
+  }, []);
+
+  const fetchMenu = useCallback(async () => {
+    setLoadingMenu(true);
+    try {
+      const data = await safeFetchJson('/api/menu?all=true', { cache: 'no-store' });
+      const list = data?.data?.items || data?.items || [];
+      setMenuItems(Array.isArray(list) ? list : []);
+    } catch {
+      // fallback try without all
+      try {
+        const data2 = await safeFetchJson('/api/menu', { cache: 'no-store' });
+        const list2 = data2?.data?.items || data2?.items || [];
+        setMenuItems(Array.isArray(list2) ? list2 : []);
+      } catch {
+        setMenuItems([]);
+      }
+    } finally {
+      setLoadingMenu(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchItems();
     fetchSuppliers();
-  }, [fetchItems, fetchSuppliers]);
+    fetchRecipes();
+    fetchMenu();
+  }, [fetchItems, fetchSuppliers, fetchRecipes, fetchMenu]);
 
   useEffect(() => {
     if (successMsg) {
@@ -260,6 +325,127 @@ export default function InventoryUI() {
       setEditSupError(err?.message || 'Failed to update supplier');
     } finally {
       setEditSupBusy(false);
+    }
+  };
+
+  // Recipe handlers
+  const handleAddRecipe = async (e) => {
+    e.preventDefault();
+    setRecipeError('');
+    if (!recipeForm.menuItemId) {
+      setRecipeError('menuItemId is required');
+      return;
+    }
+    const cleanIngredients = recipeForm.ingredients
+      .filter((r) => r.inventoryItemId && r.quantity && r.unit)
+      .map((r) => ({ inventoryItemId: r.inventoryItemId, quantity: Number(r.quantity), unit: String(r.unit).trim() }));
+    if (cleanIngredients.length === 0) {
+      setRecipeError('At least one ingredient with quantity and unit is required');
+      return;
+    }
+    for (const ing of cleanIngredients) {
+      if (!Number.isFinite(ing.quantity) || ing.quantity <= 0) {
+        setRecipeError('Each ingredient quantity must be > 0');
+        return;
+      }
+      if (!ing.unit) {
+        setRecipeError('Each ingredient unit is required');
+        return;
+      }
+    }
+    setRecipeBusy(true);
+    try {
+      await safeFetchJson('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menuItemId: recipeForm.menuItemId, ingredients: cleanIngredients }),
+      });
+      setSuccessMsg('Recipe created');
+      setShowRecipeAdd(false);
+      setRecipeForm({ menuItemId: '', ingredients: [{ inventoryItemId: '', quantity: '', unit: '' }] });
+      fetchRecipes();
+    } catch (err) {
+      setRecipeError(err?.message || 'Failed to create recipe');
+    } finally {
+      setRecipeBusy(false);
+    }
+  };
+
+  const openEditRecipe = (r) => {
+    setEditRecipe(r);
+    setEditRecipeForm({
+      menuItemId: r.menuItemId || (r.menuItem?._id || ''),
+      ingredients: (r.ingredients || []).map((ing) => ({
+        inventoryItemId: String(ing.inventoryItemId || ing.itemId || (ing.inventoryItem?._id || '')),
+        quantity: String(ing.quantity ?? ''),
+        unit: String(ing.unit || ''),
+      })),
+      isActive: r.isActive !== false,
+    });
+    setEditRecipeError('');
+  };
+
+  const handleEditRecipe = async (e) => {
+    e.preventDefault();
+    if (!editRecipe) return;
+    setEditRecipeError('');
+    const cleanIngredients = editRecipeForm.ingredients
+      .filter((r) => r.inventoryItemId && r.quantity && r.unit)
+      .map((r) => ({ inventoryItemId: r.inventoryItemId, quantity: Number(r.quantity), unit: String(r.unit).trim() }));
+    if (cleanIngredients.length === 0) {
+      setEditRecipeError('At least one ingredient required');
+      return;
+    }
+    setEditRecipeBusy(true);
+    try {
+      await safeFetchJson(`/api/recipes/${editRecipe._id || editRecipe.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menuItemId: editRecipeForm.menuItemId, ingredients: cleanIngredients, isActive: editRecipeForm.isActive }),
+      });
+      setSuccessMsg('Recipe updated');
+      setEditRecipe(null);
+      fetchRecipes();
+    } catch (err) {
+      setEditRecipeError(err?.message || 'Failed to update recipe');
+    } finally {
+      setEditRecipeBusy(false);
+    }
+  };
+
+  const handleDeactivateRecipe = async (r) => {
+    if (!confirm(`Deactivate recipe for ${r.menuItem?.name || r.menuItemId}?`)) return;
+    try {
+      await safeFetchJson(`/api/recipes/${r._id || r.id}`, { method: 'DELETE' });
+      setSuccessMsg('Recipe deactivated');
+      fetchRecipes();
+    } catch (err) {
+      setRecipesError(err?.message || 'Failed to deactivate');
+    }
+  };
+
+  const updateRecipeIngredient = (idx, field, value, isEdit) => {
+    if (isEdit) {
+      const next = [...editRecipeForm.ingredients];
+      next[idx] = { ...next[idx], [field]: value };
+      setEditRecipeForm({ ...editRecipeForm, ingredients: next });
+    } else {
+      const next = [...recipeForm.ingredients];
+      next[idx] = { ...next[idx], [field]: value };
+      setRecipeForm({ ...recipeForm, ingredients: next });
+    }
+  };
+  const addRecipeRow = (isEdit) => {
+    if (isEdit) setEditRecipeForm({ ...editRecipeForm, ingredients: [...editRecipeForm.ingredients, { inventoryItemId: '', quantity: '', unit: '' }] });
+    else setRecipeForm({ ...recipeForm, ingredients: [...recipeForm.ingredients, { inventoryItemId: '', quantity: '', unit: '' }] });
+  };
+  const removeRecipeRow = (idx, isEdit) => {
+    if (isEdit) {
+      const next = editRecipeForm.ingredients.filter((_, i) => i !== idx);
+      setEditRecipeForm({ ...editRecipeForm, ingredients: next.length ? next : [{ inventoryItemId: '', quantity: '', unit: '' }] });
+    } else {
+      const next = recipeForm.ingredients.filter((_, i) => i !== idx);
+      setRecipeForm({ ...recipeForm, ingredients: next.length ? next : [{ inventoryItemId: '', quantity: '', unit: '' }] });
     }
   };
 
@@ -661,21 +847,198 @@ export default function InventoryUI() {
               Live from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/inventory/suppliers</code>
             </div>
           </section>
+        ) : activeTab === 'recipes' ? (
+          <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
+              <div>
+                <h2 className="text-sm font-black text-[var(--c-text)]">Recipes — Menu ↔ Inventory</h2>
+                <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Live from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/recipes</code> — no deduction, relationship only.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingRecipes ? '…' : `${recipes.length} recipes`}</span>
+                <button type="button" onClick={() => setShowRecipeAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm tactile">{showRecipeAdd ? 'Close' : '+ Add Recipe'}</button>
+                <button type="button" onClick={fetchRecipes} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">Refresh</button>
+              </div>
+            </div>
+
+            {recipesError && (
+              <div className="mx-4 sm:mx-5 mt-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
+                <span>{recipesError}</span>
+                <button type="button" onClick={fetchRecipes} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+              </div>
+            )}
+
+            {showRecipeAdd && (
+              <div className="border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/30 px-4 sm:px-5 py-4">
+                <form onSubmit={handleAddRecipe} className="space-y-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Menu Item *</span>
+                    {loadingMenu ? (
+                      <div className="h-9 animate-pulse rounded-xl bg-[var(--c-bg)] border border-[var(--c-border-soft)]" />
+                    ) : (
+                      <select value={recipeForm.menuItemId} onChange={(e) => setRecipeForm({ ...recipeForm, menuItemId: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
+                        <option value="">Select menu item</option>
+                        {menuItems.map((m) => (
+                          <option key={m._id || m.id} value={m._id || m.id}>{getMenuDisplayName(m)} — {m.price != null ? fmtCost(m.price) : ''}</option>
+                        ))}
+                      </select>
+                    )}
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Ingredients</span>
+                      <button type="button" onClick={() => addRecipeRow(false)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">+ Add row</button>
+                    </div>
+                    {recipeForm.ingredients.map((row, idx) => (
+                      <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_110px_90px_40px] items-end">
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Inventory Item</span>
+                          <select value={row.inventoryItemId} onChange={(e) => updateRecipeIngredient(idx, 'inventoryItemId', e.target.value, false)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2 text-sm font-medium text-[var(--c-text)]">
+                            <option value="">Select item</option>
+                            {items.map((it) => (
+                              <option key={it._id || it.id} value={it._id || it.id}>{it.name} ({it.unit})</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Quantity</span>
+                          <input type="number" min="0" step="0.01" value={row.quantity} onChange={(e) => updateRecipeIngredient(idx, 'quantity', e.target.value, false)} placeholder="0.5" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Unit</span>
+                          <input value={row.unit} onChange={(e) => updateRecipeIngredient(idx, 'unit', e.target.value, false)} placeholder="kg" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
+                        </label>
+                        <button type="button" onClick={() => removeRecipeRow(idx, false)} className="h-9 w-full sm:w-10 inline-flex items-center justify-center rounded-xl border border-[#FECACA] bg-white text-[#DC2626] text-xs font-bold">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="submit" disabled={recipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{recipeBusy ? 'Saving…' : 'Create Recipe'}</button>
+                    {recipeError && <span className="text-xs font-semibold text-[#DC2626]">{recipeError}</span>}
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {loadingRecipes ? (
+              <div className="p-6 space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-20 animate-pulse rounded-xl bg-[var(--c-bg)] border border-[var(--c-border-soft)]" />
+                ))}
+              </div>
+            ) : recipes.length === 0 ? (
+              <div className="px-4 sm:px-5 py-12 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] mb-3"><IconChefHat size={20} className="h-5 w-5" /></div>
+                <p className="text-sm font-black text-[var(--c-text)]">No recipes yet</p>
+                <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[40ch] mx-auto">Connect a menu item with inventory ingredients. Example: <em>Cappuccino</em> → Coffee Beans, Milk, Sugar. No stock will be deducted.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-[var(--c-border-soft)]">
+                {recipes.map((r) => (
+                  <div key={r._id || r.id} className="px-4 sm:px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-[var(--c-text)]">{r.menuItem?.name || r.menuItemId}</p>
+                        <p className="mt-1 flex flex-wrap gap-1.5">
+                          {(r.ingredients || []).map((ing, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-2 py-0.5 text-xs font-bold text-[var(--c-muted)]">
+                              {ing.inventoryItem?.name || String(ing.inventoryItemId).slice(-4)} · {ing.quantity} {ing.unit}
+                            </span>
+                          ))}
+                          {(!r.ingredients || r.ingredients.length === 0) && <span className="text-xs text-[var(--c-muted)]">No ingredients</span>}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{r.ingredients?.length || 0} ingredients · {r.isActive === false ? 'Inactive' : 'Active'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${r.isActive === false ? 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]' : 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]'}`}>{r.isActive === false ? 'Inactive' : 'Active'}</span>
+                        <button type="button" onClick={() => openEditRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">Edit</button>
+                        {r.isActive !== false && (
+                          <button type="button" onClick={() => handleDeactivateRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#FECACA] bg-white px-2.5 text-xs font-bold text-[#DC2626]">Deactivate</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Edit Recipe Modal */}
+            {editRecipe && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md overflow-y-auto">
+                <div className="w-full max-w-xl rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)] my-auto">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Recipe — {editRecipe.menuItem?.name || editRecipe.menuItemId}</h3>
+                    <button type="button" onClick={() => setEditRecipe(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
+                  </div>
+                  <form onSubmit={handleEditRecipe} className="space-y-3">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Menu Item</span>
+                      <select value={editRecipeForm.menuItemId} onChange={(e) => setEditRecipeForm({ ...editRecipeForm, menuItemId: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
+                        <option value="">Select menu item</option>
+                        {menuItems.map((m) => (
+                          <option key={m._id || m.id} value={m._id || m.id}>{getMenuDisplayName(m)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Ingredients</span>
+                        <button type="button" onClick={() => addRecipeRow(true)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">+ Add row</button>
+                      </div>
+                      {editRecipeForm.ingredients.map((row, idx) => (
+                        <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_110px_90px_40px] items-end">
+                          <label className="block">
+                            <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Inventory Item</span>
+                            <select value={row.inventoryItemId} onChange={(e) => updateRecipeIngredient(idx, 'inventoryItemId', e.target.value, true)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2 text-sm font-medium text-[var(--c-text)]">
+                              <option value="">Select item</option>
+                              {items.map((it) => (
+                                <option key={it._id || it.id} value={it._id || it.id}>{it.name} ({it.unit})</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Quantity</span>
+                            <input type="number" min="0" step="0.01" value={row.quantity} onChange={(e) => updateRecipeIngredient(idx, 'quantity', e.target.value, true)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Unit</span>
+                            <input value={row.unit} onChange={(e) => updateRecipeIngredient(idx, 'unit', e.target.value, true)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
+                          </label>
+                          <button type="button" onClick={() => removeRecipeRow(idx, true)} className="h-9 w-full sm:w-10 inline-flex items-center justify-center rounded-xl border border-[#FECACA] bg-white text-[#DC2626] text-xs font-bold">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={editRecipeForm.isActive} onChange={(e) => setEditRecipeForm({ ...editRecipeForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-[var(--c-border-soft)]" />
+                      <span className="text-xs font-bold text-[var(--c-muted)]">Active</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button type="submit" disabled={editRecipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{editRecipeBusy ? 'Saving…' : 'Save'}</button>
+                      <button type="button" onClick={() => setEditRecipe(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
+                      {editRecipeError && <span className="text-xs font-semibold text-[#DC2626]">{editRecipeError}</span>}
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            <div className="border-t border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-3 text-[11px] font-medium text-[var(--c-muted)]">
+              Relationship only — no stock is deducted. Use <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">POST /api/recipes</code> / <code>PATCH /api/recipes/[id]</code>.
+            </div>
+          </section>
         ) : (
           <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-6 sm:p-8 text-center">
             <div className="mx-auto max-w-md flex flex-col items-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] text-[var(--c-muted)] mb-4">
-                {activeTab === 'recipes' ? <IconChefHat size={20} className="h-5 w-5" /> : <IconChartBar size={20} className="h-5 w-5" />}
-              </div>
-              <h3 className="text-base font-black text-[var(--c-text)]">{activeTab === 'recipes' ? 'Recipes' : 'Reports'} — Coming Soon</h3>
-              <p className="mt-2 text-sm font-medium text-[var(--c-muted)]">This tab will be implemented in a later phase. No recipe or deduction logic in Phase E.</p>
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] text-[var(--c-muted)] mb-4"><IconChartBar size={20} className="h-5 w-5" /></div>
+              <h3 className="text-base font-black text-[var(--c-text)]">Reports — Coming Soon</h3>
+              <p className="mt-2 text-sm font-medium text-[var(--c-muted)]">This tab will be implemented in a later phase. No deduction logic in Phase F.</p>
               <p className="mt-3 inline-flex rounded-full border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-1 text-xs font-bold text-[var(--c-muted)]">UI integration only</p>
             </div>
           </section>
         )}
       </main>
 
-      <footer className="mx-auto max-w-[1600px] px-4 sm:px-6 py-6 text-center text-xs font-medium text-[var(--c-muted)]">Inventory · Live API · Manager-protected</footer>
+      <footer className="mx-auto max-w-[1600px] px-4 sm:px-6 py-6 text-center text-xs font-medium text-[var(--c-muted)]">Inventory · Live API · Manager-protected · Recipes are relationship only</footer>
     </div>
   );
 }

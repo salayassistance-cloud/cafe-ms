@@ -76,7 +76,7 @@ async function patchHandler(request, { params }) {
       doc = await serveOrder(conn, sanitizedId);
     } else if (s === "PAID") {
       const pm = validated.data.paymentMethod;
-      doc = await payOrder(conn, sanitizedId, { paymentMethod: pm });
+      doc = await payOrder(conn, sanitizedId, { paymentMethod: pm, actorId: auth.payload.staffId });
     } else {
       const opts = {};
       if (s === "READY" && sessionStaff) {
