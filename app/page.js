@@ -14,6 +14,7 @@ import {
   IconDashboardFilled,
   IconBookFilled,
   IconCashRegister,
+  IconArchiveFilled,
 } from "@tabler/icons-react";
 
 // Home Portal Hub — 5 portals with /kds-identical tokens, no hardcoded colors
@@ -36,6 +37,8 @@ function PortalIcon({ role }) {
       return <IconDashboardFilled {...iconProps} className="h-9 w-9" />;
     case "CASHIER":
       return <IconCashRegister {...iconProps} className="h-9 w-9" />;
+    case "INVENTORY":
+      return <IconArchiveFilled {...iconProps} className="h-9 w-9" />;
     case "MENU":
       return <IconBookFilled {...iconProps} className="h-9 w-9" />;
     default:
@@ -76,20 +79,30 @@ const PORTALS = [
     subtitleKey: "managerDesc",
     route: "/manager/reports",
   },
+  {
+    role: "INVENTORY",
+    titleKey: "inventoryPortal",
+    subtitleKey: "inventoryDesc",
+    route: "/manager/inventory",
+    fallbackTitle: "Inventory",
+    fallbackDesc: "Stock & suppliers",
+  },
 ];
 
 const subscribe = () => () => {};
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
-// Mobile-only card ordering: 2×2 grid (Cashier, Waiter / Kitchen, Barista) then Manager full-width.
+// Mobile-only card ordering: 2×2 grid (Cashier, Waiter / Kitchen, Barista) then Manager + Inventory full-width.
 // Resets on desktop (md:order-none / md:col-span-1) so the existing 5-column arrangement is preserved.
+// Inventory appended as 6th portal — no existing order changed.
 const MOBILE_GRID_ORDER = {
   CASHIER: "order-1",
   WAITER: "order-2",
   KITCHEN: "order-3",
   BARISTA: "order-4",
   MANAGER: "order-5 col-span-2 md:col-span-1 min-h-[110px] md:min-h-[140px]",
+  INVENTORY: "order-6 col-span-2 md:col-span-1 min-h-[110px] md:min-h-[140px]",
 };
 
 export default function PortalHub() {
@@ -104,6 +117,18 @@ export default function PortalHub() {
       // homepage is not behind /menu and the device Back button does not
       // return to the homepage. Other portals use the login modal, not push.
       router.replace(portal.route);
+      return;
+    }
+    if (portal.role === "INVENTORY") {
+      // Inventory reuses existing MANAGER authorization (no new INVENTORY role per Phase A boundaries)
+      // Homepage keeps unique React key via role: "INVENTORY", but PinLoginModal authenticates as MANAGER.
+      // Preserve inventory display via fallbackTitle/fallbackDesc and explicit icon override.
+      setActive({
+        ...portal,
+        role: "MANAGER",
+        _inventoryDisplayRole: "INVENTORY",
+        icon: <IconArchiveFilled size={28} aria-hidden={true} className="h-7 w-7" />,
+      });
       return;
     }
     setActive(portal);
@@ -184,7 +209,7 @@ export default function PortalHub() {
       </div>
 
       <PinLoginModal
-        key={active?.role}
+        key={active?.route || active?.role}
         open={!!active}
         portal={active}
         onClose={() => setActive(null)}
