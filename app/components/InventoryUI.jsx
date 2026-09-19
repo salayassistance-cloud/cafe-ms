@@ -91,6 +91,11 @@ export default function InventoryUI() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
 
+  // Food Cost Analytics (H6.1)
+  const [foodCostData, setFoodCostData] = useState(null);
+  const [loadingFoodCost, setLoadingFoodCost] = useState(true);
+  const [foodCostError, setFoodCostError] = useState('');
+
   // Recipe — Add
   const [showRecipeAdd, setShowRecipeAdd] = useState(false);
   const [recipeForm, setRecipeForm] = useState({ menuItemId: '', ingredients: [{ inventoryItemId: '', quantity: '', unit: '' }] });
@@ -191,13 +196,31 @@ export default function InventoryUI() {
     }
   }, []);
 
+  const fetchFoodCost = useCallback(async () => {
+    setLoadingFoodCost(true);
+    setFoodCostError('');
+    try {
+      const data = await safeFetchJson('/api/manager/food-cost-analytics', { cache: 'no-store' });
+      const payload = data?.data || data || {};
+      setFoodCostData(payload);
+    } catch (err) {
+      const m = err?.message || 'Failed to load food cost';
+      if (err?.status === 401) setFoodCostError('Unauthorized — please sign in as Manager.');
+      else if (err?.status === 403) setFoodCostError('Forbidden — Manager access required.');
+      else setFoodCostError(m);
+    } finally {
+      setLoadingFoodCost(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchItems();
     fetchSuppliers();
     fetchRecipes();
     fetchMenu();
     fetchDashboard();
-  }, [fetchItems, fetchSuppliers, fetchRecipes, fetchMenu, fetchDashboard]);
+    fetchFoodCost();
+  }, [fetchItems, fetchSuppliers, fetchRecipes, fetchMenu, fetchDashboard, fetchFoodCost]);
 
   useEffect(() => {
     if (successMsg) {
@@ -1179,6 +1202,83 @@ export default function InventoryUI() {
                     </div>
                   )}
                 </section>
+
+                {/* Food Cost Analytics (H6.1) */}
+                <div className="pt-2">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost Intelligence</h3>
+                </div>
+                {loadingFoodCost ? (
+                  <div className="grid gap-4">
+                    <div className="h-24 animate-pulse rounded-2xl bg-[var(--c-card)] border border-[var(--c-border-soft)]" />
+                    <div className="h-48 animate-pulse rounded-2xl bg-[var(--c-card)] border border-[var(--c-border-soft)]" />
+                  </div>
+                ) : foodCostError ? (
+                  <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
+                    <span>{foodCostError}</span>
+                    <button type="button" onClick={fetchFoodCost} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+                  </div>
+                ) : !foodCostData ? (
+                  <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-8 text-center">
+                    <p className="text-sm font-bold text-[var(--c-muted)]">No food cost data</p>
+                  </div>
+                ) : (
+                  <>
+                    <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost Summary</h3>
+                      <p className="mt-2 text-2xl font-black text-[var(--c-text)]">{fmtCost(foodCostData.summary?.foodCost)}</p>
+                      <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Historical <code className="rounded bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-1">totalCost</code> snapshot (never current cost)</p>
+                    </section>
+                    <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                      <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
+                        <h3 className="text-sm font-black text-[var(--c-text)]">Daily Food Cost Trend</h3>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">Grouped by <code>createdAt</code> daily</p>
+                      </div>
+                      {(!foodCostData.trend || foodCostData.trend.length === 0) ? (
+                        <div className="px-4 sm:px-5 py-8 text-center">
+                          <p className="text-sm font-bold text-[var(--c-muted)]">No trend data</p>
+                          <p className="text-xs font-medium text-[var(--c-muted)]">SaleDeduction with totalCost will appear here.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+                              <tr><th className="px-4 py-3 font-black">Date</th><th className="px-4 py-3 text-right font-black">Food Cost</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--c-border-soft)]">
+                              {foodCostData.trend.map((row) => (
+                                <tr key={row.date}><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{row.date}</td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{fmtCost(row.foodCost)}</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </section>
+                    <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                      <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
+                        <h3 className="text-sm font-black text-[var(--c-text)]">Top Cost Ingredients</h3>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">Grouped before lookup, sorted by totalCost</p>
+                      </div>
+                      {(!foodCostData.topIngredients || foodCostData.topIngredients.length === 0) ? (
+                        <div className="px-4 sm:px-5 py-8 text-center">
+                          <p className="text-sm font-bold text-[var(--c-muted)]">No cost data</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+                              <tr><th className="px-4 py-3 font-black">#</th><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Quantity</th><th className="px-4 py-3 text-right font-black">Cost</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--c-border-soft)]">
+                              {foodCostData.topIngredients.map((row, idx) => (
+                                <tr key={row.itemId}><td className="px-4 py-2.5 font-bold text-[var(--c-muted)]">{idx + 1}</td><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{row.name} <span className="text-xs font-medium text-[var(--c-muted)]">({row.unit})</span></td><td className="px-4 py-2.5 text-right font-medium text-[var(--c-text)]">{row.quantity}</td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{fmtCost(row.cost)}</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </section>
+                  </>
+                )}
               </>
             )}
           </div>
