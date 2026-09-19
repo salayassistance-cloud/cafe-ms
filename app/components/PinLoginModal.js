@@ -12,6 +12,7 @@ import {
   IconMugFilled,
   IconDashboardFilled,
   IconBookFilled,
+  IconCashRegister,
 } from "@tabler/icons-react";
 
 export default function PinLoginModal({ open, portal, onClose }) {
@@ -30,6 +31,8 @@ export default function PinLoginModal({ open, portal, onClose }) {
     if (busy) return;
     const p = String(pin).trim();
     setError("");
+    // Cashier reuses existing MANAGER authorization (no new CASHIER role per Phase 1 boundaries)
+    const authRole = portal.role === "CASHIER" ? "MANAGER" : portal.role;
     let endpoint, payload;
     if (portal.role === "WAITER") {
       const u = username.trim();
@@ -49,7 +52,7 @@ export default function PinLoginModal({ open, portal, onClose }) {
           return;
         }
       endpoint = "/api/auth/verify-pin";
-      payload = { role: portal.role, pin: p };
+      payload = { role: authRole, pin: p };
     }
     setBusy(true);
     try {
@@ -92,7 +95,11 @@ export default function PinLoginModal({ open, portal, onClose }) {
     }
   }
 
-  const title = portal?.titleKey ? t(portal.titleKey) : portal?.title;
+  const title = (() => {
+    const raw = portal?.titleKey ? t(portal.titleKey) : portal?.title;
+    if (portal?.fallbackTitle && raw === portal.titleKey) return portal.fallbackTitle;
+    return raw;
+  })();
 
   // Portal icon — Tabler filled, single family, consistent with homepage
   const portalIconNode = (() => {
@@ -103,6 +110,7 @@ export default function PinLoginModal({ open, portal, onClose }) {
       BARISTA: <IconMugFilled {...props} className="h-7 w-7" />,
       MANAGER: <IconDashboardFilled {...props} className="h-7 w-7" />,
       MENU: <IconBookFilled {...props} className="h-7 w-7" />,
+      CASHIER: <IconCashRegister {...props} className="h-7 w-7" />,
     };
     if (portal.icon) {
       if (typeof portal.icon === "string") return map[portal.role] || portal.icon;

@@ -13,6 +13,7 @@ import {
   IconMugFilled,
   IconDashboardFilled,
   IconBookFilled,
+  IconCashRegister,
 } from "@tabler/icons-react";
 
 // Home Portal Hub — 5 portals with /kds-identical tokens, no hardcoded colors
@@ -33,6 +34,8 @@ function PortalIcon({ role }) {
       return <IconMugFilled {...iconProps} className="h-9 w-9" />;
     case "MANAGER":
       return <IconDashboardFilled {...iconProps} className="h-9 w-9" />;
+    case "CASHIER":
+      return <IconCashRegister {...iconProps} className="h-9 w-9" />;
     case "MENU":
       return <IconBookFilled {...iconProps} className="h-9 w-9" />;
     default:
@@ -42,10 +45,12 @@ function PortalIcon({ role }) {
 
 const PORTALS = [
   {
-    role: "MENU",
-    titleKey: "menuPortal",
-    subtitleKey: "menuDesc",
-    route: "/menu",
+    role: "CASHIER",
+    titleKey: "cashierPortal",
+    subtitleKey: "cashierDesc",
+    route: "/cashier",
+    fallbackTitle: "Cashier Portal",
+    fallbackDesc: "Billing & payments",
   },
   {
     role: "WAITER",
@@ -77,10 +82,10 @@ const subscribe = () => () => {};
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
-// Mobile-only card ordering: 2×2 grid (Menu, Waiter / Kitchen, Barista) then Manager full-width.
+// Mobile-only card ordering: 2×2 grid (Cashier, Waiter / Kitchen, Barista) then Manager full-width.
 // Resets on desktop (md:order-none / md:col-span-1) so the existing 5-column arrangement is preserved.
 const MOBILE_GRID_ORDER = {
-  MENU: "order-1",
+  CASHIER: "order-1",
   WAITER: "order-2",
   KITCHEN: "order-3",
   BARISTA: "order-4",
@@ -154,7 +159,10 @@ export default function PortalHub() {
           </div>
         </div>
         <main className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5 w-full max-w-6xl mx-auto auto-rows-fr">
-          {PORTALS.map((portal) => (
+          {PORTALS.map((portal) => {
+            const title = (() => { const v = t(portal.titleKey); return v !== portal.titleKey ? v : (portal.fallbackTitle || v); })();
+            const sub = (() => { const v = t(portal.subtitleKey); return v !== portal.subtitleKey ? v : (portal.fallbackDesc || v); })();
+            return (
             <button
               key={portal.role}
               type="button"
@@ -164,10 +172,10 @@ export default function PortalHub() {
               <span className="flex h-14 w-14 items-center justify-center mb-3 text-[var(--c-accent)]">
                 <PortalIcon role={portal.role} />
               </span>
-              <span className="text-base font-bold text-[var(--c-text)] leading-tight">{t(portal.titleKey)}</span>
-              <span className="text-xs font-medium text-[var(--c-muted)] mt-1 leading-tight">{t(portal.subtitleKey)}</span>
+              <span className="text-base font-bold text-[var(--c-text)] leading-tight">{title}</span>
+              <span className="text-xs font-medium text-[var(--c-muted)] mt-1 leading-tight">{sub}</span>
             </button>
-          ))}
+          );})}
         </main>
 
         <footer className="mt-8 text-center text-xs text-[var(--c-muted)]">
