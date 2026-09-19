@@ -86,6 +86,11 @@ export default function InventoryUI() {
   const [editSupBusy, setEditSupBusy] = useState(false);
   const [editSupError, setEditSupError] = useState('');
 
+  // Dashboard
+  const [dashboard, setDashboard] = useState(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [dashboardError, setDashboardError] = useState('');
+
   // Recipe — Add
   const [showRecipeAdd, setShowRecipeAdd] = useState(false);
   const [recipeForm, setRecipeForm] = useState({ menuItemId: '', ingredients: [{ inventoryItemId: '', quantity: '', unit: '' }] });
@@ -169,12 +174,30 @@ export default function InventoryUI() {
     }
   }, []);
 
+  const fetchDashboard = useCallback(async () => {
+    setLoadingDashboard(true);
+    setDashboardError('');
+    try {
+      const data = await safeFetchJson('/api/manager/inventory-dashboard', { cache: 'no-store' });
+      const payload = data?.data || data || {};
+      setDashboard(payload);
+    } catch (err) {
+      const m = err?.message || 'Failed to load dashboard';
+      if (err?.status === 401) setDashboardError('Unauthorized — please sign in as Manager.');
+      else if (err?.status === 403) setDashboardError('Forbidden — Manager access required.');
+      else setDashboardError(m);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchItems();
     fetchSuppliers();
     fetchRecipes();
     fetchMenu();
-  }, [fetchItems, fetchSuppliers, fetchRecipes, fetchMenu]);
+    fetchDashboard();
+  }, [fetchItems, fetchSuppliers, fetchRecipes, fetchMenu, fetchDashboard]);
 
   useEffect(() => {
     if (successMsg) {
@@ -1027,14 +1050,138 @@ export default function InventoryUI() {
             </div>
           </section>
         ) : (
-          <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-6 sm:p-8 text-center">
-            <div className="mx-auto max-w-md flex flex-col items-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] text-[var(--c-muted)] mb-4"><IconChartBar size={20} className="h-5 w-5" /></div>
-              <h3 className="text-base font-black text-[var(--c-text)]">Reports — Coming Soon</h3>
-              <p className="mt-2 text-sm font-medium text-[var(--c-muted)]">This tab will be implemented in a later phase. No deduction logic in Phase F.</p>
-              <p className="mt-3 inline-flex rounded-full border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-1 text-xs font-bold text-[var(--c-muted)]">UI integration only</p>
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-black text-[var(--c-text)]">Inventory Intelligence</h2>
+              <button type="button" onClick={fetchDashboard} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">Refresh</button>
             </div>
-          </section>
+            {loadingDashboard ? (
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-24 animate-pulse rounded-2xl bg-[var(--c-card)] border border-[var(--c-border-soft)]" />
+                  ))}
+                </div>
+                <div className="h-48 animate-pulse rounded-2xl bg-[var(--c-card)] border border-[var(--c-border-soft)]" />
+              </div>
+            ) : dashboardError ? (
+              <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
+                <span>{dashboardError}</span>
+                <button type="button" onClick={fetchDashboard} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+              </div>
+            ) : !dashboard ? (
+              <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-8 text-center">
+                <p className="text-sm font-bold text-[var(--c-muted)]">No dashboard data</p>
+              </div>
+            ) : (
+              <>
+                <section aria-label="Inventory overview" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Total Items</p>
+                    <p className="text-2xl font-black text-[var(--c-text)]">{dashboard.overview?.totalItems ?? 0}</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">Distinct SKUs</p>
+                  </div>
+                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Inventory Value</p>
+                    <p className="text-2xl font-black text-[var(--c-text)]">{fmtCost(dashboard.overview?.inventoryValue)}</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">stock × cost</p>
+                  </div>
+                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Low Stock</p>
+                    <p className="text-2xl font-black text-[#D97706] dark:text-[#FBBF24]">{dashboard.overview?.lowStockCount ?? 0}</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">0 &lt; stock ≤ min</p>
+                  </div>
+                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Out of Stock</p>
+                    <p className="text-2xl font-black text-[#DC2626]">{dashboard.overview?.outOfStockCount ?? 0}</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">stock ≤ 0</p>
+                  </div>
+                </section>
+                <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost (historical)</h3>
+                  <p className="mt-2 text-2xl font-black text-[var(--c-text)]">{fmtCost(dashboard.foodCost?.foodCost)}</p>
+                  <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Sum <code className="rounded bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-1">StockMovement.totalCost</code> where <code>reason:SaleDeduction</code></p>
+                </section>
+                <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                  <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Consumption</h3>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">type:OUT reason:SaleDeduction grouped before lookup</p>
+                  </div>
+                  {(!dashboard.consumption || dashboard.consumption.length === 0) ? (
+                    <div className="px-4 sm:px-5 py-8 text-center">
+                      <p className="text-sm font-bold text-[var(--c-muted)]">No consumption recorded</p>
+                      <p className="text-xs font-medium text-[var(--c-muted)]">SaleDeduction movements will appear after paid orders.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+                          <tr><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Quantity Used</th><th className="px-4 py-3 font-black">Unit</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--c-border-soft)]">
+                          {dashboard.consumption.map((row) => (
+                            <tr key={row.itemId}><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{row.name}</td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{row.quantityUsed}</td><td className="px-4 py-2.5 font-medium text-[var(--c-muted)]">{row.unit}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+                <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                  <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Waste</h3>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">totalCost snapshot, null-safe</p>
+                  </div>
+                  <div className="px-4 sm:px-5 py-3 flex flex-wrap gap-4 text-xs font-bold text-[var(--c-muted)]">
+                    <span>Total quantity: <strong className="text-[var(--c-text)]">{dashboard.waste?.totalWasteQuantity ?? 0}</strong></span>
+                    <span>Total cost: <strong className="text-[var(--c-text)]">{fmtCost(dashboard.waste?.totalWasteCost)}</strong></span>
+                  </div>
+                  {(!dashboard.waste?.items || dashboard.waste.items.length === 0) ? (
+                    <div className="px-4 sm:px-5 py-6 text-center">
+                      <p className="text-sm font-bold text-[var(--c-muted)]">No waste recorded</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+                          <tr><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Qty</th><th className="px-4 py-3 text-right font-black">Cost</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--c-border-soft)]">
+                          {dashboard.waste.items.map((row) => (
+                            <tr key={row.itemId}><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{row.name}</td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{row.quantity}</td><td className="px-4 py-2.5 text-right font-medium text-[var(--c-text)]">{fmtCost(row.cost)}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+                <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                  <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Top Ingredients (Top 10)</h3>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">Aggregation early $match, lookup after group</p>
+                  </div>
+                  {(!dashboard.topIngredients || dashboard.topIngredients.length === 0) ? (
+                    <div className="px-4 sm:px-5 py-8 text-center">
+                      <p className="text-sm font-bold text-[var(--c-muted)]">No consumption yet</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+                          <tr><th className="px-4 py-3 font-black">#</th><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Quantity Used</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--c-border-soft)]">
+                          {dashboard.topIngredients.map((row, idx) => (
+                            <tr key={row.itemId}><td className="px-4 py-2.5 font-bold text-[var(--c-muted)]">{idx + 1}</td><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{row.name} <span className="text-xs font-medium text-[var(--c-muted)]">({row.unit})</span></td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{row.quantityUsed}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </div>
         )}
       </main>
 
