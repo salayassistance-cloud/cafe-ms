@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/lib/mongodb";
 import { requireAuth } from "@/lib/security";
 import { can } from "@/lib/policy";
@@ -25,7 +26,17 @@ async function postHandler(request) {
   const notes = body.notes != null ? String(body.notes).trim().slice(0, 500) : "";
 
   if (!itemId) return fail("itemId is required", 400);
+  if (!mongoose.isValidObjectId(itemId)) return fail("Invalid itemId: must be valid ObjectId", 400);
   if (quantity == null || String(quantity).trim() === "") return fail("quantity is required", 400);
+  // H7.1: strict finite numeric >0 validation at API boundary (rejects NaN/Infinity/0/negative/non-numeric/boolean/array/object)
+  // Preserve service as source of truth; this early check mirrors createWasteMovement rules and avoids DB round-trip.
+  {
+    if (Array.isArray(quantity) || (quantity != null && typeof quantity === "object") || typeof quantity === "boolean") {
+      return fail("quantity must be number > 0", 400);
+    }
+    const qtyNum = Number(quantity);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) return fail("quantity must be number > 0", 400);
+  }
 
   try {
     const conn = await connectToDatabase();
@@ -39,6 +50,7 @@ async function postHandler(request) {
   } catch (err) {
     if (err && err.status === 400) return fail(err.message, 400);
     if (err && err.status === 404) return fail(err.message, 404);
+    if (err && err.status === 409) return fail(err.message, 409);
     if (isDbError(err)) return fail("Database connection error. Please retry shortly.", 503);
     console.error("[api] inventory waste POST error:", err);
     return fail(err?.message || "Failed to record waste", 500);
