@@ -45,6 +45,7 @@ async function postHandler(request) {
       quantity,
       notes,
       actorId: auth.payload.staffId || null,
+      actorRole: auth.payload.role || null,
     });
     return ok(result, 201);
   } catch (err) {

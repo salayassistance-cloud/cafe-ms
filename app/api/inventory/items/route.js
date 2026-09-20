@@ -1,5 +1,6 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import { getInventoryItemModel } from "@/lib/models/InventoryItem";
+import { createInventoryAudit } from "@/lib/inventoryAuditService";
 import { requireAuth } from "@/lib/security";
 import { can } from "@/lib/policy";
 import { withApi } from "@/lib/withApi";
@@ -68,17 +69,63 @@ async function postHandler(request) {
   if (!validated.ok && validated.error) return fail(validated.error, 400);
   if (!validated.ok) return fail("Validation failed", 400);
 
+  const conn = await connectToDatabase();
+  const session = await conn.startSession();
   try {
-    const conn = await connectToDatabase();
+    session.startTransaction();
     const InventoryItem = getInventoryItemModel(conn);
     const doc = new InventoryItem(validated.data);
-    await doc.save();
+    await doc.save({ session });
+
+    // H7.2 audit trail — via shared service (server-side validation, actor from session, atomic with item)
+    try {
+      await createInventoryAudit(
+        conn,
+        {
+          itemId: String(doc._id),
+          action: "ITEM_CREATED",
+          actorId: auth.payload.staffId || null,
+          actorRole: auth.payload.role || null,
+          quantityDelta: Number(doc.currentStock) || 0,
+          beforeStock: null,
+          afterStock: Number(doc.currentStock) || 0,
+          reason: `Created ${doc.name} (${doc.category})`,
+          correlationId: null,
+          beforeSnapshot: null,
+          afterSnapshot: {
+            name: doc.name,
+            category: doc.category,
+            unit: doc.unit,
+            currentStock: Number(doc.currentStock) || 0,
+            minimumStock: Number(doc.minimumStock) || 0,
+            cost: Number(doc.cost) || 0,
+            status: doc.status,
+          },
+        },
+        { session }
+      );
+    } catch (auditErr) {
+      // Do not claim success if audit failed — abort transaction
+      try {
+        await session.abortTransaction();
+      } catch {}
+      throw auditErr;
+    }
+
+    await session.commitTransaction();
     return ok({ item: serializeInventoryItem(doc) }, 201);
   } catch (err) {
+    try {
+      await session.abortTransaction();
+    } catch {}
     if (isDbError(err)) return fail("Database connection error. Please retry shortly.", 503);
     if (err && err.code === 11000) return fail("Inventory item already exists", 409);
     console.error("[api] inventory items POST error:", err);
     return fail(err?.message || "Failed to create inventory item", 500);
+  } finally {
+    try {
+      await session.endSession();
+    } catch {}
   }
 }
 
