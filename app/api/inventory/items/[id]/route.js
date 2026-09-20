@@ -59,6 +59,7 @@ async function patchHandler(request, { params }) {
     }
 
     // H7.2 audit trail — via shared service (actor from session, atomic)
+    // H7.3 cost history — via COST_UPDATED when persisted cost actually changes
     try {
       const changedFields = Object.keys(validated.data);
       const reason = `Updated ${changedFields.join(", ")}`;
@@ -99,6 +100,31 @@ async function patchHandler(request, { params }) {
         },
         { session }
       );
+
+      // H7.3: record explicit cost change only when persisted cost differs (rounded to 2 decimals per validation)
+      const oldCostRaw = beforeDoc.cost;
+      const newCostRaw = doc.cost;
+      const oldCost = oldCostRaw != null ? Math.round(Number(oldCostRaw) * 100) / 100 : 0;
+      const newCost = newCostRaw != null ? Math.round(Number(newCostRaw) * 100) / 100 : 0;
+      const costChanged = Number.isFinite(oldCost) && Number.isFinite(newCost) && oldCost !== newCost;
+      if (costChanged) {
+        await createInventoryAudit(
+          conn,
+          {
+            itemId: String(doc._id),
+            action: "COST_UPDATED",
+            actorId: auth.payload.staffId || null,
+            actorRole: auth.payload.role || null,
+            oldCost: oldCost,
+            newCost: newCost,
+            reason: `Cost updated from ${oldCost} to ${newCost}`.slice(0, 500),
+            correlationId: null,
+            beforeSnapshot: null,
+            afterSnapshot: null,
+          },
+          { session }
+        );
+      }
     } catch (auditErr) {
       try {
         await session.abortTransaction();
