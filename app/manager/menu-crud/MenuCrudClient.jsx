@@ -11,6 +11,7 @@ import LanguageToggle from '@/app/components/LanguageToggle';
 import { useLanguage } from '@/app/components/LanguageProvider';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import { getLocalizedSingleString } from '@/lib/displayName';
+import MenuItemImage, { MENU_IMAGE_FALLBACK } from '@/app/components/MenuItemImage';
 
 // Exact same pill & card constants as /manager/reports
 const PILL_ACTIVE =
@@ -251,14 +252,22 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
   }
 
   async function handleDeleteCategory(id, name) {
-    if (!confirm(`${t('confirmDeleteCategory')} "${name}"?`)) return;
+    const relatedCount = items.filter((it) => String(it.category) === String(id) || String(it.categoryId) === String(id)).length;
+    const confirmMsg = relatedCount > 0
+      ? `Delete category "${name}" and its ${relatedCount} menu item(s)? This cannot be undone.`
+      : `Delete category "${name}"? This cannot be undone.`;
+    if (!confirm(confirmMsg)) return;
     startTransition(async () => {
       const fd = new FormData();
       fd.set('id', id);
       const res = await deleteCategory(fd);
       if (!res.success) alert(res.error);
       else {
+        // Cascade UI sync: remove category and its items locally for instant feedback
         setCategories(prev => prev.filter(c => String(c._id) !== String(id)));
+        if (relatedCount > 0) {
+          setItems(prev => prev.filter((it) => String(it.category) !== String(id) && String(it.categoryId) !== String(id)));
+        }
         router.refresh();
       }
     });
@@ -323,8 +332,8 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             category: form.category,
             categoryId: form.category,
             categoryName: catName,
-            imageUrl: previewUrl || '/placeholders/food.svg',
-            image: previewUrl || '/placeholders/food.svg',
+            imageUrl: previewUrl || MENU_IMAGE_FALLBACK,
+            image: previewUrl || MENU_IMAGE_FALLBACK,
             isSpecial: form.isSpecial,
             isNew: form.isNew,
             isAvailable: form.isAvailable,
@@ -696,7 +705,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               <p className="mt-1 text-[10px] text-[#64748B] dark:text-[#94A3B8]">{t('imageFormatHint')}</p>
               {previewUrl && (
                 <div className="mt-3 relative h-24 w-full overflow-hidden rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A]">
-                  <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
+                  <MenuItemImage src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
                 </div>
               )}
             </div>
@@ -1106,7 +1115,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
                         <tr className="hover:bg-[#F4F5F9]/60 dark:hover:bg-[#252631]/60 transition">
                       <td className="px-4 py-3">
                         <div className="h-12 w-12 overflow-hidden rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] shrink-0">
-                          {item.imageUrl ? <img src={item.imageUrl} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-[10px] text-[#64748B] dark:text-[#94A3B8]">{t('noImage')}</div>}
+                          <MenuItemImage src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                         </div>
                       </td>
                       <td className="px-4 py-3 min-w-[200px]">
@@ -1156,7 +1165,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
                   <div key={String(item._id)} className="p-4">
                     <div className="flex gap-3">
                       <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A]">
-                    {item.imageUrl ? <img src={item.imageUrl} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-xs text-[#64748B] dark:text-[#94A3B8]">{t('noImage')}</div>}
+                    <MenuItemImage src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-[#1E293B] dark:text-white truncate">{item.nameEn}</p>

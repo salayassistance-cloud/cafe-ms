@@ -4,15 +4,19 @@
  *
  * - Source: food_menu.json (authoritative, 99 Food items, 18 Food categories)
  * - Target: existing Category + MenuItem collections (hotel_management)
- * - Safety: dry-run default, --apply writes. Validate entire JSON before any writes.
+ * - Safety: dry-run default (read-only, zero writes) but connects to the configured MongoDB
+ *   to compare current Category/MenuItem records for accurate planning (no writes).
+ *   --apply creates missing records (non-destructive); --apply --update also updates differing records.
+ *   Validate entire JSON before any writes.
  * - Idempotent: category slug + normalized English name is the natural key.
  * - Preservation: image/imageUrl fields are never overwritten unless JSON provides them (it does not).
  * - Reuses canonical slug logic from app/manager/menu-crud/actions.js
  * - Does NOT touch Drink records, Orders, Staff, SystemAuth, or Menu CRUD logic.
  *
  * Usage:
- *   node --env-file=.env.local scripts/sync-food-menu-json.mjs          # dry-run
- *   node --env-file=.env.local scripts/sync-food-menu-json.mjs --apply  # apply
+ *   node --env-file=.env.local scripts/sync-food-menu-json.mjs          # dry-run (read-only, no writes, but connects to compare)
+ *   node --env-file=.env.local scripts/sync-food-menu-json.mjs --apply  # apply (create missing only)
+ *   node --env-file=.env.local scripts/sync-food-menu-json.mjs --apply --update  # apply + update differing records
  */
 
 import fs from "node:fs";
@@ -30,6 +34,7 @@ const LOCALES = ["en", "am", "om"];
 const REQUIRED_FIELDS = ["id", "mainCategory", "category", "name", "price", "isAvailable", "isFasting", "isSpecial", "description"];
 
 const APPLY = process.argv.includes("--apply") && !process.argv.includes("--dry-run");
+const ALLOW_UPDATE = process.argv.includes("--update") || process.argv.includes("--allow-update") || process.argv.includes("--update-existing");
 const HELP = process.argv.includes("--help") || process.argv.includes("-h");
 
 // Canonical slugify — MUST stay identical to app/manager/menu-crud/actions.js:37
@@ -665,10 +670,13 @@ async function applyPlan(plan, Category, MenuItem) {
   // SAFETY NOTE: Sequential writes without transaction — if an operation fails mid-way, earlier writes remain (partial writes possible).
   // Adding transactions would require replica set and session handling (Category/MenuItem bulk with session), risking behavior change;
   // per task, not added here — reported as finding only, apply behavior unchanged.
-  console.log("\n[apply] Starting database writes (--apply)");
+  // Non-destructive default: --apply creates missing records only; --apply --update also updates existing differing records
+  if (!ALLOW_UPDATE) console.log("\n[apply] Non-destructive mode: updates will be skipped — use --apply --update to allow updates");
+  console.log("\n[apply] Starting database writes (--apply" + (ALLOW_UPDATE ? " --update" : "") + ")");
   let categoriesCreated = 0;
   let categoriesUpdated = 0;
   let categoriesUnchanged = 0;
+  let categoriesSkipped = 0;
 
   const slugToId = new Map();
   // Pre-populate with existing ids
@@ -695,17 +703,23 @@ async function applyPlan(plan, Category, MenuItem) {
         categoriesCreated += 1;
         console.log(`  CREATE ${op} -> ${saved._id} (${catPlan.name.en})`);
       } else if (catPlan.action === "UPDATE") {
-        // Only update name/type/station, preserve order/icon/isActive
-        const res = await Category.updateOne(
-          { _id: catPlan.existing._id },
-          { $set: { name: catPlan.name, type: "FOOD", targetStation: "KITCHEN", slug: catPlan.slug } },
-          { runValidators: true }
-        );
-        if (!res.matchedCount) throw new Error(`not found for update`);
-        slugToId.set(catPlan.slug, catPlan.existing._id);
-        categoriesUpdated += res.modifiedCount ? 1 : 0;
-        console.log(`  UPDATE ${op} -> ${catPlan.existing._id} matched=${res.matchedCount} modified=${res.modifiedCount}`);
-        if (res.modifiedCount === 0) categoriesUnchanged += 1;
+        if (!ALLOW_UPDATE) {
+          console.log(`  SKIP UPDATE ${op} -> ${catPlan.existing._id} (would update fields: name/type/station) — use --update to apply`);
+          categoriesSkipped += 1;
+          slugToId.set(catPlan.slug, catPlan.existing._id);
+        } else {
+          // Only update name/type/station, preserve order/icon/isActive
+          const res = await Category.updateOne(
+            { _id: catPlan.existing._id },
+            { $set: { name: catPlan.name, type: "FOOD", targetStation: "KITCHEN", slug: catPlan.slug } },
+            { runValidators: true }
+          );
+          if (!res.matchedCount) throw new Error(`not found for update`);
+          slugToId.set(catPlan.slug, catPlan.existing._id);
+          categoriesUpdated += res.modifiedCount ? 1 : 0;
+          console.log(`  UPDATE ${op} -> ${catPlan.existing._id} matched=${res.matchedCount} modified=${res.modifiedCount}`);
+          if (res.modifiedCount === 0) categoriesUnchanged += 1;
+        }
       } else if (catPlan.action === "UNCHANGED") {
         categoriesUnchanged += 1;
         // ensure map has id (already)
@@ -718,12 +732,13 @@ async function applyPlan(plan, Category, MenuItem) {
     }
   }
 
-  console.log(`[apply] categories: created ${categoriesCreated}, updated ${categoriesUpdated}, unchanged ${categoriesUnchanged}`);
+  console.log(`[apply] categories: created ${categoriesCreated}, updated ${categoriesUpdated}, skipped ${categoriesSkipped}, unchanged ${categoriesUnchanged}`);
 
   // 2. MenuItems: CREATE missing, UPDATE differing
   let itemsCreated = 0;
   let itemsUpdated = 0;
   let itemsUnchanged = 0;
+  let itemsSkipped = 0;
 
   for (const itemPlan of plan.itemPlans) {
     if (!itemPlan.categoryPlan) continue;
@@ -749,29 +764,34 @@ async function applyPlan(plan, Category, MenuItem) {
         itemsCreated += 1;
         console.log(`  CREATE ${op} -> ${saved._id} price=${fields.price}`);
       } else if (itemPlan.action === "UPDATE") {
-        const expected = sourceItemFields(itemPlan.item, catId);
-        // Build $set only for FOOD-relevant fields, excluding image fields
-        // We do not touch image, imageUrl, isNew, isPopular, display variants.
-        const $set = {
-          name: expected.name,
-          description: expected.description,
-          price: expected.price,
-          category: expected.category,
-          categoryId: expected.categoryId,
-          categoryType: expected.categoryType,
-          station: expected.station,
-          targetStation: expected.targetStation,
-          isAvailable: expected.isAvailable,
-          inStock: expected.inStock,
-          isFasting: expected.isFasting,
-          isNonFasting: expected.isNonFasting,
-          isSpecial: expected.isSpecial,
-        };
-        const res = await MenuItem.updateOne({ _id: itemPlan.existing._id }, { $set }, { runValidators: true });
-        if (!res.matchedCount) throw new Error(`not found for update`);
-        itemsUpdated += res.modifiedCount ? 1 : 0;
-        if (res.modifiedCount) console.log(`  UPDATE ${op} -> ${itemPlan.existing._id} modified price=${expected.price} diff=[${itemPlan.diff.join(",")}]`);
-        else itemsUnchanged += 1;
+        if (!ALLOW_UPDATE) {
+          console.log(`  SKIP UPDATE ${op} -> ${itemPlan.existing._id} would change: ${itemPlan.diff.join(",")} — use --update to apply`);
+          itemsSkipped += 1;
+        } else {
+          const expected = sourceItemFields(itemPlan.item, catId);
+          // Build $set only for FOOD-relevant fields, excluding image fields
+          // We do not touch image, imageUrl, isNew, isPopular, display variants.
+          const $set = {
+            name: expected.name,
+            description: expected.description,
+            price: expected.price,
+            category: expected.category,
+            categoryId: expected.categoryId,
+            categoryType: expected.categoryType,
+            station: expected.station,
+            targetStation: expected.targetStation,
+            isAvailable: expected.isAvailable,
+            inStock: expected.inStock,
+            isFasting: expected.isFasting,
+            isNonFasting: expected.isNonFasting,
+            isSpecial: expected.isSpecial,
+          };
+          const res = await MenuItem.updateOne({ _id: itemPlan.existing._id }, { $set }, { runValidators: true });
+          if (!res.matchedCount) throw new Error(`not found for update`);
+          itemsUpdated += res.modifiedCount ? 1 : 0;
+          if (res.modifiedCount) console.log(`  UPDATE ${op} -> ${itemPlan.existing._id} modified price=${expected.price} diff=[${itemPlan.diff.join(",")}]`);
+          else itemsUnchanged += 1;
+        }
       } else if (itemPlan.action === "UNCHANGED") {
         itemsUnchanged += 1;
       } else if (itemPlan.action === "ERROR") {
@@ -783,8 +803,8 @@ async function applyPlan(plan, Category, MenuItem) {
     }
   }
 
-  console.log(`[apply] menuitems: created ${itemsCreated}, updated ${itemsUpdated}, unchanged ${itemsUnchanged}`);
-  return { categoriesCreated, categoriesUpdated, itemsCreated, itemsUpdated };
+  console.log(`[apply] menuitems: created ${itemsCreated}, updated ${itemsUpdated}, skipped ${itemsSkipped}, unchanged ${itemsUnchanged}`);
+  return { categoriesCreated, categoriesUpdated, categoriesSkipped, itemsCreated, itemsUpdated, itemsSkipped, itemsUnchanged };
 }
 
 async function verifyApplied(catalog, Category, MenuItem, beforeCounts, conn) {
@@ -804,6 +824,11 @@ async function verifyApplied(catalog, Category, MenuItem, beforeCounts, conn) {
   const categoriesById = new Map(allCategories.map((c) => [String(c._id), c]));
 
   // 1. All source Food categories exist with correct type/station
+  // CREATE-ONLY POST-VERIFY (FIX1 L1): when --apply without --update, name differences are
+  // intentionally skipped (left unchanged) — report as skipped, not errors.
+  // Type/targetStation classification is still enforced for all records.
+  let skippedCategories = 0;
+  let skippedItems = 0;
   for (const srcCat of catalog.categories) {
     const actual = categoriesBySlug.get(srcCat.slug);
     if (!actual) {
@@ -812,7 +837,14 @@ async function verifyApplied(catalog, Category, MenuItem, beforeCounts, conn) {
     }
     if (String(actual.type) !== "FOOD") errors.push(`category ${srcCat.slug} type=${actual.type} expected FOOD`);
     if (String(actual.targetStation) !== "KITCHEN") errors.push(`category ${srcCat.slug} targetStation=${actual.targetStation} expected KITCHEN`);
-    if (!sameLocalized(actual.name, srcCat.name)) errors.push(`category ${srcCat.slug} name mismatch expected ${JSON.stringify(srcCat.name)} got ${JSON.stringify(actual.name)}`);
+    if (!sameLocalized(actual.name, srcCat.name)) {
+      if (!ALLOW_UPDATE) {
+        skippedCategories += 1;
+        console.warn(`  SKIP verify category ${srcCat.slug} name differs (create-only mode, left unchanged)`);
+      } else {
+        errors.push(`category ${srcCat.slug} name mismatch expected ${JSON.stringify(srcCat.name)} got ${JSON.stringify(actual.name)}`);
+      }
+    }
   }
 
   // 2. All source Food items exist with correct fields, no duplicates, correct station/type
@@ -863,13 +895,20 @@ async function verifyApplied(catalog, Category, MenuItem, beforeCounts, conn) {
     }
     const expected = sourceItemFields(srcItem, expectedCat._id);
     // Compare fields (excluding image)
+    // CREATE-ONLY POST-VERIFY (FIX1 L1): when --apply without --update, field differences are
+    // intentionally skipped — report as skipped, not errors. Classification still enforced below.
     const diff = fieldsThatDiffer(actual, expected, new Set(["name", "description"]));
     if (diff.length) {
       // Filter out category string vs ObjectId already handled via sameId, but diff may include category mismatched if id not yet resolved? Check.
       // We consider any diff as error except image fields (which we don't compare)
-      errors.push(`${srcItem.sourceFile}#${srcItem.id} field mismatch: ${diff.join(", ")} (expected ${JSON.stringify(expected)} vs actual category=${actual.category})`);
-      if (diff.includes("price")) priceErrors += 1;
-      if (diff.includes("station") || diff.includes("targetStation") || diff.includes("categoryType")) stationErrors += 1;
+      if (!ALLOW_UPDATE) {
+        skippedItems += 1;
+        console.warn(`  SKIP verify ${srcItem.sourceFile}#${srcItem.id} differs [${diff.join(",")}] (create-only mode, left unchanged)`);
+      } else {
+        errors.push(`${srcItem.sourceFile}#${srcItem.id} field mismatch: ${diff.join(", ")} (expected ${JSON.stringify(expected)} vs actual category=${actual.category})`);
+        if (diff.includes("price")) priceErrors += 1;
+        if (diff.includes("station") || diff.includes("targetStation") || diff.includes("categoryType")) stationErrors += 1;
+      }
     } else {
       matchedItems += 1;
     }
@@ -963,7 +1002,9 @@ async function verifyApplied(catalog, Category, MenuItem, beforeCounts, conn) {
   if (afterSystemAuth !== beforeCounts.systemAuth) errors.push(`system_auth count changed from ${beforeCounts.systemAuth} to ${afterSystemAuth}`);
 
   console.log(`  categories total: ${allCategories.length}; source Food categories verified: ${catalog.categories.length}`);
+  console.log(`  categories skipped (create-only, left unchanged): ${skippedCategories}`);
   console.log(`  menuitems total: ${allItems.length}; source Food items verified: ${matchedItems}/${catalog.records.length}`);
+  console.log(`  menuitems skipped (create-only, left unchanged): ${skippedItems}`);
   console.log(`  duplicate Food keys: ${duplicateFoodKeys}`);
   console.log(`  Food items with correct station/KITCHEN: ${stationErrors === 0 ? "all" : `${stationErrors} errors`}`);
   console.log(`  prices matched: ${priceErrors === 0 ? "all" : `${priceErrors} errors`}`);
@@ -984,9 +1025,10 @@ async function verifyApplied(catalog, Category, MenuItem, beforeCounts, conn) {
 async function main() {
   if (HELP) {
     console.log(`Food Menu JSON → MongoDB Sync`);
-    console.log(`Usage: node --env-file=.env.local scripts/sync-food-menu-json.mjs [--apply]`);
-    console.log(`  default (no flag) : DRY RUN — validates and reports, no writes`);
-    console.log(`  --apply           : APPLY — creates/updates Food categories and MenuItems`);
+    console.log(`Usage: node --env-file=.env.local scripts/sync-food-menu-json.mjs [--apply] [--update]`);
+    console.log(`  default (no flag) : DRY RUN — validates and reports, no writes (but connects to compare current records)`);
+    console.log(`  --apply           : APPLY — creates missing Food categories and MenuItems (non-destructive, skips updates)`);
+    console.log(`  --apply --update  : APPLY + UPDATE — creates missing and updates differing Food records (explicit opt-in)`);
     console.log(`  --help            : show this help`);
     return 0;
   }
@@ -994,7 +1036,7 @@ async function main() {
   console.log("==================================================");
   console.log(" Food Menu JSON → MongoDB Sync");
   console.log("==================================================");
-  console.log(` Mode: ${APPLY ? "APPLY (will write)" : "DRY RUN (no writes)"}`);
+  console.log(` Mode: ${APPLY ? (ALLOW_UPDATE ? "APPLY + UPDATE (will write creates and updates)" : "APPLY (will write creates only, skips updates)") : "DRY RUN (read-only, no writes, but connects to compare)"}`);
   console.log(` Source: ${SOURCE_PATH}`);
   console.log(` Time: ${new Date().toISOString()}`);
 

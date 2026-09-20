@@ -125,13 +125,58 @@ export async function deleteCategory(formDataOrId) {
   const id = typeof formDataOrId === "string" ? formDataOrId : formDataOrId.get("id")?.toString() || formDataOrId.get("_id")?.toString();
   if (!id) return { success: false, error: "Category id required" };
   try {
-    const { Category, MenuItem } = await getDbModels();
+    const { conn, Category, MenuItem } = await getDbModels();
+    // Advisory pre-transaction count (canonical _id match, both aliases). UI relatedCount is
+    // advisory only and is never trusted here — the transaction-time recount below is authoritative.
     const count = await MenuItem.countDocuments({ $or: [{ category: id }, { categoryId: id }] });
-    if (count > 0) return { success: false, error: `Cannot delete — ${count} menu item(s) still reference this category` };
-    const res = await Category.deleteOne({ _id: id });
-    if (res.deletedCount === 0) return { success: false, error: "Category not found" };
-    revalidateAll();
-    return { success: true, message: "Category deleted" };
+    // Attempt transactional cascade delete for atomicity (requires replica set)
+    let session = null;
+    try {
+      session = await conn.startSession();
+      session.startTransaction();
+      // FIX3 H1: authoritative recount inside the transaction snapshot (both aliases, canonical _id).
+      // Ensures items committed before the transaction snapshot are included in the delete.
+      // Does NOT claim to prevent concurrent inserts after the snapshot — MongoDB snapshot
+      // isolation does not lock the collection; concurrent inserts after snapshot may survive.
+      // Food/Drink/category isolation preserved: filter is strictly this category _id.
+      const txCount = await MenuItem.countDocuments({ $or: [{ category: id }, { categoryId: id }] }).session(session);
+      const menuRes = await MenuItem.deleteMany({ $or: [{ category: id }, { categoryId: id }] }, { session });
+      const catRes = await Category.deleteOne({ _id: id }, { session });
+      if (catRes.deletedCount === 0) {
+        try { await session.abortTransaction(); } catch {}
+        return { success: false, error: "Category not found" };
+      }
+      await session.commitTransaction();
+      revalidateAll();
+      const authoritativeCount = typeof txCount === "number" ? txCount : count;
+      const msg = authoritativeCount > 0 ? `Category and ${menuRes.deletedCount} menu item(s) deleted` : "Category deleted";
+      return { success: true, message: msg, deletedCount: menuRes.deletedCount };
+    } catch (txErr) {
+      if (session) {
+        try { await session.abortTransaction(); } catch {}
+      }
+      const low = String(txErr.message || "").toLowerCase();
+      const isTxnUnsupported = low.includes("transaction") || low.includes("replica") || low.includes("session") || low.includes("not supported");
+      if (isTxnUnsupported) {
+        // Fallback: non-transactional sequential delete with explicit partial-failure handling
+        try {
+          const menuRes = await MenuItem.deleteMany({ $or: [{ category: id }, { categoryId: id }] });
+          const catRes = await Category.deleteOne({ _id: id });
+          if (catRes.deletedCount === 0) {
+            // Items may have been deleted but category missing — do not report success
+            return { success: false, error: `Category not found — ${menuRes.deletedCount} item(s) were deleted before failure` };
+          }
+          revalidateAll();
+          const msg = menuRes.deletedCount > 0 ? `Category and ${menuRes.deletedCount} menu item(s) deleted` : "Category deleted";
+          return { success: true, message: msg, deletedCount: menuRes.deletedCount };
+        } catch (fallbackErr) {
+          return { success: false, error: fallbackErr.message || "Failed to delete category and items" };
+        }
+      }
+      return { success: false, error: txErr.message || "Failed to delete category" };
+    } finally {
+      if (session) { try { await session.endSession(); } catch {} }
+    }
   } catch (e) {
     return { success: false, error: e.message || "Failed to delete category" };
   }
@@ -226,7 +271,8 @@ export async function createMenuItem(prevState, formData) {
     const finalDescEn = descEn || descAm || descOm || "";
     const finalDescAm = descAm || descEn || "";
     const finalDescOm = descOm || descEn || "";
-    let finalImageUrl = imageUrlFromInput || "";
+    let finalImageUrl = "";
+    if (imageUrlFromInput) finalImageUrl = imageUrlFromInput;
     if (imageFile && typeof imageFile === "object" && "arrayBuffer" in imageFile && imageFile.size > 0) {
       try {
         finalImageUrl = await uploadToCloudinary(imageFile);
@@ -234,9 +280,7 @@ export async function createMenuItem(prevState, formData) {
         return { success: false, error: `Image upload failed: ${err.message}` };
       }
     }
-    if (!finalImageUrl) {
-      finalImageUrl = "/placeholders/food.svg";
-    }
+    // No fallback stored in DB — empty string preserved, display fallback via MENU_IMAGE_FALLBACK ('/placeholders/avenue.png') in UI component
     const fastingFlags = {};
     if (formData.get("isFasting") == null && formData.get("isNonFasting") == null) {
       fastingFlags.isFasting = false;
