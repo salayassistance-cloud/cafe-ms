@@ -33,10 +33,10 @@ async function getHandler(request) {
 
   if (rawAction) {
     const act = sanitizeString(rawAction, { maxLen: 30 });
-    const allowed = ["ITEM_CREATED", "ITEM_UPDATED", "WASTE", "COST_UPDATED"];
+    const allowed = ["ITEM_CREATED", "ITEM_UPDATED", "WASTE", "COST_UPDATED", "PURCHASE_RECEIVED"];
     const norm = String(act || "").trim().toUpperCase();
     // Support legacy aliases
-    const map = { CREATE_ITEM: "ITEM_CREATED", UPDATE_ITEM: "ITEM_UPDATED" };
+    const map = { CREATE_ITEM: "ITEM_CREATED", UPDATE_ITEM: "ITEM_UPDATED", PURCHASE: "PURCHASE_RECEIVED", RECEIVE: "PURCHASE_RECEIVED" };
     const canon = map[norm] || norm;
     if (!allowed.includes(canon)) return fail(`Invalid action filter: must be one of ${allowed.join(", ")}`, 400);
     query.action = canon;
@@ -82,7 +82,7 @@ async function getHandler(request) {
     const conn = await connectToDatabase();
     const InventoryAudit = getInventoryAuditModel(conn);
     const docs = await InventoryAudit.find(query)
-      .select("item action actorId actorRole quantityDelta beforeStock afterStock oldCost newCost reason correlationId beforeSnapshot afterSnapshot createdAt updatedAt")
+      .select("item action actorId actorRole quantityDelta beforeStock afterStock oldCost newCost unit unitCost totalCost supplier reason correlationId beforeSnapshot afterSnapshot createdAt updatedAt")
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -99,6 +99,10 @@ async function getHandler(request) {
       afterStock: d.afterStock != null ? Number(d.afterStock) : null,
       oldCost: d.oldCost != null ? Number(d.oldCost) : null,
       newCost: d.newCost != null ? Number(d.newCost) : null,
+      unit: d.unit || null,
+      unitCost: d.unitCost != null ? Number(d.unitCost) : null,
+      totalCost: d.totalCost != null ? Number(d.totalCost) : null,
+      supplier: d.supplier ? String(d.supplier) : null,
       reason: d.reason || "",
       correlationId: d.correlationId ? String(d.correlationId) : null,
       beforeSnapshot: d.beforeSnapshot || null,

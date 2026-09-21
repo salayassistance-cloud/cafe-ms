@@ -279,6 +279,8 @@ export default function KitchenDisplay({
     }
   }, [pendingIds, view]);
 
+  // Legacy whole-order archive — preserved for history but X now means item Cancel/Reject (not archive).
+  // Kept for backward compat; UI no longer uses global archive button.
   const handleArchiveOrder = useCallback(async (orderId) => {
     if (pendingIds.has(orderId)) return;
     setPendingIds((s) => new Set(s).add(orderId));
@@ -305,36 +307,134 @@ export default function KitchenDisplay({
     }
   }, [pendingIds]);
 
+  // Item-level Cancel/Reject — station may cancel only own items, never whole order.
+  const [itemPending, setItemPending] = useState(() => new Set());
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelTarget, setCancelTarget] = useState(null); // {orderId, lineId}
+  const handleCancelItem = useCallback(async (orderId, lineId) => {
+    if (!lineId) return;
+    const key = String(lineId);
+    if (itemPending.has(key)) return;
+    setItemPending((s) => new Set(s).add(key));
+    setActionError("");
+    const reason = cancelReason.trim().slice(0, 200);
+    // Optimistic: mark item cancelled locally
+    let prevRef = { current: null };
+    setOrders((prev) => {
+      prevRef.current = prev;
+      return prev.map((o) => {
+        if (o._id !== orderId) return o;
+        return {
+          ...o,
+          items: (o.items || []).map((it) => {
+            const lid = it.lineId ? String(it.lineId) : null;
+            if (lid !== key) return it;
+            return { ...it, cancelled: true, cancelReason: reason || it.cancelReason, cancelledStation: view === "DRINK" ? "BARISTA" : "KITCHEN" };
+          }),
+        };
+      });
+    });
+    try {
+      const data = await safeFetchJson(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CANCEL_ITEM", lineId: key, reason: reason || undefined }),
+      });
+      if (!data?.success) throw new Error(data?.error || data?.message || "Cancel failed");
+      const updated = data?.data?.order;
+      if (updated) {
+        setOrders((prev) => prev.map((o) => (o._id === orderId ? { ...o, ...updated } : o)));
+        // If all active lines cancelled, order will be status CANCELLED and drop from ACTIVE query on next fetch
+        if (updated.status === "CANCELLED") {
+          // Keep in list until next fetch for audit visibility, then it will disappear from active view
+          setTimeout(() => setOrders((prev) => prev.filter((o) => o._id !== orderId)), 800);
+        }
+      }
+      setCancelTarget(null);
+      setCancelReason("");
+    } catch (err) {
+      if (prevRef.current) setOrders(prevRef.current);
+      if (err && err.status === 401) setActionError("Your session has expired. Please sign in again.");
+      else if (err && err.status === 403) setActionError(err.message || "Forbidden: cannot cancel this item.");
+      else setActionError(err?.message || "Failed to cancel item. Please retry.");
+      setTimeout(() => setActionError(""), 4000);
+    } finally {
+      setItemPending((s) => {
+        const n = new Set(s);
+        n.delete(key);
+        return n;
+      });
+    }
+  }, [itemPending, cancelReason, view]);
+
   const visibleOrders = orders.filter((o) =>
-    view === 'ALL' ? true : o.items.some((it) => it.type === view)
+    view === 'ALL' ? true : o.items.some((it) => it.type === view && !it.cancelled)
   );
+  // Also keep orders with only cancelled items of this station for history (faded) — but active view excludes fully cancelled
   const offline = connError;
 
-  function renderItems(items, view) {
+  function renderItems(items, view, orderId) {
     if (!items || items.length === 0) return null;
     // Only render items belonging to THIS station (FOOD=Kitchen, DRINK=Barista).
     const relevant = items.filter((it) => it.type === view);
     if (relevant.length === 0) return null;
     return (
       <ul className="mt-3 space-y-2">
-        {relevant.map((it, i) => (
+        {relevant.map((it, i) => {
+          const lineId = it.lineId ? String(it.lineId) : null;
+          const isCancelled = !!it.cancelled;
+          const isPending = lineId && itemPending.has(lineId);
+          return (
           <li
-            key={`it-${i}`}
-            className="flex items-start gap-3 rounded-lg border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-2 py-2 text-lg"
+            key={`it-${lineId || i}`}
+            className={`flex items-start gap-3 rounded-lg border px-2 py-2 text-lg ${isCancelled ? 'border-[#FECACA] bg-[#FEF2F2] dark:border-[#7F1D1D] dark:bg-[#1C1D24] opacity-75' : 'border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A]'}`}
           >
-            <span className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] px-2 text-base font-black text-[#1E293B] dark:text-white">
+            <span className={`flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-2 text-base font-black ${isCancelled ? 'bg-[#FECACA] text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white' : 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white'}`}>
               {it.quantity}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold text-[#1E293B] dark:text-white">
+              <p className={`truncate font-semibold ${isCancelled ? 'text-[#991B1B] dark:text-[#FCA5A5] line-through' : 'text-[#1E293B] dark:text-white'}`}>
                 {getLocalizedSingleString(it.name)}
               </p>
               <p className="text-xs uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
-                {it.type}
+                {it.type}{isCancelled && it.cancelReason ? ` · ${it.cancelReason}` : ""}
               </p>
+              {isCancelled && (
+                <p className="text-xs text-[#991B1B] dark:text-[#FCA5A5]">Cancelled{it.cancelledStation ? ` by ${it.cancelledStation}` : ""}{it.cancelledAt ? ` ${new Date(it.cancelledAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}` : ""}</p>
+              )}
+              {Array.isArray(it.components) && it.components.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {it.components.map((c, ci) => (
+                    <li key={`${lineId || i}-comp-${ci}`} className={`truncate text-xs ${c.kind === "NOTE" ? "text-[#92400E] dark:text-[#FDBA74] italic" : "font-medium text-[#1E293B] dark:text-white"}`}>
+                      {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${c.lineSum ?? Math.round(c.quantity * c.unitPrice * 100) / 100} ETB`}
+                      {c.kind === "PRICED_COMPONENT" && c.inventoryItemId ? <span className="ml-1 text-[10px] text-[#64748B] dark:text-[#94A3B8]">· linked</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+            {!isCancelled ? (
+              lineId ? (
+                cancelTarget && cancelTarget.lineId === lineId && cancelTarget.orderId === orderId ? (
+                  <div className="flex shrink-0 flex-col gap-1">
+                    <input autoFocus type="text" placeholder="Reason (optional)" value={cancelReason} onChange={(e)=>setCancelReason(e.target.value)} maxLength={200} className="w-28 rounded-lg border border-[#FECACA] bg-white px-2 py-1 text-xs text-[#1E293B] placeholder:text-[#94A3B8] focus:outline-none focus:ring-1 focus:ring-[#FCA5A5]" />
+                    <div className="flex gap-1">
+                      <button type="button" onClick={()=>handleCancelItem(orderId, lineId)} disabled={isPending} className="rounded-lg bg-[#DC2626] px-2 py-1 text-xs font-black text-white disabled:opacity-50">{isPending ? "..." : "Confirm"}</button>
+                      <button type="button" onClick={()=>{setCancelTarget(null); setCancelReason("");}} className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1 text-xs font-bold text-[#64748B]">✕</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={()=>{setCancelTarget({orderId, lineId}); setCancelReason("");}} disabled={isPending} className="shrink-0 rounded-lg border border-[#FECACA] bg-white px-2 py-1 text-xs font-black text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-50" title="Cancel this item">Cancel</button>
+                )
+              ) : (
+                <span className="shrink-0 rounded-lg bg-[#F4F5F9] px-2 py-1 text-xs font-bold text-[#94A3B8]">Legacy</span>
+              )
+            ) : (
+              <span className="shrink-0 rounded-full bg-[#FECACA] px-2 py-1 text-xs font-black text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white">Cancelled</span>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     );
   }
@@ -383,27 +483,10 @@ export default function KitchenDisplay({
               </p>
               <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">{t('elapsed')}</p>
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                confirmingId === order._id
-                  ? handleArchiveOrder(order._id)
-                  : setConfirmingId(order._id)
-              }
-              title={t('removeTitle')}
-              aria-label={t('removeTitle')}
-              className={`rounded-lg px-2 py-1 text-sm font-black leading-none transition-all duration-150 ease-out     ${
-                confirmingId === order._id
-                  ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white shadow-sm'
-                  : 'bg-[#F4F5F9] dark:bg-[#12131A] text-[#94A3B8] hover:text-[#FFD600] dark:hover:text-[#FF5E00] border border-[#E2E8F0]/60 dark:border-[#2A2B36]'
-              }`}
-            >
-              {confirmingId === order._id ? t('confirm') : '✕'}
-            </button>
           </div>
         </div>
 
-        {renderItems(order.items, view)}
+        {renderItems(order.items, view, order._id)}
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">

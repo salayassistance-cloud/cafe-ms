@@ -132,6 +132,20 @@ async function deleteHandler(request) {
   try {
     const conn = await connectToDatabase();
     const PaymentInfo = getPaymentInfoModel(conn);
+    // Historical preservation: if account already used in a payment, do not hard-delete
+    try {
+      const { getOrderModel } = await import("@/lib/models/Order");
+      const Order = getOrderModel(conn);
+      const used = await Order.findOne({ paymentAccountId: id }).select("_id").lean();
+      if (used) {
+        const doc = await PaymentInfo.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true, runValidators: true });
+        if (!doc) return fail("Payment information not found", 404);
+        return ok({ archived: true, disabled: true, id, paymentInfo: serialize(doc), message: "Account has historical payments — archived (deactivated) instead of deleted to preserve reports." }, 200);
+      }
+    } catch (e) {
+      // If order check fails, fall through to hard delete attempt; snapshot preservation via paymentAccountSnapshot still holds
+      if (e && e.message && /archived/.test(e.message)) throw e;
+    }
     const res = await PaymentInfo.deleteOne({ _id: id });
     if (res.deletedCount === 0) return fail("Payment information not found", 404);
     return ok({ deleted: true, id }, 200);

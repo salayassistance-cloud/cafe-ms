@@ -84,11 +84,15 @@ async function postHandler(request) {
   }
   const Staff = getStaffModel(conn);
 
-  // CREATE branch: has name+username+pin and no staffId
+  // CREATE branch: has name+username+pin and no staffId — supports WAITER and CASHIER (manager can create CASHIER)
   const hasStaffId = !!(body.staffId || body.id);
+  const rawRoleForCreate = body.role ? String(body.role).trim().toUpperCase() : "WAITER";
+  const createRole = ["WAITER", "CASHIER"].includes(rawRoleForCreate) ? rawRoleForCreate : null;
+  if (createRole && !["WAITER", "CASHIER"].includes(createRole)) return fail("Invalid role for creation (allowed: WAITER, CASHIER)", 400);
   const hasCreateFields = !!(body.name && body.username && body.pin);
   const isExplicitCreate = String(body.action || "").toLowerCase() === "create";
   if ((hasCreateFields && !hasStaffId) || isExplicitCreate) {
+    if (!createRole) return fail("Invalid role", 400);
     const rawName = body.name;
     const rawUsername = body.username;
     const rawPin = body.pin;
@@ -106,23 +110,21 @@ async function postHandler(request) {
     const confirm = String(rawConfirm || "").trim();
     if (pin !== confirm) return fail("PIN and Confirm PIN do not match", 400);
 
-    // Check username uniqueness (case-insensitive)
-    const existingByUsername = await Staff.findOne({ username: { $regex: `^${username}$`, $options: "i" }, role: "WAITER" });
+    // Check username uniqueness (case-insensitive) per role
+    const existingByUsername = await Staff.findOne({ username: { $regex: `^${username}$`, $options: "i" }, role: createRole });
     if (existingByUsername) return fail("Username already exists.", 409);
-    // Also check name uniqueness if needed? Name is unique per role, but we allow same name different case? Prevent duplicates
-    // Check if same username as existing name (legacy)
-    const existingByName = await Staff.findOne({ name: { $regex: `^${username}$`, $options: "i" }, role: "WAITER" });
+    const existingByName = await Staff.findOne({ name: { $regex: `^${username}$`, $options: "i" }, role: createRole });
     if (existingByName && !existingByName.username) {
-      // Legacy doc where username is derived from name — treat as duplicate
       return fail("Username already exists.", 409);
     }
 
     try {
-      const doc = await Staff.create({ name, username, pinHash: hashPin(pin), role: "WAITER", isActive: true });
-      return ok({ created: true, waiter: { id: String(doc._id), name: doc.name, username: doc.username, role: doc.role, isActive: true } }, 201);
+      const doc = await Staff.create({ name, username, pinHash: hashPin(pin), role: createRole, isActive: true });
+      const key = createRole === "CASHIER" ? "cashier" : "waiter";
+      return ok({ created: true, [key]: { id: String(doc._id), name: doc.name, username: doc.username, role: doc.role, isActive: true } }, 201);
     } catch (e) {
       if (e?.code === 11000) return fail("Username already exists.", 409);
-      return fail(e.message || "Failed to create waiter", 500);
+      return fail(e.message || `Failed to create ${createRole.toLowerCase()}`, 500);
     }
   }
 
@@ -139,22 +141,23 @@ async function postHandler(request) {
     const trimmed = String(rawName).trim();
     if (!trimmed) return fail("Invalid username", 400);
     const lower = trimmed.toLowerCase();
-    staff = await Staff.findOne({ username: lower, role: "WAITER" });
-    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: "WAITER" });
-    if (!staff) staff = await Staff.findOne({ name: trimmed, role: "WAITER" });
-    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: "WAITER" });
+    staff = await Staff.findOne({ username: lower, role: { $in: ["WAITER", "CASHIER"] } });
+    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
+    if (!staff) staff = await Staff.findOne({ name: trimmed, role: { $in: ["WAITER", "CASHIER"] } });
+    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
   }
-  if (!staff) return fail("Waiter not found", 404);
-  if (staff.role !== "WAITER") return fail("Only WAITER accounts can be deleted via this endpoint", 400);
+  if (!staff) return fail("Staff not found", 404);
+  if (!["WAITER", "CASHIER"].includes(staff.role)) return fail("Only WAITER or CASHIER accounts can be disabled via this endpoint", 400);
   if (staff.isActive === false) return fail("Account already disabled", 409);
 
   staff.isActive = false;
   await staff.save();
 
-  return ok({ deleted: true, disabled: true, waiter: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, isActive: false } }, 200);
+  const key = staff.role === "CASHIER" ? "cashier" : "waiter";
+  return ok({ deleted: true, disabled: true, [key]: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, role: staff.role, isActive: false } }, 200);
 }
 
-// DELETE /api/manager/waiters — disable/delete waiter (soft-disable)
+// DELETE /api/manager/waiters — disable/delete waiter (soft-disable) — also handles CASHIER
 async function deleteHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
   if (!auth.ok) return fail(auth.error, auth.status);
@@ -191,17 +194,18 @@ async function deleteHandler(request) {
     const trimmed = String(rawName).trim();
     if (!trimmed) return fail("Invalid username", 400);
     const lower = trimmed.toLowerCase();
-    staff = await Staff.findOne({ username: lower, role: "WAITER" });
-    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: "WAITER" });
-    if (!staff) staff = await Staff.findOne({ name: trimmed, role: "WAITER" });
-    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: "WAITER" });
+    staff = await Staff.findOne({ username: lower, role: { $in: ["WAITER", "CASHIER"] } });
+    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
+    if (!staff) staff = await Staff.findOne({ name: trimmed, role: { $in: ["WAITER", "CASHIER"] } });
+    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
   }
-  if (!staff) return fail("Waiter not found", 404);
-  if (staff.role !== "WAITER") return fail("Only WAITER accounts can be deleted via this endpoint", 400);
+  if (!staff) return fail("Staff not found", 404);
+  if (!["WAITER", "CASHIER"].includes(staff.role)) return fail("Only WAITER or CASHIER accounts can be disabled via this endpoint", 400);
   if (staff.isActive === false) return fail("Account already disabled", 409);
   staff.isActive = false;
   await staff.save();
-  return ok({ deleted: true, disabled: true, waiter: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, isActive: false } }, 200);
+  const key = staff.role === "CASHIER" ? "cashier" : "waiter";
+  return ok({ deleted: true, disabled: true, [key]: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, role: staff.role, isActive: false } }, 200);
 }
 
 export const GET = withApi(getHandler);

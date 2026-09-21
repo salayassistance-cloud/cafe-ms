@@ -9,7 +9,7 @@ const WaiterUI = dynamic(() => import('@/app/components/WaiterUI'), {
 
 export default function WaiterPage() {
   return (
-    <div className="w-full md:max-w-[420px] lg:max-w-[440px] mx-auto h-[100dvh] max-h-[100dvh] md:h-[100vh] md:max-h-[100vh] min-h-[100dvh] overflow-hidden bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col md:shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.05)] md:rounded-[10px] relative">
+    <div className="w-full max-w-[440px] lg:max-w-none lg:w-full xl:max-w-none mx-auto lg:mx-0 h-[100dvh] max-h-[100dvh] md:h-[100vh] md:max-h-[100vh] lg:h-screen lg:max-h-screen min-h-[100dvh] overflow-hidden bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col md:shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.05)] lg:shadow-none md:rounded-[10px] lg:rounded-none relative">
       <WaiterUI />
     </div>
   );

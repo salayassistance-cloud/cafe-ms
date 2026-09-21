@@ -10,6 +10,7 @@ import { requireAuth } from "@/lib/security";
 import { can, canTransition } from "@/lib/policy";
 import { validateCreateOrderPayload, sanitizeString, validateDateString } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
+import { addisWallToUTC, getAddisParts } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -148,7 +149,7 @@ async function getHandler(request) {
   // Status - strict allowlist
   if (rawStatus) {
     const s = rawStatus.trim().toUpperCase();
-    const allowed = ["PENDING","PREPARING","READY","SERVED","PAID","CANCELLED","ARCHIVED","ACTIVE"];
+    const allowed = ["PENDING","PREPARING","READY","SERVED","PAYMENT_PENDING","PAID","CANCELLED","ARCHIVED","ACTIVE"];
     if (!allowed.includes(s)) return fail(`Invalid status: ${sanitizeString(s, { maxLen: 20 }) || "unknown"}`, 400);
     if (s === "ACTIVE") {
       query.status = { $in: ["PENDING", "PREPARING", "READY"] };
@@ -166,7 +167,8 @@ async function getHandler(request) {
 
   if (rawPayment) {
     const pm = rawPayment.trim().toUpperCase();
-    if (["CASH","TELEBIRR","NONE"].includes(pm)) query.paymentMethod = pm;
+    // TRANSFER canonical; TELEBIRR accepted for historical filter compatibility
+    if (["CASH","TRANSFER","TELEBIRR","NONE"].includes(pm)) query.paymentMethod = pm;
     else return fail("Invalid paymentMethod", 400);
   }
 
@@ -185,8 +187,8 @@ async function getHandler(request) {
   } else if (role === "KITCHEN" || role === "BARISTA") {
     // KDS/Barista sees by station (items.type) via dest filter, not by waiter ownership — ignore waiter filters
     // (client waiter params are ignored for these roles)
-  } else if (role === "MANAGER") {
-    // Manager may filter by waiter if explicitly requested (auditable)
+  } else if (role === "MANAGER" || role === "CASHIER") {
+    // Manager/Cashier may filter by waiter if explicitly requested (auditable) — Cashier needs pending queue across all waiters
     if (rawWaiterName) {
       const sanitized = sanitizeString(rawWaiterName, { maxLen: 50 });
       if (!sanitized) return fail("Invalid waiterName", 400);
@@ -204,23 +206,24 @@ async function getHandler(request) {
 
   if (rawDate) {
     const dateStr = rawDate.trim();
-    // Strict YYYY-MM-DD only - prevents injection via Date parsing
+    // Strict YYYY-MM-DD as Addis Ababa business day (half-open [00:00, next 00:00) Addis)
+    // Language-agnostic: same instant regardless of browser TZ; uses Africa/Addis_Ababa
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
     if (!m) return fail("Invalid date format (use YYYY-MM-DD)", 400);
     const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
     if (mo < 1 || mo > 12 || d < 1 || d > 31) return fail("Invalid date", 400);
-    const start = new Date(y, mo - 1, d);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(y, mo - 1, d);
-    end.setHours(23, 59, 59, 999);
-    // Verify date didn't overflow (e.g. Feb 30)
-    if (start.getMonth() !== mo - 1 || start.getDate() !== d) return fail("Invalid date", 400);
+    const start = addisWallToUTC(y, mo, d, 0, 0, 0, 0);
+    const end = addisWallToUTC(y, mo, d, 23, 59, 59, 999);
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return fail("Invalid date", 400);
+    // Verify date didn't overflow (e.g. Feb 30) via Addis parts
+    const parts = getAddisParts(start);
+    if (parts.month !== mo || parts.day !== d) return fail("Invalid date", 400);
     query.createdAt = { $gte: start, $lte: end };
   }
 
   // Optimized: select only needed fields, lean, indexed sort
   const orders = await Order.find(query)
-    .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal")
+    .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod paymentAccountId paymentAccountSnapshot paymentSubmittedAt paymentSubmittedBy paymentVerifiedAt paymentVerifiedBy paymentRejectedAt paymentRejectedBy paymentRejectionReason createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal")
     .sort({ createdAt: -1 })
     .limit(200) // safety cap - prevents huge payload DoS
     .lean();

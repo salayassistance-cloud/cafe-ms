@@ -68,6 +68,57 @@ export default function InventoryUI() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
 
+  // Receive Stock
+  const [showReceive, setShowReceive] = useState(false);
+  const [receiveForm, setReceiveForm] = useState({ itemId: '', quantity: '', unitCost: '', unit: '', supplier: '', notes: '' });
+  const [receiveBusy, setReceiveBusy] = useState(false);
+  const [receiveError, setReceiveError] = useState('');
+
+  // Idempotency draft persistence — scoped to active receiving draft, survives reload for transient/ambiguous retry
+  // Cleared only on confirmed success or explicit Cancel/Close. Fingerprint prevents silently reusing a key for a changed payload.
+  const RECEIVE_DRAFT_STORAGE_KEY = 'bono:receive:draft';
+  const receiveFingerprint = useCallback((form) => {
+    const itemId = String(form.itemId || '').trim();
+    const qty = Number(form.quantity);
+    const uc = Number(form.unitCost);
+    const rounded = Number.isFinite(uc) ? Math.round(uc * 100) / 100 : uc;
+    const unit = String(form.unit || '').trim().toLowerCase();
+    const supplier = String(form.supplier || '').trim();
+    return `${itemId}|${Number.isFinite(qty) ? qty : form.quantity}|${unit}|${Number.isFinite(rounded) ? rounded : form.unitCost}|${supplier}`;
+  }, []);
+  const loadReceiveDraft = useCallback(() => {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage) return null;
+      const raw = window.sessionStorage.getItem(RECEIVE_DRAFT_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const saveReceiveDraft = useCallback((key, fp) => {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage) return;
+      if (!key) window.sessionStorage.removeItem(RECEIVE_DRAFT_STORAGE_KEY);
+      else window.sessionStorage.setItem(RECEIVE_DRAFT_STORAGE_KEY, JSON.stringify({ key, fp }));
+    } catch {}
+  }, []);
+  const clearReceiveDraft = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) window.sessionStorage.removeItem(RECEIVE_DRAFT_STORAGE_KEY);
+    } catch {}
+  }, []);
+  // Hydrate draft key via lazy initializer (no cascading effect; survives reload for transient/503 retry)
+  const [receiveIdempotencyKey, setReceiveIdempotencyKey] = useState(() => {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage) return '';
+      const raw = window.sessionStorage.getItem(RECEIVE_DRAFT_STORAGE_KEY);
+      const draft = raw ? JSON.parse(raw) : null;
+      return draft?.key && typeof draft.key === 'string' ? draft.key : '';
+    } catch {
+      return '';
+    }
+  });
+
   // Edit Item
   const [editItem, setEditItem] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', category: '', unit: '', minimumStock: '', cost: '', status: '' });
@@ -214,12 +265,16 @@ export default function InventoryUI() {
   }, []);
 
   useEffect(() => {
-    fetchItems();
-    fetchSuppliers();
-    fetchRecipes();
-    fetchMenu();
-    fetchDashboard();
-    fetchFoodCost();
+    // Defer initial data load to avoid cascading render; callbacks set state outside direct effect body (subscription pattern)
+    const timeoutId = setTimeout(() => {
+      fetchItems();
+      fetchSuppliers();
+      fetchRecipes();
+      fetchMenu();
+      fetchDashboard();
+      fetchFoodCost();
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [fetchItems, fetchSuppliers, fetchRecipes, fetchMenu, fetchDashboard, fetchFoodCost]);
 
   useEffect(() => {
@@ -265,6 +320,110 @@ export default function InventoryUI() {
       setAddError(err?.message || 'Failed to add item');
     } finally {
       setAddBusy(false);
+    }
+  };
+
+  const handleReceive = async (e) => {
+    e.preventDefault();
+    setReceiveError('');
+    if (!receiveForm.itemId) {
+      setReceiveError('Select an inventory item');
+      return;
+    }
+    const qty = Number(receiveForm.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setReceiveError('quantity must be number > 0');
+      return;
+    }
+    const uc = Number(receiveForm.unitCost);
+    if (!Number.isFinite(uc) || uc < 0) {
+      setReceiveError('unitCost must be number >= 0');
+      return;
+    }
+    // Idempotency key lifecycle: reuse for transient/ambiguous retry, but never silently reuse for a changed payload
+    // Fingerprint guards: if item/qty/unit/cost/supplier changed, old key is invalid and a new one is generated
+    const currentFp = receiveFingerprint({ itemId: receiveForm.itemId, quantity: receiveForm.quantity, unit: receiveForm.unit, unitCost: receiveForm.unitCost, supplier: receiveForm.supplier });
+    let key = receiveIdempotencyKey;
+    let storedFp = null;
+    try {
+      const draft = loadReceiveDraft();
+      if (draft?.key && draft?.fp) storedFp = draft.fp;
+      // If we have a stored key but fingerprint changed, discard old key (prevents 409 on changed payload retry)
+      if (key && storedFp && storedFp !== currentFp) {
+        key = '';
+      } else if (!key && draft?.key && draft.fp === currentFp) {
+        // Hydrate from sessionStorage after reload — same logical receipt
+        key = draft.key;
+        setReceiveIdempotencyKey(key);
+      }
+    } catch {}
+    if (!key) {
+      try {
+        key = crypto.randomUUID();
+      } catch {
+        key = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      setReceiveIdempotencyKey(key);
+      saveReceiveDraft(key, currentFp);
+    } else {
+      // Keep fingerprint in sync for current draft
+      saveReceiveDraft(key, currentFp);
+    }
+    setReceiveBusy(true);
+    try {
+      const payload = {
+        itemId: receiveForm.itemId,
+        quantity: qty,
+        unitCost: uc,
+        unit: receiveForm.unit.trim() || undefined,
+        supplier: receiveForm.supplier || undefined,
+        notes: receiveForm.notes.trim() || undefined,
+      };
+      const data = await safeFetchJson('/api/inventory/receive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      // Handle replay vs new: both are success, refresh only after confirmed
+      if (data?.data?.replayed) {
+        setSuccessMsg(`Already received — replayed ${data.data.movement.quantity} ${data.data.movement.unit || ''}`);
+      } else {
+        setSuccessMsg(`Received ${qty} — new stock ${data?.data?.newStock ?? ''}`);
+      }
+      setShowReceive(false);
+      setReceiveForm({ itemId: '', quantity: '', unitCost: '', unit: '', supplier: '', notes: '' });
+      setReceiveIdempotencyKey('');
+      clearReceiveDraft();
+      fetchItems();
+    } catch (err) {
+      const status = err?.status;
+      const msg = err?.message || '';
+      if (status === 409) {
+        // Same key + different payload: instruct new key for new receipt, clear draft fingerprint so next submit generates fresh key
+        if (/different payload/i.test(msg)) {
+          setReceiveError(`${msg} — change was detected; a new receipt will use a new Idempotency-Key. Review payload before retrying.`);
+          clearReceiveDraft();
+          setReceiveIdempotencyKey('');
+        } else {
+          setReceiveError(msg || 'Idempotency-Key already used with different payload — use a new key for a new receipt');
+          // Keep key for user to decide, but draft remains for explicit retry of same payload
+        }
+      } else if (status === 503 || status >= 500) {
+        // Includes new 503 "Receipt status unknown — retry with the same Idempotency-Key to confirm."
+        // Keep same key (and draft) for retry — survives reload via sessionStorage
+        setReceiveError(`${msg || 'Server error'} — retry with same Idempotency-Key to avoid duplicate`);
+        saveReceiveDraft(key, currentFp);
+      } else if (status === 400) {
+        // Validation never wrote to DB — safe to keep key if payload will be retried with same fingerprint (after fixing other fields)
+        // But if fingerprint changed on next attempt, handleReceive will auto-generate new key
+        setReceiveError(msg || 'Failed to receive stock');
+        saveReceiveDraft(key, currentFp);
+      } else {
+        setReceiveError(msg || 'Failed to receive stock');
+        saveReceiveDraft(key, currentFp);
+      }
+    } finally {
+      setReceiveBusy(false);
     }
   };
 
@@ -536,13 +695,14 @@ export default function InventoryUI() {
 
         {/* Tabs */}
         <div className="card-elevated rounded-2xl p-2 bg-[var(--c-card)]">
-          <nav className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" aria-label="Inventory tabs">
+          <nav role="tablist" className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" aria-label="Inventory tabs">
             {TABS.map((tab) => {
               const active = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
                   type="button"
+                  role="tab"
                   onClick={() => setActiveTab(tab.key)}
                   aria-selected={active}
                   className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide border transition-all tactile ${
@@ -608,10 +768,59 @@ export default function InventoryUI() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingItems ? '…' : `${items.length} items`}</span>
+                  <button type="button" onClick={() => { const willOpen = !showReceive; setShowReceive((v) => !v); if (willOpen) { setReceiveIdempotencyKey(''); setReceiveError(''); clearReceiveDraft(); } else { setReceiveError(''); } }} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">{showReceive ? 'Close Receive' : 'Receive Stock'}</button>
                   <button type="button" onClick={() => setShowAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm tactile">{showAdd ? 'Close' : '+ Add Item'}</button>
                   <button type="button" onClick={fetchItems} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">Refresh</button>
                 </div>
               </div>
+
+              {/* Receive Stock form */}
+              {showReceive && (
+                <div className="border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/30 px-4 sm:px-5 py-4">
+                  <form onSubmit={handleReceive} className="grid gap-3 sm:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Item *</span>
+                      <select value={receiveForm.itemId} onChange={(e) => { const v = e.target.value; const it = items.find((x) => String(x._id||x.id)===String(v)); setReceiveForm({ ...receiveForm, itemId: v, unit: it ? it.unit : receiveForm.unit }); }} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
+                        <option value="">Select item</option>
+                        {items.map((it) => (
+                          <option key={it._id||it.id} value={it._id||it.id}>{it.name} — {it.unit} (stock {it.currentStock})</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Quantity *</span>
+                      <input type="number" min="0.01" step="0.01" value={receiveForm.quantity} onChange={(e) => setReceiveForm({ ...receiveForm, quantity: e.target.value })} placeholder="5" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Unit Cost (ETB) *</span>
+                      <input type="number" min="0" step="0.01" value={receiveForm.unitCost} onChange={(e) => setReceiveForm({ ...receiveForm, unitCost: e.target.value })} placeholder="10.50" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Unit</span>
+                      <input value={receiveForm.unit} onChange={(e) => setReceiveForm({ ...receiveForm, unit: e.target.value })} placeholder={items.find((x)=>String(x._id||x.id)===String(receiveForm.itemId))?.unit || "kg"} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Supplier</span>
+                      <select value={receiveForm.supplier} onChange={(e) => setReceiveForm({ ...receiveForm, supplier: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
+                        <option value="">No supplier</option>
+                        {suppliers.map((s) => (
+                          <option key={s._id||s.id} value={s._id||s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block sm:col-span-3">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Notes</span>
+                      <input value={receiveForm.notes} onChange={(e) => setReceiveForm({ ...receiveForm, notes: e.target.value })} placeholder="Invoice #123, delivery notes" maxLength={500} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <div className="sm:col-span-3 flex items-center gap-2">
+                      <button type="submit" disabled={receiveBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm disabled:opacity-50 tactile">{receiveBusy ? 'Receiving…' : 'Submit Receipt'}</button>
+                      <button type="button" onClick={() => { setShowReceive(false); setReceiveError(''); setReceiveIdempotencyKey(''); clearReceiveDraft(); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
+                      {receiveError && <span className="text-xs font-semibold text-[#DC2626]">{receiveError}</span>}
+                    </div>
+                    <p className="sm:col-span-3 text-[11px] font-medium text-[var(--c-muted)]">Idempotency-Key is auto-generated per receipt, reused on retry (survives reload via sessionStorage) and invalidated if item/qty/unit/cost/supplier changes. 503 Unknown → retry with same key. New receipt → new key. Draft cleared on success/Cancel.</p>
+                  </form>
+                </div>
+              )}
 
               {/* Add Item form */}
               {showAdd && (

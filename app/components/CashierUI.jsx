@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { safeFetchJson } from '@/lib/clientFetch';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
@@ -19,8 +20,10 @@ const FILTERS = [
   { key: 'READY', label: 'Ready' },
   { key: 'PREPARING', label: 'Preparing' },
   { key: 'PENDING', label: 'Pending' },
+  { key: 'PAYMENT_PENDING', label: 'Payment Pending' },
   { key: 'PAID', label: 'Paid' },
   { key: 'CANCELLED', label: 'Cancelled' },
+  { key: 'ARCHIVED', label: 'Archived' },
 ];
 
 const STATUS_META = {
@@ -28,22 +31,38 @@ const STATUS_META = {
   PREPARING: { label: 'PREPARING', cls: 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white shadow-sm' },
   READY: { label: 'READY', cls: 'bg-[rgba(255,214,0,0.14)] dark:bg-[rgba(255,94,0,0.12)] text-[#8A6D00] dark:text-[#FF8A3D] border border-[#FFD600]/20 dark:border-[#FF5E00]/20' },
   SERVED: { label: 'SERVED', cls: 'bg-white dark:bg-[#1C1D24] text-[#475569] dark:text-[#94A3B8] border border-[var(--c-border-soft)]' },
+  PAYMENT_PENDING: { label: 'PAYMENT PENDING', cls: 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#7C2D12] dark:text-[#FDBA74] border border-[#FDE68A] dark:border-[#7C2D12]' },
   PAID: { label: 'PAID', cls: 'bg-[#1E293B] text-white dark:bg-white dark:text-[#12131A]' },
   CANCELLED: { label: 'CANCELLED', cls: 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]' },
   ARCHIVED: { label: 'ARCHIVED', cls: 'bg-[#F4F5F9] dark:bg-[#12131A] text-[#94A3B8] border border-[var(--c-border-soft)]' },
 };
 
+function statusBadge(status) {
+  const key = String(status || '').toUpperCase();
+  return STATUS_META[key] || { label: key || 'UNKNOWN', cls: 'bg-[#F4F5F9] dark:bg-[#12131A] text-[#64748B] dark:text-[#94A3B8] border border-[var(--c-border-soft)]' };
+}
+
 const PAY_META = {
   CASH: { label: 'CASH', cls: 'bg-[#1E293B] text-white dark:bg-white dark:text-[#1E293B]' },
-  TELEBIRR: { label: 'TELEBIRR', cls: 'bg-[rgba(255,214,0,0.14)] dark:bg-[rgba(255,94,0,0.12)] text-[#1E293B] dark:text-[#FF8A3D] border border-[#FFD600]/20 dark:border-[#FF5E00]/20' },
+  TRANSFER: { label: 'TRANSFER', cls: 'bg-[rgba(255,214,0,0.14)] dark:bg-[rgba(255,94,0,0.12)] text-[#1E293B] dark:text-[#FF8A3D] border border-[#FFD600]/20 dark:border-[#FF5E00]/20' },
   NONE: { label: 'UNPAID', cls: 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA] dark:bg-[#1C1D24] dark:text-[#FCA5A5] dark:border-[#2A2B36]' },
 };
 
-function statusBadge(status) {
-  return STATUS_META[status] || { label: status || 'UNKNOWN', cls: 'bg-[#F4F5F9] dark:bg-[#12131A] text-[#64748B] dark:text-[#94A3B8] border border-[var(--c-border-soft)]' };
+function normalizePayMethod(m) {
+  const v = String(m || '').toUpperCase();
+  if (v === 'TELEBIRR') return 'TRANSFER'; // legacy brand displayed as generic Transfer
+  return v || 'NONE';
 }
 function payBadge(method) {
-  return PAY_META[method] || PAY_META.NONE;
+  const norm = normalizePayMethod(method);
+  return PAY_META[norm] || PAY_META.NONE;
+}
+function payLabel(method) {
+  const norm = normalizePayMethod(method);
+  if (norm === 'TRANSFER') return 'TRANSFER';
+  if (norm === 'CASH') return 'CASH';
+  if (norm === 'NONE') return 'UNPAID';
+  return norm;
 }
 function fmtMoney(n) {
   const v = Number(n);
@@ -96,6 +115,11 @@ export default function CashierUI() {
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState('');
   const [paySuccess, setPaySuccess] = useState('');
+  // Cashier transfer workflow mirrors Waiter: same PaymentInfo source, active only
+  const [cashierMethod, setCashierMethod] = useState('CASH');
+  const [paymentAccounts, setPaymentAccounts] = useState([]);
+  const [selectedTransferAccount, setSelectedTransferAccount] = useState(null);
+  const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
 
   const refreshTimer = useRef(null);
   const selectedIdRef = useRef(selectedId);
@@ -106,8 +130,10 @@ export default function CashierUI() {
       const results = await Promise.allSettled([
         safeFetchJson('/api/orders', { cache: 'no-store' }),
         safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' }),
+        safeFetchJson('/api/orders?status=PAYMENT_PENDING', { cache: 'no-store' }),
         safeFetchJson('/api/orders?status=PAID', { cache: 'no-store' }),
         safeFetchJson('/api/orders?status=CANCELLED', { cache: 'no-store' }),
+        safeFetchJson('/api/orders?status=ARCHIVED', { cache: 'no-store' }),
       ]);
 
       const byId = new Map();
@@ -239,8 +265,38 @@ export default function CashierUI() {
     }
   }, [selected, selectedId]);
 
+  // Cashier method/account is synced in handleSelect/clearSelection (event-handler pattern, no cascading effect)
+
+  // Load same active PaymentInfo accounts as Waiter workflow (no hardcoded values, active only) — async subscription pattern
+  useEffect(() => {
+    if (!selected) return;
+    if (String(selected.status).toUpperCase() !== 'SERVED') return;
+    if (cashierMethod !== 'TRANSFER') return;
+    let cancelled = false;
+    const loadAccounts = async () => {
+      // Subscription callback sets loading; not a direct sync setState in effect body
+      if (!cancelled) setPaymentAccountsLoading(true);
+      try {
+        const data = await safeFetchJson('/api/payment-info', { cache: 'no-store' });
+        if (cancelled) return;
+        const list = data?.data?.paymentInfos || data?.paymentInfos || [];
+        const active = (Array.isArray(list) ? list : []).filter((a) => a.isActive !== false);
+        setPaymentAccounts(active);
+        if (active.length === 1) setSelectedTransferAccount(String(active[0]._id || active[0].id));
+      } catch {
+        if (!cancelled) setPaymentAccounts([]);
+      } finally {
+        if (!cancelled) setPaymentAccountsLoading(false);
+      }
+    };
+    loadAccounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, cashierMethod]);
+
   const counts = useMemo(() => {
-    const c = { ALL: orders.length, SERVED: 0, READY: 0, PREPARING: 0, PENDING: 0, PAID: 0, CANCELLED: 0 };
+    const c = { ALL: orders.length, SERVED: 0, READY: 0, PREPARING: 0, PENDING: 0, PAYMENT_PENDING: 0, PAID: 0, CANCELLED: 0, ARCHIVED: 0 };
     for (const o of orders) {
       const s = String(o.status).toUpperCase();
       if (c[s] !== undefined) c[s] += 1;
@@ -250,16 +306,33 @@ export default function CashierUI() {
   }, [orders]);
 
   const handleSelect = useCallback((id) => {
-    setSelectedId(String(id));
+    const sid = String(id);
+    setSelectedId(sid);
     setPayError('');
     setPaySuccess('');
-  }, []);
+    // Derive cashier method/account from the newly selected order (event-handler pattern, avoids setState-in-effect)
+    const order = orders.find((o) => String(o._id) === sid);
+    if (!order) {
+      setCashierMethod('CASH');
+      setSelectedTransferAccount(null);
+      return;
+    }
+    const m = normalizePayMethod(order.paymentMethod);
+    if (String(order.status).toUpperCase() === 'PAYMENT_PENDING') {
+      setCashierMethod(m === 'TRANSFER' ? 'TRANSFER' : 'CASH');
+      if (order.paymentAccountId) setSelectedTransferAccount(String(order.paymentAccountId));
+      else setSelectedTransferAccount(null);
+    } else {
+      setCashierMethod('CASH');
+      setSelectedTransferAccount(null);
+    }
+  }, [orders]);
 
+  // Cashier submit for verification (SERVED → PAYMENT_PENDING) — replaces legacy direct Mark Paid bypass.
+  // Only confirmation (PAYMENT_PENDING → PAID) marks paid. Server validates method/account and auth.
   const handlePay = useCallback(async (method) => {
     if (!selected || payBusy) return;
-    const m = method === 'TELEBIRR' ? 'TELEBIRR' : 'CASH';
-    // Guard: only allow payment for non-terminal states that backend accepts (SERVED/READY/PAID)
-    // But backend will return 400 for invalid transitions; we surface that.
+    const m = method === 'TRANSFER' ? 'TRANSFER' : 'CASH';
     if (String(selected.status).toUpperCase() === 'PAID') {
       setPayError('Order is already PAID.');
       return;
@@ -268,18 +341,24 @@ export default function CashierUI() {
       setPayError('Cancelled or archived orders cannot be paid.');
       return;
     }
+    if (m === 'TRANSFER' && !selectedTransferAccount) {
+      setPayError('Please select a transfer account.');
+      return;
+    }
     setPayBusy(true);
     setPayError('');
     setPaySuccess('');
     try {
+      const body = { status: 'PAYMENT_PENDING', paymentMethod: m };
+      if (m === 'TRANSFER') body.paymentAccountId = selectedTransferAccount;
       const data = await safeFetchJson(`/api/orders/${selected._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'PAID', paymentMethod: m }),
+        body: JSON.stringify(body),
       });
-      if (!data?.success) throw new Error(data?.error || data?.message || 'Payment failed');
+      if (!data?.success) throw new Error(data?.error || data?.message || 'Payment submit failed');
       const updated = data?.data?.order || data?.order;
-      if (!updated || !updated._id) throw new Error('Payment succeeded but response was malformed');
+      if (!updated || !updated._id) throw new Error('Submit succeeded but response was malformed');
       // Trust backend only — update list with returned order
       setOrders((prev) => {
         const idx = prev.findIndex((o) => String(o._id) === String(updated._id));
@@ -294,15 +373,107 @@ export default function CashierUI() {
         }
         return [updated, ...prev];
       });
-      setPaySuccess(`Payment confirmed — ${updated.orderNumber} marked PAID via ${m}.`);
-      setNotice(`✓ ${updated.orderNumber} PAID (${m})`);
+      setPaySuccess(`Payment submitted for verification — ${updated.orderNumber} is now PAYMENT_PENDING via ${m}. Confirm from the pending queue.`);
+      setNotice(`◷ ${updated.orderNumber} pending verification (${m})`);
+    } catch (err) {
+      const s = err?.status;
+      if (s === 401) setPayError('Session expired. Please re-login.');
+      else if (s === 403) setPayError('Forbidden — cashier authorization required.');
+      else if (s === 429) setPayError(`Too many requests. Retry after ${err?.retryAfter || 'a moment'}.`);
+      else if (s === 503) setPayError('Database unavailable. Please retry.');
+      else setPayError(err?.message ? `Submit failed: ${err.message}` : 'Submit failed. Please retry.');
+    } finally {
+      setPayBusy(false);
+    }
+  }, [selected, payBusy, selectedTransferAccount]);
+
+  const handleConfirmPending = useCallback(async () => {
+    if (!selected || payBusy) return;
+    if (String(selected.status).toUpperCase() !== 'PAYMENT_PENDING') {
+      setPayError('Only pending payments can be confirmed.');
+      return;
+    }
+    setPayBusy(true);
+    setPayError('');
+    setPaySuccess('');
+    try {
+      const data = await safeFetchJson(`/api/orders/${selected._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'PAID' }),
+      });
+      if (!data?.success) throw new Error(data?.error || data?.message || 'Confirm failed');
+      const updated = data?.data?.order || data?.order;
+      if (!updated || !updated._id) throw new Error('Confirm succeeded but response was malformed');
+      setOrders((prev) => {
+        const idx = prev.findIndex((o) => String(o._id) === String(updated._id));
+        if (idx >= 0) {
+          const nxt = [...prev];
+          nxt[idx] = updated;
+          return nxt.sort((a, b) => {
+            const da = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const db = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return db - da;
+          });
+        }
+        return [updated, ...prev];
+      });
+      setPaySuccess(`Payment verified — ${updated.orderNumber} marked PAID.`);
+      setNotice(`✓ ${updated.orderNumber} PAID (verified)`);
     } catch (err) {
       const s = err?.status;
       if (s === 401) setPayError('Session expired. Please re-login as Manager.');
-      else if (s === 403) setPayError('Forbidden — payment requires Manager authorization.');
-      else if (s === 429) setPayError(`Too many requests. Retry after ${err?.retryAfter || 'a moment'}.`);
-      else if (s === 503) setPayError('Database unavailable. Please retry.');
-      else setPayError(err?.message ? `Payment failed: ${err.message}` : 'Payment failed. Please retry.');
+      else if (s === 403) setPayError('Forbidden — confirm requires Manager (Cashier).');
+      else if (s === 409) setPayError('Payment already confirmed or not pending.');
+      else setPayError(err?.message ? `Confirm failed: ${err.message}` : 'Confirm failed. Please retry.');
+    } finally {
+      setPayBusy(false);
+    }
+  }, [selected, payBusy]);
+
+  const handleRejectPending = useCallback(async () => {
+    if (!selected || payBusy) return;
+    if (String(selected.status).toUpperCase() !== 'PAYMENT_PENDING') {
+      setPayError('Only pending payments can be rejected.');
+      return;
+    }
+    const reason = window.prompt('Reason for rejection (optional, max 500 chars):') || '';
+    if (reason && (/<script/i.test(reason) || /javascript:/i.test(reason))) {
+      setPayError('Rejection reason contains invalid characters.');
+      return;
+    }
+    setPayBusy(true);
+    setPayError('');
+    setPaySuccess('');
+    try {
+      const data = await safeFetchJson(`/api/orders/${selected._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'REJECT_PAYMENT', reason: reason || undefined }),
+      });
+      if (!data?.success) throw new Error(data?.error || data?.message || 'Reject failed');
+      const updated = data?.data?.order || data?.order;
+      if (!updated || !updated._id) throw new Error('Reject succeeded but response was malformed');
+      setOrders((prev) => {
+        const idx = prev.findIndex((o) => String(o._id) === String(updated._id));
+        if (idx >= 0) {
+          const nxt = [...prev];
+          nxt[idx] = updated;
+          return nxt.sort((a, b) => {
+            const da = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const db = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return db - da;
+          });
+        }
+        return [updated, ...prev];
+      });
+      setPaySuccess(`Payment rejected — ${updated.orderNumber} returned to SERVED.`);
+      setNotice(`↩ ${updated.orderNumber} rejected`);
+    } catch (err) {
+      const s = err?.status;
+      if (s === 401) setPayError('Session expired. Please re-login as Manager.');
+      else if (s === 403) setPayError('Forbidden — reject requires Manager.');
+      else setPayError(err?.message ? `Reject failed: ${err.message}` : 'Reject failed. Please retry.');
     } finally {
       setPayBusy(false);
     }
@@ -312,6 +483,8 @@ export default function CashierUI() {
     setSelectedId(null);
     setPayError('');
     setPaySuccess('');
+    setCashierMethod('CASH');
+    setSelectedTransferAccount(null);
   }, []);
 
   if (!hasMounted) {
@@ -324,8 +497,9 @@ export default function CashierUI() {
 
   const selStatus = selected ? String(selected.status).toUpperCase() : null;
   const selIsPaid = selStatus === 'PAID';
+  const selIsPaymentPending = selStatus === 'PAYMENT_PENDING';
   const selIsCancelled = selStatus === 'CANCELLED' || selStatus === 'ARCHIVED';
-  const selIsUnpaid = selected && !selIsPaid && !selIsCancelled;
+  const selIsUnpaid = selected && !selIsPaid && !selIsCancelled && !selIsPaymentPending;
   // Reliable receipt only when we have orderNumber, items, totalAmount, createdAt
   const canShowReceipt = !!(selected && selected.orderNumber && Array.isArray(selected.items) && Number.isFinite(Number(selected.totalAmount)));
 
@@ -360,13 +534,13 @@ export default function CashierUI() {
             </span>
             <LanguageToggle />
             <ThemeToggleHome />
-            <a
+            <Link
               href="/"
               aria-label="Back to home"
               className="hidden sm:inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile"
             >
               Home
-            </a>
+            </Link>
           </div>
         </div>
       </header>
@@ -557,6 +731,9 @@ export default function CashierUI() {
                     {selected.updatedAt && selected.updatedAt !== selected.createdAt && (
                       <p className="text-[11px] font-medium text-[var(--c-faint)]">Updated {fmtDate(selected.updatedAt)}</p>
                     )}
+                    {selected.paymentRejectedAt && String(selected.status).toUpperCase() === 'SERVED' && (
+                      <p className="mt-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">Returned to waiter{selected.paymentRejectionReason ? `: ${selected.paymentRejectionReason}` : ''} — waiting for resubmission</p>
+                    )}
                   </div>
                   <button type="button" onClick={clearSelection} className="shrink-0 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] tactile">Close</button>
                 </div>
@@ -573,30 +750,65 @@ export default function CashierUI() {
                         const qty = Number(it.quantity) || 0;
                         const price = Number(it.price) || 0;
                         const sub = Number(it.subTotal ?? price * qty);
+                        const isCancelled = !!it.cancelled;
                         return (
-                          <div key={`${selected._id}-it-${idx}`} className="flex items-start gap-3 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] px-3 py-2.5">
-                            <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--c-accent)] text-[#1E293B] dark:text-white text-xs font-black">{qty}</span>
+                          <div key={`${selected._id}-it-${it.lineId || idx}`} className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${isCancelled ? 'border-[#FECACA] bg-[#FEF2F2] dark:border-[#7F1D1D] dark:bg-[#1C1D24] opacity-80' : 'border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A]'}`}>
+                            <span className={`flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${isCancelled ? 'bg-[#FECACA] text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white' : 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white'}`}>{qty}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-bold text-[var(--c-text)]" title={nm}>{nm}</p>
-                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} · {fmtMoney(price)} each {it.isExternal ? '· External' : ''}</p>
+                              <p className={`truncate text-sm font-bold ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`} title={nm}>{nm}{isCancelled ? ' · Cancelled' : ''}</p>
+                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} · {fmtMoney(price)} each {it.isExternal ? '· Legacy External' : ''}{isCancelled ? ` · ${it.cancelledStation || 'Station'}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
+                              {isCancelled && it.cancelledAt && <p className="text-[10px] text-[#991B1B] dark:text-[#FCA5A5]">Cancelled {fmtDate(it.cancelledAt)} {fmtTime(it.cancelledAt)}</p>}
+                              {Array.isArray(it.components) && it.components.length > 0 && (
+                                <ul className="mt-1 space-y-0.5">
+                                  {it.components.map((c, ci) => (
+                                    <li key={`${it.lineId || idx}-c-${ci}`} className={`truncate text-xs ${c.kind === "NOTE" ? "italic text-[#92400E] dark:text-[#FDBA74]" : "font-medium text-[var(--c-text)]"}`}>
+                                      {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${fmtMoney(c.unitPrice)} = ${fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}${c.inventoryItemId ? " · linked" : ""}`}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </div>
-                            <span className="shrink-0 text-sm font-black text-[var(--c-text)]">{fmtMoney(sub)}</span>
+                            <span className={`shrink-0 text-sm font-black ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`}>{fmtMoney(sub + (it.components||[]).filter(c=>c.kind==="PRICED_COMPONENT").reduce((s,c)=>s+(Number(c.lineSum)||0),0))}</span>
                           </div>
                         );
                       })}
                     </div>
                   )}
 
-                  {/* Totals — only from reliable totalAmount */}
+                  {/* Totals — gross vs net payable (cancelled excluded) */}
                   <div className="mt-4 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] p-3 sm:p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Total</span>
-                      <span className="text-xl sm:text-2xl font-black text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</span>
-                    </div>
+                    {(() => {
+                      const gross = Number(selected.totalAmount) || 0;
+                      const net = Number(selected.netAmount ?? gross);
+                      const cancelled = Number(selected.cancelledAmount ?? gross - net);
+                      const hasCancelled = cancelled > 0.001;
+                      return (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{hasCancelled ? 'Payable (Net)' : 'Total'}</span>
+                            <span className="text-xl sm:text-2xl font-black text-[var(--c-text)]">{fmtMoney(hasCancelled ? net : gross)}</span>
+                          </div>
+                          {hasCancelled && (
+                            <div className="mt-1 flex items-center justify-between text-xs font-semibold text-[#DC2626] dark:text-[#FCA5A5]">
+                              <span>Gross {fmtMoney(gross)} · Cancelled {fmtMoney(cancelled)}</span>
+                              <span className="rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2 py-0.5 text-[10px] font-black">CANCELLED LINES EXCLUDED</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--c-muted)]">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black uppercase ${payBadge(selected.paymentMethod).cls}`}>{payBadge(selected.paymentMethod).label}</span>
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black uppercase ${payBadge(selected.paymentMethod).cls}`}>{payLabel(selected.paymentMethod)}</span>
                       {selected.paymentMethod && String(selected.paymentMethod).toUpperCase() !== 'NONE' && (
-                        <span>· Method: <strong className="text-[var(--c-text)]">{selected.paymentMethod}</strong></span>
+                        <span>· Method: <strong className="text-[var(--c-text)]">{payLabel(selected.paymentMethod)}</strong></span>
+                      )}
+                      {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-bold text-[var(--c-text)]">
+                          🏦 {selected.paymentAccountSnapshot.bankName} · {selected.paymentAccountSnapshot.ownerName} · {selected.paymentAccountSnapshot.accountNumber}
+                        </span>
+                      )}
+                      {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && !selected.paymentAccountSnapshot && selIsPaid && (
+                        <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-bold text-[#92400E]">Legacy transfer — account unknown</span>
                       )}
                       {selIsPaid && selected.paidAt && <span>· Paid {fmtDate(selected.paidAt)} {fmtTime(selected.paidAt) && `at ${fmtTime(selected.paidAt)}`}</span>}
                       {selIsCancelled && <span className="text-[#DC2626]">· Voided</span>}
@@ -643,8 +855,19 @@ export default function CashierUI() {
                 {selIsPaid ? (
                   <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] dark:bg-[#1C1D24] dark:border-[#2A2B36] p-4">
                     <p className="text-sm font-black text-[#15803D] dark:text-[#86EFAC]">This ticket is PAID — no further payment required.</p>
-                    <p className="mt-1 text-xs font-medium text-[#15803D]/80 dark:text-[#94A3B8]">Backend confirmed <strong>{selected.paymentMethod}</strong> at {fmtDate(selected.paidAt)}. Buttons are disabled to prevent duplicate settlement.</p>
+                    <p className="mt-1 text-xs font-medium text-[#15803D]/80 dark:text-[#94A3B8]">Backend confirmed <strong>{payLabel(selected.paymentMethod)}</strong>{selected.paymentAccountSnapshot ? ` · ${selected.paymentAccountSnapshot.bankName} · ${selected.paymentAccountSnapshot.ownerName}` : ""} at {fmtDate(selected.paidAt)}. Buttons are disabled to prevent duplicate settlement.</p>
                     {canShowReceipt && <p className="mt-2 text-xs font-bold text-[var(--c-muted)]">Receipt preview below is printable.</p>}
+                  </div>
+                ) : selIsPaymentPending ? (
+                  <div className="rounded-xl border border-[#FEF3C7] bg-[#FEF3C7]/50 dark:bg-[#7C2D12]/30 dark:border-[#7C2D12] p-4">
+                    <p className="text-sm font-black text-[#92400E] dark:text-[#FDBA74]">Payment pending verification — {payLabel(selected.paymentMethod)} {selected.paymentAccountSnapshot ? `· ${selected.paymentAccountSnapshot.bankName} · ${selected.paymentAccountSnapshot.ownerName} · ${selected.paymentAccountSnapshot.accountNumber}` : ""}</p>
+                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">Submitted {selected.paymentSubmittedAt ? fmtDate(selected.paymentSubmittedAt) : ""} {selected.paymentSubmittedAt ? fmtTime(selected.paymentSubmittedAt) : ""} — verify receipt before confirming.</p>
+                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">Amount: <strong>{fmtMoney(selected.totalAmount)}</strong> (net {fmtMoney(selected.netAmount ?? selected.totalAmount)})</p>
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button type="button" onClick={handleConfirmPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl bg-[#16A34A] text-white px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50 tactile">✓ Confirm PAID</button>
+                      <button type="button" onClick={handleRejectPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-white text-[#DC2626] px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50 tactile">↩ Reject / Return</button>
+                    </div>
+                    <p className="mt-2 text-[11px] font-medium text-[#92400E]/70 dark:text-[#FDBA74]/70">Confirm sets paidAt and verifiedBy using server identity; no client amount trusted. Reject returns to SERVED for correction.</p>
                   </div>
                 ) : selIsCancelled ? (
                   <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-4">
@@ -654,32 +877,51 @@ export default function CashierUI() {
                 ) : (
                   <>
                     <p className="text-sm font-medium text-[var(--c-muted)] mb-3">
-                      Settle <strong className="text-[var(--c-text)]">{selected.orderNumber}</strong> for <strong className="text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</strong>. Amount is taken directly from the order&apos;s stored <code className="rounded bg-[var(--c-bg)] px-1 py-0.5 text-xs">totalAmount</code> — no manual entry.
+                      Submit <strong className="text-[var(--c-text)]">{selected.orderNumber}</strong> for <strong className="text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</strong> for verification. Amount is taken directly from the order&apos;s stored <code className="rounded bg-[var(--c-bg)] px-1 py-0.5 text-xs">totalAmount</code> — no manual entry. Only confirmation marks PAID.
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="mb-3 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => { setCashierMethod('CASH'); setPayError(''); }} aria-pressed={cashierMethod === 'CASH'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border tactile ${cashierMethod === 'CASH' ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Cash</button>
+                      <button type="button" onClick={() => { setCashierMethod('TRANSFER'); setPayError(''); }} aria-pressed={cashierMethod === 'TRANSFER'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border tactile ${cashierMethod === 'TRANSFER' ? 'bg-[#1E293B] dark:bg-white text-white dark:text-[#12131A] border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Transfer</button>
+                    </div>
+                    {cashierMethod === 'TRANSFER' && (
+                      <div className="mb-3 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] p-3">
+                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Transfer account — active only</p>
+                        {paymentAccountsLoading ? (
+                          <p className="py-2 text-center text-xs font-medium text-[var(--c-muted)]">Loading accounts…</p>
+                        ) : paymentAccounts.length === 0 ? (
+                          <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">No active transfer accounts. Contact manager.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {paymentAccounts.map((acc) => {
+                              const accId = String(acc._id || acc.id);
+                              const sel = selectedTransferAccount === accId;
+                              return (
+                                <button key={accId} type="button" onClick={() => setSelectedTransferAccount(accId)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left tactile ${sel ? 'border-[var(--c-accent)] bg-white dark:bg-[#1C1D24]' : 'border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24]'}`}>
+                                  <span className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${sel ? 'border-[var(--c-accent)]' : 'border-[var(--c-border-soft)]'}`}>{sel && <span className="h-2 w-2 rounded-full bg-[var(--c-accent)]" />}</span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-xs font-bold text-[var(--c-text)]">{acc.bankName} · {acc.ownerName}</span>
+                                    <span className="block truncate text-[11px] font-medium text-[var(--c-muted)]">{acc.accountNumber}</span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-3">
                       <button
                         type="button"
-                        onClick={() => handlePay('CASH')}
-                        disabled={payBusy}
-                        aria-disabled={payBusy}
+                        onClick={() => handlePay(cashierMethod)}
+                        disabled={payBusy || (cashierMethod === 'TRANSFER' && !selectedTransferAccount)}
+                        aria-disabled={payBusy || (cashierMethod === 'TRANSFER' && !selectedTransferAccount)}
                         className="flex items-center justify-center gap-2 rounded-xl bg-[var(--c-accent)] text-[#1E293B] dark:text-white px-4 py-3.5 text-sm font-black uppercase tracking-wide shadow-sm disabled:opacity-50 disabled:cursor-not-allowed tactile"
                       >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/90 dark:bg-white text-[#1E293B] text-sm">₵</span>
-                        {payBusy ? 'Processing…' : 'Cash — Mark Paid'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handlePay('TELEBIRR')}
-                        disabled={payBusy}
-                        aria-disabled={payBusy}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-[#1E293B] dark:bg-white text-white dark:text-[#12131A] px-4 py-3.5 text-sm font-black uppercase tracking-wide shadow-sm disabled:opacity-50 disabled:cursor-not-allowed tactile"
-                      >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 dark:bg-[#1E293B]/10 text-white dark:text-[#12131A] text-xs font-black">Tx</span>
-                        {payBusy ? 'Processing…' : 'Telebirr — Mark Paid'}
+                        {payBusy ? 'Processing…' : cashierMethod === 'CASH' ? 'Submit Cash for Verification' : 'Submit Transfer for Verification'}
                       </button>
                     </div>
                     <p className="mt-3 text-[11px] font-medium text-[var(--c-muted)]">
-                      Payment is recorded via <code className="rounded bg-[var(--c-bg)] px-1 py-0.5">PATCH /api/orders/{String(selected._id).slice(0, 8)}… {"{status:'PAID', paymentMethod}"}</code>. Success is shown only after the backend returns the updated order. Duplicate taps are blocked while processing.
+                      Submit creates <code className="rounded bg-[var(--c-bg)] px-1 py-0.5">PAYMENT_PENDING</code> for verification. Only Confirm marks PAID. Success is shown only after the backend returns the updated order.
                     </p>
                   </>
                 )}
@@ -709,21 +951,36 @@ export default function CashierUI() {
                       </div>
                       <div className="space-y-1">
                         {(selected.items || []).map((it, i) => (
-                          <div key={`rcpt-${i}`} className="flex gap-2">
-                            <span className="shrink-0 w-6 text-right font-bold">{Number(it.quantity)}×</span>
-                            <span className="flex-1 truncate font-medium" title={itemNameOf(it, lang)}>{itemNameOf(it, lang)}</span>
-                            <span className="shrink-0 w-20 text-right font-bold">{fmtMoney(Number(it.subTotal ?? Number(it.price) * Number(it.quantity)))}</span>
+                          <div key={`rcpt-${i}`}>
+                            <div className={`flex gap-2 ${it.cancelled ? "line-through text-[#DC2626]" : ""}`}>
+                              <span className="shrink-0 w-6 text-right font-bold">{Number(it.quantity)}×</span>
+                              <span className="flex-1 truncate font-medium" title={itemNameOf(it, lang)}>{itemNameOf(it, lang)}{it.cancelled ? " (Cancelled)" : ""}</span>
+                              <span className="shrink-0 w-20 text-right font-bold">{fmtMoney(Number(it.subTotal ?? Number(it.price) * Number(it.quantity)))}</span>
+                            </div>
+                            {Array.isArray(it.components) && it.components.map((c, ci) => (
+                              <div key={`rcpt-${i}-c-${ci}`} className={`ml-6 flex gap-2 text-[11px] ${c.kind === "NOTE" ? "italic text-[#92400E]" : "font-medium text-[var(--c-muted)]"}`}>
+                                <span className="shrink-0 w-6 text-right">{c.kind === "NOTE" ? "·" : `${c.quantity}×`}</span>
+                                <span className="flex-1 truncate" title={c.kind === "NOTE" ? c.note : c.name}>{c.kind === "NOTE" ? c.note : c.name}</span>
+                                <span className="shrink-0 w-20 text-right font-bold">{c.kind === "NOTE" ? "—" : fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}</span>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
                       <div className="mt-3 border-t border-dashed border-[var(--c-border-soft)] pt-3 flex items-center justify-between font-sans font-black text-sm">
                         <span className="uppercase tracking-wide text-[var(--c-muted)]">Total</span>
-                        <span className="text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</span>
+                        <span className="text-[var(--c-text)]">{fmtMoney(Number(selected.cancelledAmount) > 0 ? selected.netAmount : selected.totalAmount)}</span>
                       </div>
+                      {Number(selected.cancelledAmount) > 0 && (
+                        <p className="mt-1 text-right font-mono text-[10px] text-[#DC2626]">Gross {fmtMoney(selected.totalAmount)} · Cancelled {fmtMoney(selected.cancelledAmount)} excluded</p>
+                      )}
                       <div className="mt-2 flex items-center justify-between text-[11px]">
                         <span className="font-bold uppercase tracking-wide text-[var(--c-muted)]">Method</span>
-                        <span className={`rounded-full px-2 py-0.5 font-black uppercase text-[10px] ${payBadge(selected.paymentMethod).cls}`}>{String(selected.paymentMethod || 'NONE')}</span>
+                        <span className={`rounded-full px-2 py-0.5 font-black uppercase text-[10px] ${payBadge(selected.paymentMethod).cls}`}>{payLabel(selected.paymentMethod)}</span>
                       </div>
+                      {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
+                        <p className="mt-1 text-right font-mono text-[10px] text-[var(--c-muted)]">🏦 {selected.paymentAccountSnapshot.bankName} · {selected.paymentAccountSnapshot.ownerName} · {selected.paymentAccountSnapshot.accountNumber}</p>
+                      )}
                       {selected.waiterName && (
                         <p className="mt-2 text-center text-[11px] font-medium text-[var(--c-muted)]">Served by {selected.waiterName}{selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''}</p>
                       )}

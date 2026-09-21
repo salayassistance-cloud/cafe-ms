@@ -6,7 +6,11 @@ import {
   updatePayment,
   serveOrder,
   payOrder,
+  submitPaymentForVerification,
+  confirmPayment,
+  rejectPayment,
   cancelOrder,
+  cancelOrderItem,
   archiveOrder,
   toKdsShape,
 } from "@/lib/orderService";
@@ -63,7 +67,7 @@ async function getHandler(request, { params }) {
     const conn = await connectToDatabase();
     const Order = getOrderModel(conn);
     const order = await Order.findOne(buildQuery(sanitizedId))
-      .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal")
+      .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod paymentAccountId paymentAccountSnapshot paymentSubmittedAt paymentSubmittedBy paymentVerifiedAt paymentVerifiedBy paymentRejectedAt paymentRejectedBy paymentRejectionReason createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal")
       .lean();
     if (!order) return fail("Order not found", 404);
     if (auth.payload.role === "WAITER" && String(order.waiterId || "") !== String(auth.payload.staffId || "")) {
@@ -106,25 +110,33 @@ async function patchHandler(request, { params }) {
   // Strict validation - Zod-like
   const validated = validateOrderStatusUpdate(body);
   if (!validated.ok) return fail(validated.error, 400);
-  const { status, action, paymentMethod } = validated.data;
+  const { status, action, paymentMethod, paymentAccountId } = validated.data;
 
+  const isCancelItem = String(action || "").toUpperCase() === "CANCEL_ITEM";
+  const isRejectPayment = String(action || "").toUpperCase() === "REJECT_PAYMENT" || String(action || "").toUpperCase() === "REJECT";
   const isArchive =
-    action !== undefined
+    action !== undefined && !isCancelItem && !isRejectPayment
       ? ARCHIVE_ALIASES.includes(String(action).toUpperCase())
       : String(status || "").toUpperCase() === "ARCHIVED";
-  const isCancel = String(action || status || "").toUpperCase() === "CANCELLED";
+  const isCancel = !isCancelItem && !isRejectPayment && String(action || status || "").toUpperCase() === "CANCELLED";
 
   // Authorization per transition — never trust client status
+  if (isCancelItem && !can(auth.payload.role, "orders:cancel:item")) return fail("Forbidden: CANCEL_ITEM requires KITCHEN/BARISTA/MANAGER", 403);
+  if (isRejectPayment && !can(auth.payload.role, "orders:payment:confirm")) return fail("Forbidden: REJECT_PAYMENT requires CASHIER/MANAGER", 403);
   if (isCancel && !canTransition(auth.payload.role, "CANCELLED")) return fail("Forbidden: CANCELLED requires MANAGER", 403);
   if (isArchive && !canTransition(auth.payload.role, "ARCHIVED")) return fail("Forbidden: ARCHIVED requires KITCHEN/BARISTA/MANAGER", 403);
-  if (status && !isArchive && !isCancel) {
+  if (status && !isArchive && !isCancel && !isCancelItem && !isRejectPayment) {
     const sUpper = String(status).toUpperCase();
-    if (["PENDING","PREPARING","READY","SERVED","PAID"].includes(sUpper) && !canTransition(auth.payload.role, sUpper)) {
-      return fail(`Forbidden: ${sUpper} requires ${sUpper==="PREPARING"||sUpper==="READY" ? "KITCHEN/BARISTA/MANAGER" : sUpper==="SERVED"||sUpper==="PAID" ? "WAITER/MANAGER" : "authorized role"}`, 403);
+    if (["PENDING","PREPARING","READY","SERVED","PAYMENT_PENDING","PAID"].includes(sUpper) && !canTransition(auth.payload.role, sUpper)) {
+      return fail(`Forbidden: ${sUpper} requires ${sUpper==="PREPARING"||sUpper==="READY" ? "KITCHEN/BARISTA/MANAGER" : sUpper==="SERVED"||sUpper==="PAYMENT_PENDING" ? "WAITER/MANAGER" : sUpper==="PAID" ? "CASHIER/MANAGER" : "authorized role"}`, 403);
     }
-    if (sUpper === "PAID" && !can(auth.payload.role, "orders:payment")) return fail("Forbidden: payment requires WAITER/MANAGER", 403);
+    if (sUpper === "PAYMENT_PENDING" && !can(auth.payload.role, "orders:payment:submit")) return fail("Forbidden: payment submit requires WAITER/MANAGER", 403);
+    if (sUpper === "PAID" && !can(auth.payload.role, "orders:payment:confirm")) return fail("Forbidden: payment confirm requires CASHIER/MANAGER", 403);
   }
-  if (paymentMethod && !status && !isArchive && !isCancel) {
+  if (paymentAccountId && !status) {
+    return fail("paymentAccountId requires status PAID", 400);
+  }
+  if (paymentMethod && !status && !isArchive && !isCancel && !isCancelItem) {
     if (!can(auth.payload.role, "orders:payment")) return fail("Forbidden: payment requires WAITER/MANAGER", 403);
   }
 
@@ -138,6 +150,39 @@ async function patchHandler(request, { params }) {
 
     // Session already verified — use for auditable READY attribution
     const sessionStaff = auth.payload;
+
+    // --- Item-level cancel (Kitchen/Barista own station only, never whole order) ---
+    if (isCancelItem) {
+      const { lineId, reason } = validated.data;
+      const doc = await cancelOrderItem(conn, sanitizedId, lineId, {
+        staffId: auth.payload.staffId,
+        staffRole: auth.payload.role,
+        reason,
+      });
+      publish({
+        type: "orders-changed",
+        reason: "item-cancelled",
+        orderId: String(doc._id),
+        orderNumber: doc.orderNumber,
+        status: doc.status,
+        lineId: String(lineId),
+      });
+      return ok({ order: toKdsShape(doc) }, 200);
+    }
+
+    // --- Reject pending payment (cashier) ---
+    if (isRejectPayment) {
+      const { reason } = validated.data;
+      const doc = await rejectPayment(conn, sanitizedId, { reason, actorId: auth.payload.staffId });
+      publish({
+        type: "orders-changed",
+        reason: "payment-rejected",
+        orderId: String(doc._id),
+        orderNumber: doc.orderNumber,
+        status: doc.status,
+      });
+      return ok({ order: toKdsShape(doc) }, 200);
+    }
 
     // --- CANCEL the whole order -------------------------------------------
     if (isCancel) {
@@ -160,11 +205,11 @@ async function patchHandler(request, { params }) {
       doc = await archiveOrder(conn, sanitizedId);
     } else if (status) {
       const s = status.toUpperCase();
-      if (!["PENDING", "PREPARING", "READY", "SERVED", "PAID"].includes(s)) {
+      if (!["PENDING", "PREPARING", "READY", "SERVED", "PAYMENT_PENDING", "PAID"].includes(s)) {
         return fail("Invalid status", 400);
       }
-      // Phase 6.5: WAITER can only SERVE/PAID own orders (staffId ownership)
-      if (auth.payload.role === "WAITER" && (s === "SERVED" || s === "PAID")) {
+      // WAITER can only SERVE or submit PAYMENT_PENDING for own orders; PAID is cashier-only (MANAGER/CASHIER)
+      if (auth.payload.role === "WAITER" && (s === "SERVED" || s === "PAYMENT_PENDING")) {
         const OrderTmp = getOrderModel(conn);
         const existing = await OrderTmp.findOne(buildQuery(sanitizedId)).select("waiterId waiterNumber").lean();
         if (!existing) return fail("Order not found", 404);
@@ -173,8 +218,18 @@ async function patchHandler(request, { params }) {
         }
       }
       if (s === "SERVED") doc = await serveOrder(conn, sanitizedId);
-      else if (s === "PAID") doc = await payOrder(conn, sanitizedId, { paymentMethod, actorId: auth.payload.staffId });
-      else {
+      else if (s === "PAYMENT_PENDING") {
+        // Waiter submits payment for cashier verification — not PAID yet
+        doc = await submitPaymentForVerification(conn, sanitizedId, { paymentMethod, paymentAccountId, actorId: auth.payload.staffId });
+      } else if (s === "PAID") {
+        // Cashier confirms pending payment; legacy direct pay from SERVED/READY still supported for backward compat
+        const existingForPay = await getOrderModel(conn).findOne(buildQuery(sanitizedId)).select("status").lean();
+        if (existingForPay && existingForPay.status === "PAYMENT_PENDING") {
+          doc = await confirmPayment(conn, sanitizedId, { actorId: auth.payload.staffId });
+        } else {
+          doc = await payOrder(conn, sanitizedId, { paymentMethod, paymentAccountId, actorId: auth.payload.staffId });
+        }
+      } else {
         // PREPARING / READY — auditable: record who marked ready
         const opts = {};
         if (s === "READY" && sessionStaff) {

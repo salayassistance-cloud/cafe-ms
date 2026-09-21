@@ -169,6 +169,9 @@ export default function ManagerReports() {
   const [itemFilter, setItemFilter] = useState('ALL');
   const [data, setData] = useState(null);
   const [externalItems, setExternalItems] = useState([]);
+  const [completedOrders, setCompletedOrders] = useState([]);
+  const [completedLoading, setCompletedLoading] = useState(false);
+  const [selectedCompletedId, setSelectedCompletedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -178,6 +181,20 @@ export default function ManagerReports() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  const fetchCompleted = useCallback(async () => {
+    setCompletedLoading(true);
+    try {
+      // Recent completed PAID orders for inspection — uses persisted order/payment snapshots, no fake data
+      const cjson = await safeFetchJson('/api/orders?status=PAID', { cache: 'no-store' }).catch(() => null);
+      const list = cjson?.data?.orders || cjson?.orders || [];
+      setCompletedOrders(Array.isArray(list) ? list.slice(0, 50) : []);
+    } catch {
+      setCompletedOrders([]);
+    } finally {
+      setCompletedLoading(false);
+    }
+  }, []);
 
   const fetchReports = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -191,6 +208,7 @@ export default function ManagerReports() {
         safeFetchJson(`/api/manager/analytics?${qs.toString()}`, { cache: 'no-store' }),
         safeFetchJson(`/api/external-items?${eqs.toString()}`, { cache: 'no-store' }).catch(() => null),
       ]);
+      fetchCompleted();
       if (!json.success) throw new Error(json.error || json.message || 'Failed');
       const d = json.data || {};
       setData({
@@ -243,7 +261,7 @@ export default function ManagerReports() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [from, to, interval, t]);
+  }, [from, to, interval, t, fetchCompleted]);
 
   // Phase 5: SSE-first, on-demand — fetch on mount / filters, silent revalidate on visibility or 60s idle.
   // No aggressive 3s poll (was 20 req/min per tab).
@@ -553,7 +571,7 @@ export default function ManagerReports() {
 
         {data && !loading && (
           <>
-            {/* KPI CARDS */}
+            {/* KPI CARDS — revenue distinguishable: base vs components, notes have 0 revenue */}
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <KpiCard
                 index={0}
@@ -561,6 +579,7 @@ export default function ManagerReports() {
                 value={fmtETB(kpis.revenue)}
                 delta={kpis.revenueDeltaPct}
                 suffix={t('revenueDelta')}
+                sub={kpis.componentRevenue != null ? `Base ${fmtETB(kpis.baseRevenue ?? 0)} · Components ${fmtETB(kpis.componentRevenue ?? 0)}` : undefined}
               />
               <KpiCard
                 index={1}
@@ -826,7 +845,7 @@ export default function ManagerReports() {
                     className="rounded-2xl bg-[#F4F5F9] dark:bg-[#252631] p-4"
                   >
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
-                      {p.method === 'TELEBIRR'
+                      {String(p.method || '').toUpperCase() === 'TRANSFER' || String(p.method || '').toUpperCase() === 'TELEBIRR'
                         ? t('bankTransfer')
                         : p.method === 'CASH'
                           ? t('cash')
@@ -843,6 +862,102 @@ export default function ManagerReports() {
                   </div>
                 ))}
               </div>
+            </Section>
+
+            {/* TRANSFER BY ACCOUNT — uses persisted snapshot, not fresh lookup */}
+            {data.transferByAccount && data.transferByAccount.length > 0 && (
+              <Section title="Transfer by Account">
+                <div className="overflow-hidden rounded-2xl">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#F4F5F9] dark:bg-[#252631] text-left text-xs uppercase text-[#64748B] dark:text-[#94A3B8]">
+                      <tr>
+                        <th className="px-3 py-2">Bank</th>
+                        <th className="px-3 py-2">Owner</th>
+                        <th className="px-3 py-2">Account</th>
+                        <th className="px-3 py-2 text-right">Transactions</th>
+                        <th className="px-3 py-2 text-right">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.transferByAccount.map((a) => (
+                        <tr key={`tr-${a.paymentAccountId || a.accountNumber || a.bankName}`} className="">
+                          <td className="px-3 py-2 font-semibold text-[#1E293B] dark:text-white">{a.bankName || "Unknown"}</td>
+                          <td className="px-3 py-2 text-[#1E293B] dark:text-white">{a.ownerName || "—"}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">{a.accountNumber ? `${a.accountNumber.slice(0,4)}****${a.accountNumber.slice(-2)}` : "—"}</td>
+                          <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">{a.count}</td>
+                          <td className="px-3 py-2 text-right font-bold text-[#FFD600] dark:text-[#FF5500]">{fmtETB(a.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">Historical snapshot — renaming/disabling an account does not rewrite past payments.</p>
+              </Section>
+            )}
+
+            {/* COMPLETED SERVICES — details from persisted PAID orders, no fake data */}
+            <Section
+              title="Completed Services — Details"
+              action={
+                <button type="button" onClick={() => fetchCompleted()} className="rounded-full bg-white dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1.5 text-xs font-bold text-[#1E293B] dark:text-white">Refresh</button>
+              }
+            >
+              {completedLoading ? (
+                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">Loading completed services…</p>
+              ) : completedOrders.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">No completed PAID services in recent history.</p>
+              ) : (
+                <div className="space-y-3">
+                  {completedOrders.map((o) => {
+                    const oid = String(o._id || o.orderNumber);
+                    const expanded = selectedCompletedId === oid;
+                    const payMethod = String(o.paymentMethod || 'NONE').toUpperCase() === 'TELEBIRR' ? 'TRANSFER' : String(o.paymentMethod || 'NONE').toUpperCase();
+                    return (
+                      <div key={`completed-${oid}`} className="rounded-2xl bg-[#F4F5F9] dark:bg-[#252631] p-4">
+                        <button type="button" onClick={() => setSelectedCompletedId(expanded ? null : oid)} className="flex w-full items-center justify-between gap-3 text-left">
+                          <div className="min-w-0">
+                            <p className="truncate font-extrabold text-[#1E293B] dark:text-white">{o.orderNumber} · Table {o.tableNumber ?? '—'} · {fmtETB(o.totalAmount)}</p>
+                            <p className="mt-1 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Waiter {o.waiterName || '—'} · {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'} · {payMethod}{o.paymentAccountSnapshot ? ` · ${o.paymentAccountSnapshot.bankName || ''} ${o.paymentAccountSnapshot.ownerName || ''}`.trim() : ''} · {o.status}</p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">{expanded ? 'Hide' : 'Inspect'}</span>
+                        </button>
+                        {expanded && (
+                          <div className="mt-3 space-y-3 rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Order</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{o.orderNumber} · ID {String(o._id).slice(0, 8)}… · Table {o.tableNumber} · Waiter {o.waiterName || '—'}{o.waiterNumber != null ? ` #${o.waiterNumber}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Ordered {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'}</p></div>
+                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Payment</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{payMethod}{o.paymentAccountSnapshot ? ` · ${o.paymentAccountSnapshot.bankName || ''} · ${o.paymentAccountSnapshot.ownerName || ''} · ${o.paymentAccountSnapshot.accountNumber || ''}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Submitted {o.paymentSubmittedAt ? new Date(o.paymentSubmittedAt).toLocaleString('en-GB') : '—'} · Verified {o.paymentVerifiedAt || o.paidAt ? new Date(o.paymentVerifiedAt || o.paidAt).toLocaleString('en-GB') : '—'} · Status {o.status}</p></div>
+                            </div>
+                            <div><p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Items — server prices, no frontend totals</p>
+                              <ul className="mt-2 space-y-1.5">
+                                {(o.items || []).map((it, idx) => (
+                                  <li key={`c-item-${idx}`} className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] px-2.5 py-2">
+                                    <div className="flex justify-between gap-2"><span className="font-bold text-[#1E293B] dark:text-white">{Number(it.quantity) || 0}× {typeof it.name === 'string' ? it.name : 'Item'} ({it.type || 'FOOD'})</span><span className="font-bold text-[#1E293B] dark:text-white">{fmtETB(Number(it.subTotal ?? Number(it.price) * Number(it.quantity)))}</span></div>
+                                    <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Unit {fmtETB(Number(it.price))} · Qty {Number(it.quantity)}{it.cancelled ? ` · Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
+                                    {Array.isArray(it.components) && it.components.length > 0 && (
+                                      <ul className="mt-1 space-y-0.5">
+                                        {it.components.map((c, ci) => (
+                                          <li key={`c-comp-${ci}`} className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">{c.kind === 'NOTE' ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${fmtETB(Number(c.unitPrice))} = ${fmtETB(Number(c.lineSum ?? c.quantity * c.unitPrice))}`}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Totals (server)</p><p className="mt-1 font-extrabold text-[#1E293B] dark:text-white">Total {fmtETB(o.totalAmount)}{Number(o.cancelledAmount) > 0 ? ` · Net ${fmtETB(o.netAmount)} · Cancelled ${fmtETB(o.cancelledAmount)}` : ''}</p></div>
+                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Preparation</p><p className="mt-1 text-[#1E293B] dark:text-white">Kitchen {o.kitchenStatus || '—'} · Barista {o.baristaStatus || '—'}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Ready {o.readyAt ? new Date(o.readyAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'} · Served {o.servedAt ? new Date(o.servedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'}</p></div>
+                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Status</p><p className="mt-1 font-bold text-[#1E293B] dark:text-white">{o.status}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Paid {o.paidAt ? new Date(o.paidAt).toLocaleString('en-GB') : '—'}</p></div>
+                            </div>
+                            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Amounts from stored order only. Only PAID counts as revenue; pending/rejected/cancelled excluded. No cost/profit inferred for unlinked components.</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">Recent PAID only (up to 50). Revenue KPIs above respect date filters; details are inspection only and never double-count.</p>
             </Section>
 
             {/* KITCHEN SPEED */}

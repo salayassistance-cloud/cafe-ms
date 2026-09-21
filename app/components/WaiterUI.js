@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { safeFetchJson, sendOrder, updateOrderStatusClient } from '@/lib/clientFetch';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
 import MenuItemImage from '@/app/components/MenuItemImage';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 
-const TABLE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const TABLE_NUMBERS = Array.from({ length: 50 }, (_, i) => i + 1);
 
 const LANGUAGES = [
   { code: 'am', label: 'አማርኛ' },
@@ -56,6 +57,7 @@ const STATUS_BADGE = {
   PREPARING: 'bg-white text-[#64748B] dark:bg-[#1C1D24] dark:text-[#94A3B8] border border-[#E2E8F0] dark:border-[#2A2B36]',
   READY: 'bg-[#FFD600] text-[#1E293B] dark:bg-[#FF5E00] dark:text-white shadow-sm',
   SERVED: 'bg-[#F4F5F9] text-[#475569] dark:bg-[#12131A] dark:text-[#94A3B8] border border-[#E2E8F0]/60 dark:border-[#2A2B36]',
+  PAYMENT_PENDING: 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#7C2D12] dark:text-[#FDBA74] border border-[#FDE68A] dark:border-[#7C2D12]',
   PAID: 'bg-[#1E293B] text-white dark:bg-white dark:text-[#12131A]',
 };
 
@@ -101,6 +103,7 @@ const ORDERS_FALLBACK_POLL_MS = 30000;
 const MENU_FALLBACK_POLL_MS = 60000;
 
 export default function WaiterUI() {
+  const router = useRouter();
   const t = (key) => LABELS[key]?.[lang] || LABELS[key]?.en || '';
 
   const [lang, setLang] = useState('am');
@@ -138,12 +141,16 @@ export default function WaiterUI() {
   const [orderDone, setOrderDone] = useState(null);
   const [orderError, setOrderError] = useState('');
 
-  const [externalOpen, setExternalOpen] = useState(false);
-  const [extName, setExtName] = useState('');
-  const [extQty, setExtQty] = useState('1');
-  const [extType, setExtType] = useState('FOOD');
-  const [extPrice, setExtPrice] = useState('');
-  const [extError, setExtError] = useState('');
+  // Components per cart line — Type A NOTE (no price) and Type B PRICED_COMPONENT (billable)
+  const [editingComponent, setEditingComponent] = useState(null); // { cartKey, kind: "NOTE"|"PRICED" }
+  const [compNote, setCompNote] = useState('');
+  const [compName, setCompName] = useState('');
+  const [compQty, setCompQty] = useState('1');
+  const [compPrice, setCompPrice] = useState('');
+  const [compInvId, setCompInvId] = useState('');
+  const [compStockQty, setCompStockQty] = useState('');
+  const [compStockUnit, setCompStockUnit] = useState('');
+  const [compError, setCompError] = useState('');
 
   const [readyToasts, setReadyToasts] = useState([]);
   const [activeOrders, setActiveOrders] = useState([]);
@@ -154,6 +161,46 @@ export default function WaiterUI() {
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState('');
   const [paymentToast, setPaymentToast] = useState('');
+  // Transfer accounts from existing PaymentInfo source — active only, no hardcoded values
+  const [paymentAccounts, setPaymentAccounts] = useState([]);
+  const [selectedTransferAccount, setSelectedTransferAccount] = useState(null);
+  const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!payTarget) {
+      // Defer to next microtask to avoid setState-in-effect cascading (behavior preserved before paint)
+      queueMicrotask(() => setSelectedTransferAccount(null));
+      return;
+    }
+    let cancelled = false;
+    const loadPaymentAccounts = async () => {
+      // Subscription pattern: set loading inside async callback, not direct effect body
+      if (!cancelled) setPaymentAccountsLoading(true);
+      try {
+        const data = await safeFetchJson('/api/payment-info', { cache: 'no-store' });
+        if (cancelled) return;
+        const list = data?.data?.paymentInfos || data?.paymentInfos || data?.paymentInfo || [];
+        const active = (Array.isArray(list) ? list : []).filter((a) => a.isActive !== false);
+        setPaymentAccounts(active);
+        if (active.length === 1) setSelectedTransferAccount(String(active[0]._id || active[0].id));
+        else setSelectedTransferAccount(null);
+      } catch {
+        if (!cancelled) setPaymentAccounts([]);
+      } finally {
+        if (!cancelled) setPaymentAccountsLoading(false);
+      }
+    };
+    loadPaymentAccounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [payTarget]);
+
+  // Favorites — per-waiter localStorage, store only IDs, re-resolved against current menu
+  // Browser-local, does not sync across devices. Keyed by staffId to isolate waiters on same browser.
+  const [favorites, setFavorites] = useState(() => new Set());
+  const favoritesLoadedRef = useRef(null);
+  const FAVORITES_KEY_PREFIX = 'bono_waiter_favorites:';
 
   // Single source of truth — unified MongoDB via /api/menu. Phase 5: menu cache 60s s-maxage, so allow cache.
   // all=true → existing API flag returning the full catalog incl. unavailable
@@ -247,17 +294,123 @@ export default function WaiterUI() {
     langRef.current = lang;
   }, [lang]);
 
-  const prevActiveRef = useRef(new Map());
-  const waiterIdRef = useRef(null);
-  const waiterNameRef = useRef(waiterName);
-  useEffect(() => {
-    waiterIdRef.current = waiterId;
-  }, [waiterId]);
-  useEffect(() => {
-    waiterNameRef.current = waiterName;
-  }, [waiterName]);
+const prevActiveRef = useRef(new Map());
+const waiterIdRef = useRef(null);
+const waiterNameRef = useRef(waiterName);
+useEffect(() => {
+  waiterIdRef.current = waiterId;
+}, [waiterId]);
+useEffect(() => {
+  waiterNameRef.current = waiterName;
+}, [waiterName]);
 
-  const pushReadyToast = useCallback((orderNumber, tableNumber) => {
+// Same-browser multi-tab safety: detect shared-cookie identity replacement
+// When another tab logs in as different waiter, bono_sess cookie is overwritten
+// for all tabs. This effect polls /api/auth/me and clears all waiter-specific
+// state before loading new identity data. No BroadcastChannel package needed.
+// Favorites are per-waiter localStorage (bono_waiter_favorites:<staffId>), browser-local, not synced.
+useEffect(() => {
+  let cancelled = false;
+  let intervalId = null;
+  async function checkIdentity() {
+    try {
+      const data = await safeFetchJson('/api/auth/me', { cache: 'no-store' });
+      if (cancelled) return;
+      const newId = data?.data?.staffId || null;
+      const newName = data?.data?.name || 'Waiter';
+      const oldId = waiterIdRef.current;
+      if (oldId && newId && String(oldId) !== String(newId)) {
+        setActiveOrders([]);
+        prevActiveRef.current = new Map();
+        setReadyToasts([]);
+        setPayTarget(null);
+        setPayError('');
+        setOrderError('');
+        setOrdersDrawerOpen(false);
+        ordersDrawerOpenRef.current = false;
+        setCart({});
+        setCartOpen(false);
+        setOrderDone(null);
+        setCartBump(0);
+        setFavorites(new Set());
+        favoritesLoadedRef.current = null;
+      }
+      if (!newId && oldId) {
+        setActiveOrders([]);
+        prevActiveRef.current = new Map();
+        setReadyToasts([]);
+        setCart({});
+        setFavorites(new Set());
+        favoritesLoadedRef.current = null;
+      }
+      if (data?.success && newId) {
+        setWaiterName(newName);
+        setWaiterId(newId);
+      }
+    } catch (e) {
+      if (e && (e.status === 401 || e.status === 503 || /session expired|authentication required|invalid or expired/i.test(e.message || ''))) {
+        if (waiterIdRef.current) {
+          setActiveOrders([]);
+          prevActiveRef.current = new Map();
+          setReadyToasts([]);
+          setCart({});
+          setFavorites(new Set());
+          favoritesLoadedRef.current = null;
+        }
+      }
+    }
+  }
+  intervalId = setInterval(checkIdentity, 30000);
+  const onVisibility = () => { if (document.visibilityState === 'visible') checkIdentity(); };
+  const onFocus = () => checkIdentity();
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('focus', onFocus);
+  return () => {
+    cancelled = true;
+    if (intervalId) clearInterval(intervalId);
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('focus', onFocus);
+  };
+}, []);
+
+  // Favorites per-waiter persistence — store only IDs, re-resolved against current menu (deferred to avoid cascading effect)
+  useEffect(() => {
+    if (!waiterId) {
+      favoritesLoadedRef.current = null;
+      queueMicrotask(() => setFavorites(new Set()));
+      return;
+    }
+    const key = `${FAVORITES_KEY_PREFIX}${String(waiterId)}`;
+    favoritesLoadedRef.current = String(waiterId);
+    const loadedFor = String(waiterId);
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+      if (!raw) {
+        queueMicrotask(() => { if (favoritesLoadedRef.current === loadedFor) setFavorites(new Set()); });
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('not array');
+      const ids = parsed.filter((id) => typeof id === 'string' && id.trim()).map((id) => String(id).trim());
+      if (favoritesLoadedRef.current !== loadedFor) return;
+      queueMicrotask(() => { if (favoritesLoadedRef.current === loadedFor) setFavorites(new Set(ids)); });
+    } catch {
+      queueMicrotask(() => { if (favoritesLoadedRef.current === loadedFor) setFavorites(new Set()); });
+    }
+  }, [waiterId]);
+
+  useEffect(() => {
+    if (!waiterId) return;
+    if (favoritesLoadedRef.current !== String(waiterId)) return;
+    try {
+      const key = `${FAVORITES_KEY_PREFIX}${String(waiterId)}`;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(key, JSON.stringify([...favorites]));
+      }
+    } catch {}
+  }, [favorites, waiterId]);
+
+const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     const id = `ready-${orderNumber}`;
     setReadyToasts((prevT) =>
       prevT.some((x) => x.id === id)
@@ -306,13 +459,20 @@ export default function WaiterUI() {
 
   // Lazily fetch SERVED orders only when the SERVED drawer is opened, then merge
   // them into the single display list so the drawer shows SERVED exactly as before.
+  // Server already filters SERVED to current waiter (waiterId == session.staffId),
+  // client filters as defense-in-depth to avoid mixing after same-browser identity switch.
   const loadServedOrders = useCallback(async () => {
     try {
       const served = await safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' });
       if (!served?.success) return;
+      const currentId = waiterIdRef.current;
       setActiveOrders((prev) => {
-        const byId = new Map(prev.map((o) => [o._id, o]));
-        for (const o of (served.data?.orders || [])) byId.set(o._id, o);
+        // Filter prev to current waiter only — prevents merging old waiter's orders after shared-cookie switch
+        const filteredPrev = currentId ? prev.filter((o) => !o.waiterId || String(o.waiterId) === String(currentId)) : prev;
+        const byId = new Map(filteredPrev.map((o) => [o._id, o]));
+        for (const o of (served.data?.orders || [])) {
+          if (!currentId || !o.waiterId || String(o.waiterId) === String(currentId)) byId.set(o._id, o);
+        }
         return Array.from(byId.values());
       });
     } catch {
@@ -320,19 +480,28 @@ export default function WaiterUI() {
     }
   }, []);
 
-  // Background refresh: when the SERVED drawer is closed we fetch ONLY the ACTIVE
-  // board (1 GET). When it is open we also fetch SERVED so its data stays correct.
+  // Background refresh: ACTIVE (PENDING,PREPARING,READY) + PAYMENT_PENDING (pending verification) are always fetched for waiter;
+  // SERVED is fetched only when drawer open.
   const pollActiveOrders = useCallback(async (opts) => {
     const includeServed = (opts && opts.includeServed) || ordersDrawerOpenRef.current;
     try {
-      const requests = [safeFetchJson('/api/orders', { cache: 'no-store' })];
+      const baseRequests = [
+        safeFetchJson('/api/orders', { cache: 'no-store' }),
+        safeFetchJson('/api/orders?status=PAYMENT_PENDING', { cache: 'no-store' }).catch(() => ({ success: false })),
+      ];
       if (includeServed) {
-        requests.push(safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' }));
+        baseRequests.push(safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' }).catch(() => ({ success: false })));
       }
-      const [prep, served] = await Promise.all(requests);
+      const results = await Promise.all(baseRequests);
+      const prep = results[0];
+      const pending = results[1];
+      const served = includeServed ? results[2] : null;
       if (!prep?.success) return;
       const byId = new Map();
       for (const o of (prep.data?.orders || [])) byId.set(o._id, o);
+      if (pending?.success) {
+        for (const o of (pending.data?.orders || [])) byId.set(o._id, o);
+      }
       if (includeServed && served?.success) {
         for (const o of (served.data?.orders || [])) byId.set(o._id, o);
       }
@@ -350,15 +519,13 @@ export default function WaiterUI() {
       prevActiveRef.current = new Map(list.map((o) => [o._id, o]));
       setActiveOrders(list);
     } catch (err) {
-      // Session expiration: 401 must not be hidden as 503 — redirect to login
+      // Session expiration: 401 must not be hidden as 503 — redirect to login (client navigation, preserves SPA behavior)
       if (err && (err.status === 401 || /session expired|authentication required|invalid or expired/i.test(err.message || ""))) {
-        // Avoid spamming redirects during polling — only redirect if no activeOrders yet or after delay
-        // Show toast and redirect to /waiter login
         setOrderError("Your session has expired. Please sign in again.");
-        setTimeout(() => { try { window.location.assign("/waiter"); } catch {} }, 1200);
+        setTimeout(() => { try { router.push("/waiter"); } catch {} }, 1200);
       }
     }
-  }, [pushReadyToast]);
+  }, [pushReadyToast, router]);
 
   const refreshTimer = useRef(null);
   const scheduleOrdersRefresh = useCallback(() => {
@@ -431,12 +598,19 @@ export default function WaiterUI() {
     );
   }
 
+  // Favorites — re-resolved against current visibleItems (current filters), ignore missing/deleted
+  const favoriteVisible = visibleItems.filter((it) => favorites.has(String(it._id || it.id)));
+  const nonFavoriteVisible = visibleItems.filter((it) => !favorites.has(String(it._id || it.id)));
+
   const cartEntries = Object.values(cart);
   const cartCount = cartEntries.reduce((sum, entry) => sum + entry.qty, 0);
-  const cartTotal = cartEntries.reduce(
-    (sum, entry) => sum + entry.qty * (entry.item.price || 0),
-    0
-  );
+  const cartTotal = cartEntries.reduce((sum, entry) => {
+    const base = entry.qty * (entry.item.price || 0);
+    const comps = (entry.components || [])
+      .filter((c) => c.kind === "PRICED_COMPONENT")
+      .reduce((s, c) => s + (Number(c.quantity) || 0) * (Number(c.unitPrice) || 0), 0);
+    return sum + base + comps;
+  }, 0);
 
   function addToCart(item) {
     if (!item.isAvailable) return;
@@ -447,6 +621,7 @@ export default function WaiterUI() {
         [item._id]: {
           item,
           qty: (existing?.qty || 0) + 1,
+          components: existing?.components || [],
         },
       };
     });
@@ -474,47 +649,127 @@ export default function WaiterUI() {
     });
   }
 
-  // Append a manually-entered external item (EXTERNAL ITEM REQUEST).
-  // Required fields: Item Name, Quantity, Type (FOOD/DRINK), Price.
-  // Routing is automatic via type; will be stored with EXTERNAL ITEM tag and shown in Manager Reports.
-  function addExternalItem() {
-    const name = extName.trim();
-    const price = Number(extPrice);
-    const qty = Number(extQty);
-    const type = String(extType).toUpperCase() === "DRINK" ? "DRINK" : "FOOD";
+  function addComponentToCart(cartKey, comp) {
+    setCart((prev) => {
+      const entry = prev[cartKey];
+      if (!entry) return prev;
+      const list = Array.isArray(entry.components) ? entry.components : [];
+      if (list.length >= 20) return prev;
+      return { ...prev, [cartKey]: { ...entry, components: [...list, comp] } };
+    });
+  }
+  function removeComponentFromCart(cartKey, compIdx) {
+    setCart((prev) => {
+      const entry = prev[cartKey];
+      if (!entry || !Array.isArray(entry.components)) return prev;
+      const nextComps = entry.components.filter((_, i) => i !== compIdx);
+      return { ...prev, [cartKey]: { ...entry, components: nextComps } };
+    });
+  }
+
+  function isFavorite(itemId) {
+    return favorites.has(String(itemId));
+  }
+  function toggleFavorite(itemId) {
+    const id = String(itemId);
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Components — Type A NOTE (no price, no inventory) and Type B PRICED_COMPONENT (billable, optional inventory link)
+  function addNoteToCart(cartKey) {
+    const note = compNote.trim();
+    if (!note) {
+      setCompError("Note is required (max 500 chars)");
+      return;
+    }
+    if (note.length > 500) {
+      setCompError("Note max 500 chars");
+      return;
+    }
+    if (/<script/i.test(note) || /javascript:/i.test(note)) {
+      setCompError("Note contains invalid characters");
+      return;
+    }
+    addComponentToCart(cartKey, { kind: "NOTE", note: note.slice(0, 500) });
+    setCompNote("");
+    setCompError("");
+    setEditingComponent(null);
+    setOrderDone(null);
+  }
+  function addPricedToCart(cartKey) {
+    const name = compName.trim();
+    const qty = Number(compQty);
+    const price = Number(compPrice);
     if (!name) {
-      setExtError(t('extName') + ' ' + t('required'));
+      setCompError("Component name is required");
+      return;
+    }
+    if (name.length > 100) {
+      setCompError("Component name max 100 chars");
+      return;
+    }
+    if (/<script/i.test(name)) {
+      setCompError("Component name contains invalid characters");
       return;
     }
     if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
-      setExtError("Quantity must be 1-99");
+      setCompError("Quantity must be 1-99");
       return;
     }
-    if (!Number.isFinite(price) || price < 0) {
-      setExtError(t('extPrice') + ' ' + t('required'));
+    if (!Number.isFinite(price) || price < 0 || price > 100000) {
+      setCompError("Unit price must be 0-100000");
       return;
     }
-    const extId = `ext-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setCart((prev) => ({
-      ...prev,
-      [extId]: {
-        item: {
-          _id: extId,
-          title: name,
-          price: Math.round(price * 100) / 100,
-          type,
-          isExternal: true,
-        },
-        qty,
-        isExternal: true,
-      },
-    }));
-    setExtName('');
-    setExtQty('1');
-    setExtType('FOOD');
-    setExtPrice('');
-    setExtError('');
-    setExternalOpen(false);
+    // Optional inventory link validation (selling price is not cost)
+    let inventoryItemId = null;
+    let stockQuantity = null;
+    let stockUnit = null;
+    if (compInvId.trim()) {
+      if (!/^[a-fA-F0-9]{24}$/.test(compInvId.trim())) {
+        setCompError("Inventory Item ID must be valid ObjectId if provided");
+        return;
+      }
+      inventoryItemId = compInvId.trim();
+      if (compStockQty.trim()) {
+        const sq = Number(compStockQty);
+        if (!Number.isFinite(sq) || sq <= 0) {
+          setCompError("Stock quantity must be number >0");
+          return;
+        }
+        stockQuantity = Math.round(sq * 1000) / 1000;
+      }
+      if (compStockUnit.trim()) {
+        stockUnit = compStockUnit.trim().slice(0, 20);
+      } else if (stockQuantity != null) {
+        setCompError("Stock unit required when stock quantity provided");
+        return;
+      }
+    } else {
+      if (compStockQty.trim() || compStockUnit.trim()) {
+        setCompError("Inventory Item ID required for stock fields");
+        return;
+      }
+    }
+    addComponentToCart(cartKey, {
+      kind: "PRICED_COMPONENT",
+      name: name.slice(0, 100),
+      quantity: qty,
+      unitPrice: Math.round(price * 100) / 100,
+      ...(inventoryItemId ? { inventoryItemId, stockQuantity, stockUnit } : {}),
+    });
+    setCompName("");
+    setCompQty("1");
+    setCompPrice("");
+    setCompInvId("");
+    setCompStockQty("");
+    setCompStockUnit("");
+    setCompError("");
+    setEditingComponent(null);
     setOrderDone(null);
   }
 
@@ -523,47 +778,31 @@ export default function WaiterUI() {
     setSubmitting(true);
     setOrderError('');
     try {
-      const normalEntries = cartEntries.filter((e) => !e.isExternal);
-      const externalEntries = cartEntries.filter((e) => e.isExternal);
-      let total = 0;
-
-      // Normal catalog items — server derives waiter identity from authenticated session (staffId)
-      // and resolves canonical FOOD/DRINK routing from MenuItem doc via itemId (server-authoritative).
-      if (normalEntries.length > 0) {
-        const payload = {
-          tableNumber: selectedTable,
-          items: normalEntries.map(({ item, qty }) => ({
-            itemId: item._id,
-            name: item.title,
-            price: item.price,
-            quantity: qty,
-            type: item.categoryType || (item.targetStation === "BARISTA" || item.barista ? "DRINK" : "FOOD"),
-          })),
-        };
-        const data = await sendOrder(payload);
-        total += data.data?.order?.totalAmount ?? 0;
-      }
-
-      // External item REQUESTS — push to /api/external-items (server derives waiter
-      // identity from session, stamps PENDING). These surface under the EXTERNAL ITEM
-      // tag in Manager Reports and never enter the kitchen/barista workflow.
-      if (externalEntries.length > 0) {
-        const extRes = await safeFetchJson('/api/external-items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tableNumber: selectedTable,
-            items: externalEntries.map(({ item, qty }) => ({
-              name: item.title,
-              price: item.price,
-              quantity: qty,
-              type: item.type || "FOOD",
-            })),
-          }),
-        });
-        if (!extRes.success) throw new Error(extRes.error || 'External item request failed');
-      }
-
+      // Components are attached to parent menu item, not standalone orders
+      const payload = {
+        tableNumber: selectedTable,
+        items: cartEntries.map(({ item, qty, components }) => ({
+          itemId: item._id,
+          name: item.title,
+          price: item.price,
+          quantity: qty,
+          type: item.type || item.categoryType || (item.targetStation === "BARISTA" || item.barista ? "DRINK" : "FOOD"),
+          components: Array.isArray(components)
+            ? components.map((c) => {
+                if (c.kind === "NOTE") return { kind: "NOTE", note: c.note };
+                return {
+                  kind: "PRICED_COMPONENT",
+                  name: c.name,
+                  quantity: c.quantity,
+                  unitPrice: c.unitPrice,
+                  ...(c.inventoryItemId ? { inventoryItemId: c.inventoryItemId, stockQuantity: c.stockQuantity, stockUnit: c.stockUnit } : {}),
+                };
+              })
+            : [],
+        })),
+      };
+      const data = await sendOrder(payload);
+      const total = data.data?.order?.totalAmount ?? 0;
       setOrderDone({ total });
       setCart({});
       setCartOpen(false);
@@ -590,18 +829,33 @@ export default function WaiterUI() {
 
   async function confirmPayment(method) {
     if (!payTarget || payBusy) return;
-    const paymentMethod = method === 'TRANSFER' ? 'TELEBIRR' : 'CASH';
+    const paymentMethod = method === 'TRANSFER' ? 'TRANSFER' : 'CASH';
+    // Transfer requires active account selection
+    let paymentAccountId = null;
+    if (paymentMethod === 'TRANSFER') {
+      if (!selectedTransferAccount) {
+        setPayError('Please select a transfer account.');
+        return;
+      }
+      paymentAccountId = selectedTransferAccount;
+    }
     setPayBusy(true);
     setPayError('');
     try {
+      // Waiter submits for cashier verification — PAYMENT_PENDING, not PAID
+      const body = { status: 'PAYMENT_PENDING', paymentMethod };
+      if (paymentMethod === 'TRANSFER' && paymentAccountId) body.paymentAccountId = paymentAccountId;
       const data = await safeFetchJson(`/api/orders/${payTarget._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'PAID', paymentMethod }),
+        body: JSON.stringify(body),
       });
       if (data.success) {
-        setActiveOrders((prev) => prev.filter((o) => o._id !== payTarget._id));
-        setPaymentToast(t('paidToast'));
+        const updated = data.data?.order;
+        if (updated) {
+          setActiveOrders((prev) => prev.map((o) => (o._id === payTarget._id ? updated : o)));
+        }
+        setPaymentToast('Payment submitted — waiting for cashier verification');
         setTimeout(() => setPaymentToast(''), 4000);
         setPayTarget(null);
       }
@@ -705,7 +959,7 @@ export default function WaiterUI() {
                         try {
                           await safeFetchJson('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
                         } catch {}
-                        window.location.assign('/waiter');
+                        router.push('/waiter');
                       }}
                       className="flex h-10 items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E293B] dark:hover:text-white"
                     >
@@ -929,8 +1183,12 @@ export default function WaiterUI() {
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {visibleItems.map((item, idx) => {
+          <>
+            {favoriteVisible.length > 0 && (
+              <div className="mb-6">
+                <h3 className="mb-2 px-1 text-xs font-bold uppercase tracking-widest text-[#1E293B] dark:text-white">Favorites ({favoriteVisible.length})</h3>
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {favoriteVisible.map((item, idx) => {
               const available = item.isAvailable !== false;
               const inCart = cart[item._id];
               return (
@@ -965,8 +1223,16 @@ export default function WaiterUI() {
                     </div>
                   </div>
 
-                  {/* RIGHT SIDE: PRICE + ADD */}
+                  {/* RIGHT SIDE: PRICE + FAVORITE + ADD */}
                   <div className="flex shrink-0 items-center gap-2 pl-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleFavorite(item._id || item.id)}
+                      aria-label={isFavorite(item._id || item.id) ? "Remove from favorites" : "Add to favorites"}
+                      className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${isFavorite(item._id || item.id) ? 'bg-[#FFD600] border-[#FFD600] text-[#1E293B]' : 'bg-white dark:bg-[#1C1D24] border-[#E2E8F0] dark:border-[#2A2B36] text-[#64748B]'}`}
+                    >
+                      {isFavorite(item._id || item.id) ? '★' : '☆'}
+                    </button>
                     <span className="whitespace-nowrap text-sm font-bold text-[#1E293B] dark:text-white">
                       {item.price ? `${item.price} ETB` : ''}
                     </span>
@@ -1015,6 +1281,96 @@ export default function WaiterUI() {
               );
             })}
           </div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {nonFavoriteVisible.map((item, idx) => {
+                const available = item.isAvailable !== false;
+                const inCart = cart[item._id];
+                return (
+                  <article
+                    key={`item-${item._id || item.id}`}
+                    style={{ '--stagger-index': Math.min(idx, 14) }}
+                    className="  flex items-center gap-3 rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out   hover:shadow-[0_14px_30px_-5px_rgba(0,0,0,0.08),0_10px_12px_-6px_rgba(0,0,0,0.04)] dark:hover:shadow-[0_16px_36px_rgba(0,0,0,0.55)]   active:shadow-inner"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-transparent dark:bg-transparent border-0">
+                        <MenuItemImage
+                          key={`menu-image-${item._id || item.id}-${item.imageUrl || 'none'}`}
+                          src={item.imageUrl}
+                          alt={localizedName(item, lang) || t('empty')}
+                          className="h-full w-full object-cover object-center"
+                          loading="lazy"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-bold leading-snug text-[#1E293B] dark:text-white">
+                          {localizedName(item, lang)}
+                        </h3>
+                        {localizedDesc(item, lang) ? (
+                          <p className="mt-0.5 truncate text-xs text-[#64748B] dark:text-[#94A3B8]">
+                            {localizedDesc(item, lang)}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 pl-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleFavorite(item._id || item.id)}
+                        aria-label={isFavorite(item._id || item.id) ? "Remove from favorites" : "Add to favorites"}
+                        className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${isFavorite(item._id || item.id) ? 'bg-[#FFD600] border-[#FFD600] text-[#1E293B]' : 'bg-white dark:bg-[#1C1D24] border-[#E2E8F0] dark:border-[#2A2B36] text-[#64748B]'}`}
+                      >
+                        {isFavorite(item._id || item.id) ? '★' : '☆'}
+                      </button>
+                      <span className="whitespace-nowrap text-sm font-bold text-[#1E293B] dark:text-white">
+                        {item.price ? `${item.price} ETB` : ''}
+                      </span>
+                      {!available ? (
+                        <span
+                          className="cursor-not-allowed rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-2.5 py-1.5 text-xs font-bold text-[#94A3B8]"
+                          aria-disabled="true"
+                        >
+                          {t('outStock')}
+                        </span>
+                      ) : inCart ? (
+                        <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
+                          <button
+                            type="button"
+                            onClick={() => changeQty(item._id, -1)}
+                            aria-label="decrease quantity"
+                            className="flex h-6 w-6 items-center justify-center rounded-lg bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0] dark:border-[#2A2B36] shadow-sm transition-all duration-150 ease-out    "
+                          >
+                            −
+                          </button>
+                          <span className="min-w-4 text-center text-xs font-bold text-[#1E293B] dark:text-white">
+                            {inCart.qty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => changeQty(item._id, 1)}
+                            aria-label="increase quantity"
+                            className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out    "
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => addToCart(item)}
+                          disabled={!available}
+                          className="rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] px-2.5 py-1.5 text-xs font-bold text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out     active:shadow-inner disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          + {t('add')}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </>
         )}
 
       </main>
@@ -1119,22 +1475,63 @@ export default function WaiterUI() {
                             onClick={() => setPayTarget(o)}
                             className="rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out     active:shadow-inner"
                           >
-                            PAY
+                            {o.paymentRejectedAt ? 'RESUBMIT' : 'PAY'}
                           </button>
+                        )}
+                        {o.status === 'PAYMENT_PENDING' && (
+                          <span className="rounded-xl bg-[#FEF3C7] border border-[#FDE68A] px-3 py-1 text-xs font-bold text-[#92400E]">Waiting for Cashier</span>
                         )}
                       </div>
                     </div>
-                    <ul className="mt-2 space-y-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                      {(o.items || []).map((it, i) => (
-                        <li key={`${o._id}-${i}`}>
-                          {`${it.quantity || 1}x ${
-                            getLocalizedSingleString(it.name) ||
-                            getLocalizedSingleString(it.title) ||
-                            'Item'
-                          }`}
-                        </li>
-                      ))}
+                    {o.paymentRejectedAt && o.status === 'SERVED' && (
+                      <div className="mt-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] dark:bg-[rgba(255,94,0,0.12)] px-3 py-2 text-xs font-semibold text-[#DC2626] dark:text-[#FF8A3D]">
+                        Payment returned by cashier{o.paymentRejectionReason ? `: ${o.paymentRejectionReason}` : '. Please correct and resubmit.'}
+                      </div>
+                    )}
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {(o.items || []).map((it, i) => {
+                        const isCancelled = !!it.cancelled;
+                        const comps = Array.isArray(it.components) ? it.components : [];
+                        return (
+                          <li key={`${o._id}-${it.lineId || i}`} className={isCancelled ? "line-through text-[#DC2626] dark:text-[#FCA5A5]" : "text-[#64748B] dark:text-[#94A3B8]"}>
+                            <div>
+                              {`${it.quantity || 1}x ${
+                                getLocalizedSingleString(it.name) ||
+                                getLocalizedSingleString(it.title) ||
+                                'Item'
+                              }`}{isCancelled ? ` — Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ""}` : ""}
+                            </div>
+                            {comps.length > 0 && (
+                              <ul className="ml-3 mt-0.5 space-y-0.5">
+                                {comps.map((c, ci) => (
+                                  <li key={`${o._id}-${it.lineId || i}-c-${ci}`} className={c.kind === "NOTE" ? "italic text-[#92400E] dark:text-[#FDBA74]" : "font-medium text-[#1E293B] dark:text-white"}>
+                                    {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${c.lineSum ?? Math.round(c.quantity * c.unitPrice * 100) / 100} ETB`}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
+                    {(() => {
+                      const active = (o.items || []).filter((it) => !it.cancelled);
+                      const cancelled = (o.items || []).filter((it) => it.cancelled);
+                      if (cancelled.length === 0 && active.every((it) => !(it.components||[]).some((c)=>c.kind==="PRICED_COMPONENT"))) return null;
+                      const net = active.reduce((s,it)=>{
+                        const base = (Number(it.price)||0)*(Number(it.quantity)||0);
+                        const comps = (it.components||[]).filter((c)=>c.kind==="PRICED_COMPONENT").reduce((cs,c)=>cs+(Number(c.lineSum)||Number(c.quantity)*Number(c.unitPrice)||0),0);
+                        return s+base+comps;
+                      },0);
+                      const gross = Number(o.totalAmount)||0;
+                      const compSum = active.reduce((s,it)=>(it.components||[]).filter((c)=>c.kind==="PRICED_COMPONENT").reduce((cs,c)=>cs+(Number(c.lineSum)||0),0)+s,0);
+                      return (
+                        <div className="mt-2 space-y-1 text-xs font-semibold">
+                          {cancelled.length>0 && <p className="text-[#DC2626] dark:text-[#FCA5A5]">Net: {Math.round(net*100)/100} ETB {gross>net ? `(Gross ${gross} ETB, Cancelled ${Math.round((gross-net)*100)/100} ETB)` : ""}</p>}
+                          {compSum>0 && <p className="text-[#1E293B] dark:text-white">Components: {Math.round(compSum*100)/100} ETB included</p>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))
               )}
@@ -1201,6 +1598,11 @@ export default function WaiterUI() {
                   {payError}
                 </div>
               )}
+              {payTarget.paymentRejectedAt && (
+                <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] dark:bg-[rgba(255,94,0,0.12)] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] dark:text-[#FF8A3D]">
+                  Payment returned by cashier{payTarget.paymentRejectionReason ? `: ${payTarget.paymentRejectionReason}` : '. Please correct and resubmit.'}
+                </div>
+              )}
 
               <button
                 type="button"
@@ -1212,31 +1614,52 @@ export default function WaiterUI() {
                   💵
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-black text-[#1E293B] dark:text-white">CASH</span>
+                  <span className="block text-sm font-black text-[#1E293B] dark:text-white">{payTarget.paymentRejectedAt ? 'RESUBMIT CASH FOR VERIFICATION' : 'SUBMIT CASH FOR VERIFICATION'}</span>
                   <span className="block text-[11px] font-semibold text-[#1E293B]/70 dark:text-white/80">
-                    {t('cash')}
+                    {t('cash')} · Waiting for cashier — not paid yet
                   </span>
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => confirmPayment('TRANSFER')}
-                disabled={payBusy}
-                className="flex h-14 w-full items-center gap-3 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-4 text-left shadow-sm transition-all duration-150 ease-out     active:shadow-inner disabled:opacity-50"
-              >
-                <span className="text-xl" aria-hidden="true">
-                  📱
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-black text-[#1E293B] dark:text-white">
-                    TRANSFER
-                  </span>
-                  <span className="block text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
-                    {t('transfer')}
-                  </span>
-                </span>
-              </button>
+              <div className="rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] p-3">
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Transfer — select account</p>
+                {paymentAccountsLoading ? (
+                  <p className="py-3 text-center text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Loading accounts…</p>
+                ) : paymentAccounts.length === 0 ? (
+                  <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2.5 text-xs font-semibold text-[#DC2626]">No transfer account is currently available. Please contact manager.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {paymentAccounts.map((acc) => {
+                      const accId = String(acc._id || acc.id);
+                      const selected = selectedTransferAccount === accId;
+                      return (
+                        <button
+                          key={accId}
+                          type="button"
+                          onClick={() => setSelectedTransferAccount(accId)}
+                          className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all ${selected ? "border-[#FFD600] dark:border-[#FF5E00] bg-[#FFD600]/15 dark:bg-[rgba(255,94,0,0.12)]" : "border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] hover:border-[#FFD600]/40"}`}
+                        >
+                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${selected ? "border-[#FFD600] dark:border-[#FF5E00] bg-[#FFD600] dark:bg-[#FF5E00]" : "border-[#CBD5E1] dark:border-[#2A2B36]"}`}>
+                            {selected && <span className="h-2 w-2 rounded-full bg-[#1E293B] dark:bg-white" />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold text-[#1E293B] dark:text-white">{acc.bankName} · {acc.ownerName}</span>
+                            <span className="block truncate text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">{acc.accountNumber}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => confirmPayment('TRANSFER')}
+                  disabled={payBusy || paymentAccounts.length === 0 || !selectedTransferAccount}
+                  className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] px-4 text-sm font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {payTarget.paymentRejectedAt ? 'Resubmit Transfer for Verification' : 'Submit Transfer for Verification'}
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -1296,49 +1719,116 @@ export default function WaiterUI() {
               {cartEntries.length === 0 ? (
                 <p className="py-10 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">{t('empty')}</p>
               ) : (
-                cartEntries.map(({ item, qty, isExternal }) => (
-                  <div
-                    key={`cart-${item._id}`}
-                    className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#1E293B] dark:text-white">
-                        {localizedName(item, lang)}
-                        {isExternal && (
-                          <span className="ml-2 inline-flex items-center rounded-full bg-[#E2E8F0] dark:bg-[#2A2B36] px-1.5 py-0.5 text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">EXTERNAL ITEM · {item.type || 'FOOD'}</span>
-                        )}
-                      </p>
-                      <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${item.price} ETB`}{isExternal ? ` · Qty ${qty} · ${item.type}` : ''}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
-                      <button
-                        type="button"
-                        onClick={() => changeQty(item._id, -1)}
-                        aria-label="decrease quantity"
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0] dark:border-[#2A2B36] shadow-sm transition-all duration-150 ease-out    "
-                      >
-                        −
-                      </button>
-                      <span className="min-w-4 text-center text-sm font-bold text-[#1E293B] dark:text-white">{qty}</span>
-                      <button
-                        type="button"
-                        onClick={() => changeQty(item._id, 1)}
-                        aria-label="increase quantity"
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out    "
-                      >
-                        +
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFromCart(item._id)}
-                      aria-label="remove item"
-                      className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#DC2626] dark:hover:text-[#FF5E00]"
+                cartEntries.map(({ item, qty, isExternal, components }) => {
+                  const cartKey = item._id;
+                  const comps = Array.isArray(components) ? components : [];
+                  const noteCount = comps.filter((c) => c.kind === "NOTE").length;
+                  const priced = comps.filter((c) => c.kind === "PRICED_COMPONENT");
+                  const pricedSum = priced.reduce((s, c) => s + (Number(c.quantity) || 0) * (Number(c.unitPrice) || 0), 0);
+                  return (
+                    <div
+                      key={`cart-${cartKey}`}
+                      className="rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
                     >
-                      ✕
-                    </button>
-                  </div>
-                ))
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-[#1E293B] dark:text-white">
+                            {localizedName(item, lang)}
+                            {isExternal && (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-[#E2E8F0] dark:bg-[#2A2B36] px-1.5 py-0.5 text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">LEGACY EXTERNAL · {item.type || 'FOOD'}</span>
+                            )}
+                          </p>
+                          <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${item.price} ETB × ${qty} = ${Math.round(item.price * qty * 100) / 100} ETB`}{pricedSum > 0 ? ` + components ${Math.round(pricedSum * 100) / 100} ETB` : ""}{noteCount > 0 ? ` · ${noteCount} note${noteCount > 1 ? "s" : ""}` : ""}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
+                          <button type="button" onClick={() => changeQty(cartKey, -1)} aria-label="decrease quantity" className="flex h-7 w-7 items-center justify-center rounded-lg bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0] dark:border-[#2A2B36] shadow-sm">−</button>
+                          <span className="min-w-4 text-center text-sm font-bold text-[#1E293B] dark:text-white">{qty}</span>
+                          <button type="button" onClick={() => changeQty(cartKey, 1)} aria-label="increase quantity" className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white shadow-sm">+</button>
+                        </div>
+                        <button type="button" onClick={() => removeFromCart(cartKey)} aria-label="remove item" className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#DC2626] dark:hover:text-[#FF5E00]">✕</button>
+                      </div>
+                      {/* Components under parent */}
+                      {comps.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {comps.map((c, idx) => (
+                            <li key={`${cartKey}-comp-${idx}`} className={`flex items-center justify-between gap-2 rounded-xl px-2 py-1 text-xs ${c.kind === "NOTE" ? "bg-[#FEF3C7] dark:bg-[#7C2D12] text-[#92400E] dark:text-[#FDBA74] border border-[#FDE68A] dark:border-[#7C2D12]" : "bg-[#F4F5F9] dark:bg-[#12131A] border border-[#E2E8F0]/60 dark:border-[#2A2B36] text-[#1E293B] dark:text-white"}`}>
+                              <span className="min-w-0 flex-1 truncate">
+                                {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${Math.round(c.quantity * c.unitPrice * 100) / 100} ETB${c.inventoryItemId ? " · linked" : ""}`}
+                              </span>
+                              <button type="button" onClick={() => removeComponentFromCart(cartKey, idx)} className="shrink-0 rounded-lg bg-white dark:bg-[#1C1D24] px-1.5 py-0.5 text-xs font-bold text-[#DC2626] border border-[#FECACA]">✕</button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {/* Add component buttons */}
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingComponent({ cartKey, kind: "NOTE" });
+                            setCompNote("");
+                            setCompError("");
+                          }}
+                          className={`flex-1 rounded-xl py-2 text-xs font-bold border ${editingComponent?.cartKey === cartKey && editingComponent?.kind === "NOTE" ? "bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border-[#FFD600] dark:border-[#FF5E00]" : "bg-white dark:bg-[#1C1D24] text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#2A2B36]"}`}
+                        >
+                          + Note
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingComponent({ cartKey, kind: "PRICED" });
+                            setCompName("");
+                            setCompQty("1");
+                            setCompPrice("");
+                            setCompInvId("");
+                            setCompStockQty("");
+                            setCompStockUnit("");
+                            setCompError("");
+                          }}
+                          className={`flex-1 rounded-xl py-2 text-xs font-bold border ${editingComponent?.cartKey === cartKey && editingComponent?.kind === "PRICED" ? "bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border-[#FFD600] dark:border-[#FF5E00]" : "bg-white dark:bg-[#1C1D24] text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#2A2B36]"}`}
+                        >
+                          + Priced Add-on
+                        </button>
+                      </div>
+                      {/* Inline editors */}
+                      {editingComponent?.cartKey === cartKey && editingComponent?.kind === "NOTE" && (
+                        <div className="mt-2 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-2">
+                          <input type="text" value={compNote} onChange={(e) => setCompNote(e.target.value)} placeholder="e.g. no onion, extra spicy" maxLength={500} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                          {compError && <p className="mt-1 text-xs text-[#DC2626]">{compError}</p>}
+                          <div className="mt-2 flex gap-2">
+                            <button type="button" onClick={() => addNoteToCart(cartKey)} className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2 text-xs font-bold text-[#1E293B] dark:text-white">Add Note</button>
+                            <button type="button" onClick={() => setEditingComponent(null)} className="flex-1 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                      {editingComponent?.cartKey === cartKey && editingComponent?.kind === "PRICED" && (
+                        <div className="mt-2 space-y-2 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-2">
+                          <input type="text" value={compName} onChange={(e) => setCompName(e.target.value)} placeholder="Component name * e.g. Extra Cheese" maxLength={100} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="number" min="1" max="99" step="1" value={compQty} onChange={(e) => setCompQty(e.target.value)} placeholder="Qty *" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                            <input type="number" min="0" step="0.01" value={compPrice} onChange={(e) => setCompPrice(e.target.value)} placeholder="Unit price ETB *" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                          </div>
+                          <details className="rounded-lg border border-dashed border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-2">
+                            <summary className="cursor-pointer text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Inventory link (optional, for stock deduction)</summary>
+                            <div className="mt-2 space-y-2">
+                              <input type="text" value={compInvId} onChange={(e) => setCompInvId(e.target.value)} placeholder="Inventory Item ID (ObjectId) — leave empty for no deduction" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input type="number" step="0.001" value={compStockQty} onChange={(e) => setCompStockQty(e.target.value)} placeholder="Stock qty per unit" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                                <input type="text" value={compStockUnit} onChange={(e) => setCompStockUnit(e.target.value)} placeholder="Stock unit e.g. kg" maxLength={20} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                              </div>
+                              <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">Manual price is selling price, not cost. Cost is fetched from inventory. Leave empty for no stock movement.</p>
+                            </div>
+                          </details>
+                          {compError && <p className="text-xs text-[#DC2626]">{compError}</p>}
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => addPricedToCart(cartKey)} className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2 text-xs font-bold text-[#1E293B] dark:text-white">Add Priced</button>
+                            <button type="button" onClick={() => setEditingComponent(null)} className="flex-1 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
 
@@ -1358,14 +1848,7 @@ export default function WaiterUI() {
                 <span className="font-semibold text-[#64748B] dark:text-[#94A3B8]">{t('cart')}</span>
                 <span className="font-bold text-[#1E293B] dark:text-white">{`${cartTotal} ETB`}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setExternalOpen(true)}
-                className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] py-2.5 text-sm font-bold text-[#1E293B] dark:text-white transition-all duration-150 ease-out    "
-              >
-                <span aria-hidden="true">＋</span>
-                {t('addExternal')}
-              </button>
+              <p className="mb-3 rounded-xl border border-dashed border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-2 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Components are added per item above — Notes are informational only, Priced add-ons are billable. Manual price is selling price, not cost.</p>
               <button
                 type="button"
                 disabled={submitting || cartEntries.length === 0}
@@ -1376,81 +1859,6 @@ export default function WaiterUI() {
               </button>
             </div>
           </aside>
-        </div>
-      )}
-
-      {externalOpen && (
-        <div
-          className="fixed md:absolute inset-0 z-[60] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center"
-          onClick={() => setExternalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-t-3xl bg-[#F4F5F9] dark:bg-[#12131A] p-5 sm:rounded-3xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-[#1E293B] dark:text-white">EXTERNAL ITEM REQUEST</h2>
-              <button
-                type="button"
-                onClick={() => setExternalOpen(false)}
-                aria-label="close"
-                className="text-lg text-[#64748B] dark:text-[#94A3B8]"
-              >
-                ✕
-              </button>
-            </div>
-
-            <label className="mb-1 block text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Item Name *</label>
-            <input
-              type="text"
-              value={extName}
-              onChange={(e) => setExtName(e.target.value)}
-              placeholder="Special Juice"
-              className="mb-3 w-full rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]"
-            />
-
-            <label className="mb-1 block text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Quantity *</label>
-            <input
-              type="number"
-              min="1"
-              max="99"
-              step="1"
-              value={extQty}
-              onChange={(e) => setExtQty(e.target.value)}
-              placeholder="1"
-              className="mb-3 w-full rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]"
-            />
-
-            <label className="mb-1 block text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Type *</label>
-            <div className="mb-3 flex gap-2">
-              {['FOOD','DRINK'].map((tp)=> (
-                <button key={tp} type="button" onClick={()=> setExtType(tp)} className={`flex-1 rounded-xl py-2.5 text-xs font-bold border ${extType===tp ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border-[#FFD600] dark:border-[#FF5E00]' : 'bg-white dark:bg-[#1C1D24] text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#2A2B36]'}`}>{tp}</button>
-              ))}
-            </div>
-
-            <label className="mb-1 block text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Price (ETB) *</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={extPrice}
-              onChange={(e) => setExtPrice(e.target.value)}
-              placeholder="120"
-              className="mb-3 w-full rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]"
-            />
-
-            {extError && (
-              <p className="mb-3 text-xs font-semibold text-[#DC2626] dark:text-[#FF8A3D]">{extError}</p>
-            )}
-
-            <button
-              type="button"
-              onClick={addExternalItem}
-              className="w-full rounded-2xl bg-[#FFD600] dark:bg-[#FF5E00] py-3 text-sm font-bold text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out     active:shadow-inner"
-            >
-              SEND REQUEST
-            </button>
-          </div>
         </div>
       )}
     </div>
