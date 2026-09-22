@@ -8,7 +8,7 @@ import { safeFetchJson, withTimeout } from "@/lib/clientFetch";
 // Shows PIN Management (Kitchen/Barista/Manager) + Waiter Accounts (Active only)
 // All actions verify Manager session server-side.
 
-export default function ManagerSecurityButton({ className = "", title }) {
+export default function ManagerSecurityButton({ className = "", title, inline = false }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [waiters, setWaiters] = useState([]);
@@ -62,7 +62,7 @@ export default function ManagerSecurityButton({ className = "", title }) {
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !inline) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
@@ -94,7 +94,7 @@ export default function ManagerSecurityButton({ className = "", title }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, inline]);
 
   async function handleDelete(waiter) {
     setError("");
@@ -248,6 +248,55 @@ export default function ManagerSecurityButton({ className = "", title }) {
   }
 
   const digitsOnly = (v) => String(v).replace(/\D/g, "").slice(0, 4);
+
+  if (inline) {
+    return (
+      <div className="w-full space-y-6">
+        {loading ? (
+          <p className="py-6 text-center text-sm text-[#64748B]">Loading…</p>
+        ) : (
+          <InlineSecurityPanels
+            kitchenStaff={kitchenStaff}
+            baristaStaff={baristaStaff}
+            managerStaff={managerStaff}
+            activeWaiters={activeWaiters}
+            pinForm={pinForm}
+            openPinForm={openPinForm}
+            submitPinChange={submitPinChange}
+            pinBusy={pinBusy}
+            pinError={pinError}
+            pinSuccess={pinSuccess}
+            currentManagerPin={currentManagerPin}
+            setCurrentManagerPin={setCurrentManagerPin}
+            newPin={newPin}
+            setNewPin={setNewPin}
+            confirmPin={confirmPin}
+            setConfirmPin={setConfirmPin}
+            setPinForm={setPinForm}
+            digitsOnly={digitsOnly}
+            showAddWaiter={showAddWaiter}
+            setShowAddWaiter={setShowAddWaiter}
+            addName={addName}
+            setAddName={setAddName}
+            addUsername={addUsername}
+            setAddUsername={setAddUsername}
+            addPin={addPin}
+            setAddPin={setAddPin}
+            addConfirmPin={addConfirmPin}
+            setAddConfirmPin={setAddConfirmPin}
+            addBusy={addBusy}
+            addError={addError}
+            addSuccess={addSuccess}
+            handleAddWaiter={handleAddWaiter}
+            handleDelete={handleDelete}
+            busyId={busyId}
+            error={error}
+            toast={toast}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -434,5 +483,89 @@ export default function ManagerSecurityButton({ className = "", title }) {
         </div>
       )}
     </>
+  );
+}
+
+function InlineSecurityPanels(props) {
+  const {
+    kitchenStaff, baristaStaff, managerStaff, activeWaiters,
+    pinForm, openPinForm, submitPinChange, pinBusy, pinError, pinSuccess,
+    currentManagerPin, setCurrentManagerPin, newPin, setNewPin,
+    confirmPin, setConfirmPin, setPinForm, digitsOnly,
+    showAddWaiter, setShowAddWaiter, addName, setAddName,
+    addUsername, setAddUsername, addPin, setAddPin,
+    addConfirmPin, setAddConfirmPin, addBusy, addError, addSuccess,
+    handleAddWaiter, handleDelete, busyId, error, toast,
+  } = props;
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xs font-black uppercase tracking-widest text-[#1E293B] dark:text-white mb-3">PIN Management</h3>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8] mb-2">Kitchen PIN</p>
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2">
+              <span className="text-sm font-bold text-[#1E293B] dark:text-white truncate">Kitchen</span>
+              <button type="button" onClick={() => { const target = kitchenStaff[0]; if (!target) return; openPinForm({ staffId: target.id, id: target.id, name: target.name, role: "KITCHEN" }); }} className="shrink-0 rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">Change PIN</button>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8] mb-2">Barista PIN</p>
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2">
+              <span className="text-sm font-bold text-[#1E293B] dark:text-white truncate">Barista</span>
+              <button type="button" onClick={() => { const target = baristaStaff[0]; if (!target) return; openPinForm({ staffId: target.id, id: target.id, name: target.name, role: "BARISTA" }); }} className="shrink-0 rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">Change PIN</button>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8] mb-2">Manager PIN</p>
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2">
+              <span className="text-sm font-bold text-[#1E293B] dark:text-white truncate">Manager</span>
+              <button type="button" onClick={() => { const target = managerStaff[0]; if (!target) return; openPinForm({ staffId: target.id, id: target.id, name: target.name, role: "MANAGER" }); }} className="shrink-0 rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">Change PIN</button>
+            </div>
+          </div>
+        </div>
+        {pinForm && (
+          <div className="mt-4 rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-4">
+            <p className="text-sm font-bold text-[#1E293B] dark:text-white mb-3">Change PIN for {pinForm.name} ({pinForm.role})</p>
+            <form onSubmit={submitPinChange} className="space-y-3" noValidate>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Current Manager PIN</span><input type="password" inputMode="numeric" value={currentManagerPin} onChange={(e) => setCurrentManagerPin(digitsOnly(e.target.value))} placeholder="••••" className="h-11 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-center text-lg tracking-[0.4em] font-bold text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">New PIN</span><input type="password" inputMode="numeric" value={newPin} onChange={(e) => setNewPin(digitsOnly(e.target.value))} placeholder="••••" className="h-11 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-center text-lg tracking-[0.4em] font-bold text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Confirm New PIN</span><input type="password" inputMode="numeric" value={confirmPin} onChange={(e) => setConfirmPin(digitsOnly(e.target.value))} placeholder="••••" className="h-11 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-center text-lg tracking-[0.4em] font-bold text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              {pinError && <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">{pinError}</div>}
+              {pinSuccess && <div role="status" className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-xs font-semibold text-[#15803D]">{pinSuccess}</div>}
+              <div className="flex gap-2"><button type="button" onClick={() => setPinForm(null)} disabled={pinBusy} className="flex-1 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] py-2.5 text-sm font-bold text-[#64748B] dark:text-[#94A3B8] disabled:opacity-40">Cancel</button><button type="submit" disabled={pinBusy} className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2.5 text-sm font-black text-[#1E293B] dark:text-white disabled:opacity-40">{pinBusy ? "Saving…" : "Update PIN"}</button></div>
+            </form>
+          </div>
+        )}
+      </div>
+      <div>
+        <h3 className="text-xs font-black uppercase tracking-widest text-[#1E293B] dark:text-white mb-3">Waiter Accounts</h3>
+        <div className="mb-4 rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-3">
+          <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Add Waiter</p><button type="button" onClick={() => { setShowAddWaiter((v) => !v); }} className="rounded-lg bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">{showAddWaiter ? "Cancel" : "+ Add Waiter"}</button></div>
+          {showAddWaiter && (
+            <form onSubmit={handleAddWaiter} className="mt-3 space-y-3" noValidate>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Name</span><input type="text" value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Abebe" className="h-10 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-sm font-semibold text-[#1E293B] dark:text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Username</span><input type="text" value={addUsername} onChange={(e) => setAddUsername(e.target.value)} placeholder="abebe" className="h-10 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-sm font-semibold text-[#1E293B] dark:text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">PIN</span><input type="password" inputMode="numeric" value={addPin} onChange={(e) => setAddPin(digitsOnly(e.target.value))} placeholder="••••" className="h-10 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-center text-lg tracking-[0.4em] font-bold text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Confirm PIN</span><input type="password" inputMode="numeric" value={addConfirmPin} onChange={(e) => setAddConfirmPin(digitsOnly(e.target.value))} placeholder="••••" className="h-10 w-full rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-3 text-center text-lg tracking-[0.4em] font-bold text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/30" /></label>
+              <button type="submit" disabled={addBusy} className="flex h-11 w-full items-center justify-center rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] text-sm font-black uppercase tracking-wide text-[#1E293B] dark:text-white disabled:opacity-40">{addBusy ? "Creating..." : "Create Waiter"}</button>
+            </form>
+          )}
+        </div>
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8] mb-2">Active Waiters</p>
+        {activeWaiters.length === 0 ? (<p className="py-4 text-center text-sm text-[#94A3B8]">No active waiter accounts</p>) : (
+          <div className="space-y-2">
+            {activeWaiters.map((w) => (
+              <div key={w.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-2.5">
+                <div className="min-w-0"><p className="truncate text-sm font-bold text-[#1E293B] dark:text-white">{w.displayName || w.name} <span className="font-normal text-[#64748B]">({w.username})</span></p><p className="text-[11px] font-bold uppercase tracking-wide text-[#16A34A]">Active</p></div>
+                <button type="button" onClick={() => handleDelete(w)} disabled={busyId === w.id} className="shrink-0 rounded-lg bg-white dark:bg-[#1C1D24] border border-[#E2E8F0] px-3 py-1.5 text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-40">{busyId === w.id ? "…" : "Delete"}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {error && (<div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">{error}</div>)}
+      {toast && (<div role="status" className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-xs font-semibold text-[#15803D]">{toast}</div>)}
+    </div>
   );
 }
