@@ -15,6 +15,7 @@ import {
   IconBookFilled,
   IconCashRegister,
   IconArchiveFilled,
+  IconUsers,
 } from "@tabler/icons-react";
 
 // Home Portal Hub — 5 portals with /kds-identical tokens, no hardcoded colors
@@ -39,6 +40,8 @@ function PortalIcon({ role }) {
       return <IconCashRegister {...iconProps} className="h-9 w-9" />;
     case "INVENTORY":
       return <IconArchiveFilled {...iconProps} className="h-9 w-9" />;
+    case "STAFF":
+      return <IconUsers {...iconProps} className="h-9 w-9" />;
     case "MENU":
       return <IconBookFilled {...iconProps} className="h-9 w-9" />;
     default:
@@ -74,12 +77,6 @@ const PORTALS = [
     route: "/barista",
   },
   {
-    role: "MANAGER",
-    titleKey: "managerPortal",
-    subtitleKey: "managerDesc",
-    route: "/manager/reports",
-  },
-  {
     role: "INVENTORY",
     titleKey: "inventoryPortal",
     subtitleKey: "inventoryDesc",
@@ -87,22 +84,36 @@ const PORTALS = [
     fallbackTitle: "Inventory",
     fallbackDesc: "Stock & suppliers",
   },
+  {
+    role: "STAFF",
+    titleKey: "staffPortal",
+    subtitleKey: "staffDesc",
+    route: "/manager/staff",
+    fallbackTitle: "Staff",
+    fallbackDesc: "Team & accounts",
+  },
+  {
+    role: "MANAGER",
+    titleKey: "managerPortal",
+    subtitleKey: "managerDesc",
+    route: "/manager/reports",
+  },
 ];
 
 const subscribe = () => () => {};
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
-// Mobile-only card ordering: 2×2 grid (Cashier, Waiter / Kitchen, Barista) then Manager + Inventory full-width.
-// Resets on desktop (md:order-none / md:col-span-1) so the existing 5-column arrangement is preserved.
-// Inventory appended as 6th portal — no existing order changed.
+// Mobile: Row1 Cashier|Waiter, Row2 Kitchen|Barista, Row3 Inventory|Staff, Last row Manager full-width.
+// Desktop lg: Manager top full-width (lg:col-span-3) then 2 rows × 3 cols. Responsive order moves Manager to top on desktop.
 const MOBILE_GRID_ORDER = {
-  CASHIER: "order-1",
-  WAITER: "order-2",
-  KITCHEN: "order-3",
-  BARISTA: "order-4",
-  MANAGER: "order-5 col-span-2 md:col-span-1 min-h-[110px] md:min-h-[140px]",
-  INVENTORY: "order-6 col-span-2 md:col-span-1 min-h-[110px] md:min-h-[140px]",
+  CASHIER: "order-1 lg:order-2",
+  WAITER: "order-2 lg:order-3",
+  KITCHEN: "order-3 lg:order-4",
+  BARISTA: "order-4 lg:order-5",
+  INVENTORY: "order-5 lg:order-6",
+  STAFF: "order-6 lg:order-7",
+  MANAGER: "order-7 lg:order-1 col-span-2 lg:col-span-3 min-h-[110px] lg:min-h-[140px]",
 };
 
 export default function PortalHub() {
@@ -131,6 +142,16 @@ export default function PortalHub() {
       });
       return;
     }
+    if (portal.role === "STAFF") {
+      // Staff reuses MANAGER authorization — no new STAFF role, manager-only administration
+      setActive({
+        ...portal,
+        role: "MANAGER",
+        _staffDisplayRole: "STAFF",
+        icon: <IconUsers size={28} aria-hidden={true} className="h-7 w-7" />,
+      });
+      return;
+    }
     setActive(portal);
   };
 
@@ -146,12 +167,12 @@ export default function PortalHub() {
 
   return (
     <div className="min-h-screen bg-[var(--c-bg)] text-[var(--c-text)] flex flex-col items-center overflow-x-hidden">
-      {/* Full-width top banner — yellow in light, transparent in dark (matches /kds header) */}
-      <header className="w-full bg-[var(--c-header)] dark:bg-transparent text-[var(--c-text)] py-6 px-4 shadow-sm dark:shadow-none border-b border-[var(--c-border-soft)] dark:border-transparent backdrop-blur">
+      {/* Full-width top banner — mobile: brand + subtitle; desktop: hidden (left column shows headline) */}
+      <header className="w-full bg-[var(--c-header)] dark:bg-transparent text-[var(--c-text)] py-6 px-4 shadow-sm dark:shadow-none border-b border-[var(--c-border-soft)] dark:border-transparent backdrop-blur lg:hidden">
         <div className="w-full max-w-7xl mx-auto">
           <div className="text-center">
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-[var(--c-text)]">
-              {t('brand')}
+              BONO MANAGEMENT SYSTEM
             </h1>
             <p className="text-sm font-medium text-[var(--c-muted)] mt-2">{t('selectPortal')}</p>
             <div className="w-16 h-1 bg-black/15 dark:bg-white/15 rounded-full mx-auto mt-3" />
@@ -159,54 +180,65 @@ export default function PortalHub() {
         </div>
       </header>
 
-      {/* Content wrapper below header — identical structure to /kds main */}
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 flex flex-col justify-center items-center overflow-x-hidden">
-        <Image
-          src="/home/homepage.png"
-          alt="Hotel and café"
-          width={1774}
-          height={887}
-          priority
-          className="w-full max-w-sm max-h-[32vh] h-auto object-contain mx-auto select-none pointer-events-none"
-        />
-        {/* Desktop-only toggle group — below illustration, above cards: [ DARK/LIGHT ] [ AM | EN ] (no container) */}
-        <div className="hidden md:flex md:items-center md:justify-center md:gap-2 md:mt-4 md:mb-5">
-          <ThemeToggleHome />
-          <LanguageToggle />
-        </div>
-        {/* Mobile-only controls — kept BELOW illustration with a normal card-like gap (desktop uses controls above cards) */}
-        <div className="flex w-full max-w-3xl items-center justify-between px-1 sm:px-2 mt-5 mb-5 md:hidden">
-          <div className="shrink-0">
-            <LanguageToggle />
+      {/* Two-column desktop: left introduction, right portals */}
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 flex flex-col lg:flex-row gap-8 lg:gap-10 items-stretch overflow-x-hidden">
+        {/* LEFT — introduction */}
+        <section className="w-full lg:w-[42%] flex flex-col items-center lg:items-start text-center lg:text-left shrink-0 lg:justify-between gap-4 lg:gap-4">
+          <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full">
+            <h1 className="hidden lg:block text-2xl md:text-3xl font-black tracking-tight text-[var(--c-text)]">
+              BONO MANAGEMENT SYSTEM
+            </h1>
+            <p className="hidden lg:block text-sm font-medium text-[var(--c-muted)] mt-2">{t('selectPortal')}</p>
+            <div className="hidden lg:block w-16 h-1 bg-black/15 dark:bg-white/15 rounded-full mt-3 mb-4" />
           </div>
-          <div className="shrink-0">
-            <ThemeToggleHome />
-          </div>
-        </div>
-        <main className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5 w-full max-w-6xl mx-auto auto-rows-fr">
-          {PORTALS.map((portal) => {
-            const title = (() => { const v = t(portal.titleKey); return v !== portal.titleKey ? v : (portal.fallbackTitle || v); })();
-            const sub = (() => { const v = t(portal.subtitleKey); return v !== portal.subtitleKey ? v : (portal.fallbackDesc || v); })();
-            return (
-            <button
-              key={portal.role}
-              type="button"
-              onClick={() => handlePortalClick(portal)}
-              className={`card-elevated tactile bg-[var(--c-card)] rounded-2xl p-6 flex flex-col items-center justify-center text-center w-full overflow-hidden min-h-[140px] ${MOBILE_GRID_ORDER[portal.role] || ""} md:order-none`}
-            >
-              <span className="flex h-14 w-14 items-center justify-center mb-3 text-[var(--c-accent)]">
-                <PortalIcon role={portal.role} />
-              </span>
-              <span className="text-base font-bold text-[var(--c-text)] leading-tight">{title}</span>
-              <span className="text-xs font-medium text-[var(--c-muted)] mt-1 leading-tight">{sub}</span>
-            </button>
-          );})}
-        </main>
+          <Image
+            src="/home/homepage.png"
+            alt="Hotel and café"
+            width={1774}
+            height={887}
+            priority
+            className="w-full max-w-sm lg:max-w-md max-h-[32vh] lg:max-h-[36vh] h-auto object-contain mx-auto lg:mx-0 select-none pointer-events-none my-4 lg:my-4"
+          />
+          <article className="hidden lg:block w-full text-sm leading-relaxed text-[var(--c-muted)] bg-[var(--c-card)] border border-[var(--c-border-soft)] rounded-2xl p-5 shadow-sm text-left lg:mt-auto">
+            {t('bonoArticle') !== 'bonoArticle' ? t('bonoArticle') : "Bono Management System helps organize daily hotel and café operations in one place. Staff can access their dedicated portals to manage orders, kitchen and barista preparation, cashier payments, and inventory, while managers oversee operations and reports. The system is designed to make everyday work clearer, more organized, and easier to follow."}
+          </article>
+        </section>
 
-        <footer className="mt-8 text-center text-xs text-[var(--c-muted)]">
-          {t('footer')}
-        </footer>
+        {/* RIGHT — portals: Manager full-width top, then 2 rows × 3 cols */}
+        <section className="w-full lg:w-[58%] flex flex-col">
+          <div className="flex justify-between lg:justify-end items-center gap-3 mb-4 px-1 lg:px-0">
+            <div className="shrink-0">
+              <LanguageToggle />
+            </div>
+            <div className="shrink-0">
+              <ThemeToggleHome />
+            </div>
+          </div>
+          <main className="grid grid-cols-2 lg:grid-cols-3 gap-5 w-full auto-rows-fr">
+            {PORTALS.map((portal) => {
+              const title = (() => { const v = t(portal.titleKey); return v !== portal.titleKey ? v : (portal.fallbackTitle || v); })();
+              const sub = (() => { const v = t(portal.subtitleKey); return v !== portal.subtitleKey ? v : (portal.fallbackDesc || v); })();
+              return (
+              <button
+                key={portal.role}
+                type="button"
+                onClick={() => handlePortalClick(portal)}
+                className={`card-elevated tactile bg-[var(--c-card)] rounded-2xl p-6 flex flex-col items-center justify-center text-center w-full overflow-hidden min-h-[140px] ${MOBILE_GRID_ORDER[portal.role] || ""}`}
+              >
+                <span className="flex h-14 w-14 items-center justify-center mb-3 text-[var(--c-accent)]">
+                  <PortalIcon role={portal.role} />
+                </span>
+                <span className="text-base font-bold text-[var(--c-text)] leading-tight">{title}</span>
+                <span className="text-xs font-medium text-[var(--c-muted)] mt-1 leading-tight">{sub}</span>
+              </button>
+            );})}
+          </main>
+        </section>
       </div>
+
+      <footer className="mt-8 text-center text-xs text-[var(--c-muted)]">
+        {t('footer')}
+      </footer>
 
       <PinLoginModal
         key={active?.route || active?.role}

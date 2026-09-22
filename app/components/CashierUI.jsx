@@ -102,7 +102,7 @@ const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
 export default function CashierUI() {
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
   const hasMounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const [orders, setOrders] = useState([]);
@@ -176,13 +176,13 @@ export default function CashierUI() {
     } catch (err) {
       const s = err?.status;
       if (s === 401) {
-        setError('Session expired or forbidden — please re-login as Manager.');
+        setError('Session expired or forbidden. Please re-login as Manager.');
       } else if (s === 503 || /database|unavailable/i.test(err?.message || '')) {
         setError('Database temporarily unavailable. Retrying…');
       } else if (s === 429) {
         setError('Too many requests. Please slow down.');
       } else if (s === 403) {
-        setError('Forbidden — cashier requires Manager authorization.');
+        setError('Forbidden. Cashier requires Manager authorization.');
       } else {
         setError(err?.message || 'Unable to load orders.');
       }
@@ -373,12 +373,12 @@ export default function CashierUI() {
         }
         return [updated, ...prev];
       });
-      setPaySuccess(`Payment submitted for verification — ${updated.orderNumber} is now PAYMENT_PENDING via ${m}. Confirm from the pending queue.`);
+      setPaySuccess(`Payment submitted for verification. ${updated.orderNumber} is now PAYMENT_PENDING via ${m}. Confirm from the pending queue.`);
       setNotice(`◷ ${updated.orderNumber} pending verification (${m})`);
     } catch (err) {
       const s = err?.status;
       if (s === 401) setPayError('Session expired. Please re-login.');
-      else if (s === 403) setPayError('Forbidden — cashier authorization required.');
+      else if (s === 403) setPayError('Forbidden. Cashier authorization required.');
       else if (s === 429) setPayError(`Too many requests. Retry after ${err?.retryAfter || 'a moment'}.`);
       else if (s === 503) setPayError('Database unavailable. Please retry.');
       else setPayError(err?.message ? `Submit failed: ${err.message}` : 'Submit failed. Please retry.');
@@ -418,12 +418,12 @@ export default function CashierUI() {
         }
         return [updated, ...prev];
       });
-      setPaySuccess(`Payment verified — ${updated.orderNumber} marked PAID.`);
+      setPaySuccess(`Payment verified. ${updated.orderNumber} marked PAID.`);
       setNotice(`✓ ${updated.orderNumber} PAID (verified)`);
     } catch (err) {
       const s = err?.status;
       if (s === 401) setPayError('Session expired. Please re-login as Manager.');
-      else if (s === 403) setPayError('Forbidden — confirm requires Manager (Cashier).');
+      else if (s === 403) setPayError('Forbidden. Confirm requires Manager (Cashier).');
       else if (s === 409) setPayError('Payment already confirmed or not pending.');
       else setPayError(err?.message ? `Confirm failed: ${err.message}` : 'Confirm failed. Please retry.');
     } finally {
@@ -467,12 +467,12 @@ export default function CashierUI() {
         }
         return [updated, ...prev];
       });
-      setPaySuccess(`Payment rejected — ${updated.orderNumber} returned to SERVED.`);
+      setPaySuccess(`Payment rejected. ${updated.orderNumber} returned to SERVED.`);
       setNotice(`↩ ${updated.orderNumber} rejected`);
     } catch (err) {
       const s = err?.status;
       if (s === 401) setPayError('Session expired. Please re-login as Manager.');
-      else if (s === 403) setPayError('Forbidden — reject requires Manager.');
+      else if (s === 403) setPayError('Forbidden. Reject requires Manager.');
       else setPayError(err?.message ? `Reject failed: ${err.message}` : 'Reject failed. Please retry.');
     } finally {
       setPayBusy(false);
@@ -505,22 +505,12 @@ export default function CashierUI() {
 
   return (
     <div className="min-h-screen bg-[var(--c-bg)] text-[var(--c-text)]">
-      {/* Compact header — matches KDS/home tokens */}
-      <header className="sticky top-0 z-30 bg-[var(--c-header)] dark:bg-transparent border-b border-[var(--c-border-soft)] dark:border-transparent px-3 sm:px-4 py-3 shadow-sm dark:shadow-none backdrop-blur">
+      {/* Compact header — contained curved container matching Menu CRUD / Manager Reports */}
+      <header className="sticky top-4 z-30 mx-3 sm:mx-4 mt-4 rounded-2xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] dark:border-[#2A2B36] px-3 sm:px-4 py-3 shadow-sm backdrop-blur">
         <div className="mx-auto max-w-[1600px] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] shadow-sm text-[var(--c-accent)]">
-              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-                <rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="2" />
-                <path d="M3 10h18" stroke="currentColor" strokeWidth="2" />
-                <path d="M7 14h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <circle cx="15.5" cy="16.5" r="1" fill="currentColor" />
-              </svg>
-            </div>
             <div className="min-w-0">
-              <h1 className="text-[11px] font-black uppercase tracking-[0.14em] text-[var(--c-muted)] leading-none">Bono POS</h1>
-              <p className="text-base sm:text-lg font-black tracking-tight leading-none mt-1 text-[var(--c-text)]">Cashier</p>
-              <p className="hidden sm:block text-xs font-medium text-[var(--c-muted)] leading-none mt-1">Bill review &amp; authorized settlement — MANAGER session</p>
+              <p className="text-base sm:text-lg font-black tracking-tight leading-none mt-1 text-[var(--c-text)]">{t('cashierTitle')}</p>
             </div>
             <span className="hidden lg:inline-flex ml-2 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-[var(--c-muted)]">
               {orders.length} tickets
@@ -528,19 +518,18 @@ export default function CashierUI() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] shadow-sm">
-              <span className={`h-2 w-2 rounded-full ${error ? 'bg-[#DC2626] animate-pulse' : 'bg-[#16A34A]'}`} aria-hidden="true" />
-              {error ? 'offline' : 'live'}
-            </span>
             <LanguageToggle />
-            <ThemeToggleHome />
             <Link
               href="/"
               aria-label="Back to home"
-              className="hidden sm:inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile"
+              title="Home"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm"
             >
-              Home
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
+              </svg>
             </Link>
+            <ThemeToggleHome />
           </div>
         </div>
       </header>
@@ -569,7 +558,7 @@ export default function CashierUI() {
         <section className="lg:col-span-5 xl:col-span-4 flex flex-col gap-4 min-h-0">
           <div className="card-elevated rounded-2xl p-3 sm:p-4 bg-[var(--c-card)]">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h2 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Queue</h2>
+              <h2 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('cashierQueue')}</h2>
               <span className="rounded-full bg-[var(--c-bg)] px-2.5 py-1 text-xs font-bold text-[var(--c-muted)] border border-[var(--c-border-soft)]">
                 {filtered.length} / {orders.length}
               </span>
@@ -584,7 +573,7 @@ export default function CashierUI() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search table or order #  e.g. 3  ORD-1001  Abel"
+                placeholder={t('cashierSearchPh')}
                 aria-label="Search by table or order"
                 className="w-full bg-transparent text-sm font-medium text-[var(--c-text)] placeholder:text-[var(--c-muted)] focus:outline-none"
               />
@@ -604,9 +593,9 @@ export default function CashierUI() {
                     type="button"
                     onClick={() => setFilter(f.key)}
                     aria-pressed={active}
-                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold border transition-all tactile ${active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)] hover:text-[var(--c-text)]'}`}
+                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold border transition-all ${active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)] hover:text-[var(--c-text)]'}`}
                   >
-                    {f.label} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-black ${active ? 'bg-black/15 dark:bg-white/15 text-[#1E293B] dark:text-white' : 'bg-[var(--c-bg)] border border-[var(--c-border-soft)]'}`}>{n}</span>
+                    {f.key === 'PENDING' ? t('cashierPending') : f.key === 'PAID' ? t('cashierPaid') : f.label} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-black ${active ? 'bg-black/15 dark:bg-white/15 text-[#1E293B] dark:text-white' : 'bg-[var(--c-bg)] border border-[var(--c-border-soft)]'}`}>{n}</span>
                   </button>
                 );
               })}
@@ -615,16 +604,16 @@ export default function CashierUI() {
             {/* Refresh */}
             <div className="mt-3 flex items-center justify-between">
               <p className="text-[11px] font-medium text-[var(--c-muted)] hidden sm:block">
-                {initialLoading ? 'Loading…' : `${filtered.length} ticket${filtered.length !== 1 ? 's' : ''} · tap to bill`}
+                {initialLoading ? 'Loading…' : `${filtered.length} ticket${filtered.length !== 1 ? 's' : ''} tap to bill`}
               </p>
               <button
                 type="button"
                 onClick={fetchOrders}
                 disabled={initialLoading}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm disabled:opacity-50 tactile"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden="true"><path d="M21 12a9 9 0 11-2.64-6.36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Refresh
+                {t('cashierRefresh')}
               </button>
             </div>
           </div>
@@ -640,7 +629,7 @@ export default function CashierUI() {
             ) : filtered.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center py-16 px-6 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--c-border-soft)] bg-[var(--c-bg)] text-[var(--c-muted)] mb-3">—</div>
-                <p className="text-sm font-bold text-[var(--c-text)]">{error ? 'Unavailable' : search || filter !== 'ALL' ? 'No matching tickets' : 'No tickets'}</p>
+                <p className="text-sm font-bold text-[var(--c-text)]">{error ? 'Unavailable' : search || filter !== 'ALL' ? 'No matching tickets' : t('cashierNoTickets')}</p>
                 <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[28ch]">
                   {error ? 'Check connection and retry. Orders require Manager session.' : search ? `No results for “${search.trim()}”. Try order # or table number.` : filter !== 'ALL' ? `No ${filter} tickets in this window.` : 'New orders will appear here when waiters send them.'}
                 </p>
@@ -664,7 +653,7 @@ export default function CashierUI() {
                       type="button"
                       onClick={() => handleSelect(o._id)}
                       aria-pressed={isSelected}
-                      className={`w-full text-left rounded-xl border p-3 transition-all tactile flex flex-col gap-2 ${isSelected ? 'bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] border-[var(--c-accent)]/30 shadow-sm' : 'bg-white dark:bg-[#12131A] border-[var(--c-border-soft)] hover:border-[var(--c-accent)]/30 hover:bg-[var(--c-bg)]'}`}
+                      className={`w-full text-left rounded-xl border p-3 transition-all flex flex-col gap-2 ${isSelected ? 'bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] border-[var(--c-accent)]/30 shadow-sm' : 'bg-white dark:bg-[#12131A] border-[var(--c-border-soft)] hover:border-[var(--c-accent)]/30 hover:bg-[var(--c-bg)]'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -673,7 +662,7 @@ export default function CashierUI() {
                             <span className="text-xs font-bold text-[var(--c-muted)] truncate max-w-[14ch]" title={o.orderNumber}>{o.orderNumber}</span>
                             {o.isExternal && <span className="rounded-full bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] px-2 py-0.5 text-[10px] font-black uppercase">External</span>}
                           </div>
-                          <p className="mt-1 text-xs font-semibold text-[var(--c-muted)] truncate">Waiter: {o.waiterName || '—'} {o.waiterNumber != null ? `· #${o.waiterNumber}` : ''}</p>
+                          <p className="mt-1 text-xs font-semibold text-[var(--c-muted)] truncate">Waiter: {o.waiterName || '—'} {o.waiterNumber != null ? `#${o.waiterNumber}` : ''}</p>
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${sb.cls}`}>{sb.label}</span>
                       </div>
@@ -706,7 +695,7 @@ export default function CashierUI() {
                 <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden="true"><path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M9 5a2 2 0 012-2h2a2 2 0 012 2v1a2 2 0 01-2 2h-2a2 2 0 01-2-2V5z" stroke="currentColor" strokeWidth="2"/><path d="M9 12h6M9 16h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               </div>
               <h3 className="text-base font-black text-[var(--c-text)]">Select a ticket to bill</h3>
-              <p className="mt-2 max-w-[36ch] text-sm font-medium text-[var(--c-muted)]">Choose a ticket from the queue. You will see the itemized bill, payment state, and a receipt preview. Payments are recorded only after the backend confirms.</p>
+              <p className="mt-2 max-w-[36ch] text-sm font-medium text-[var(--c-muted)]">Choose a ticket from the queue. You will see the itemized bill, payment state, and a receipt preview.</p>
               <p className="mt-4 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-2 text-xs font-bold text-[var(--c-muted)]">Tip: search by table number (e.g. 3) or order # (e.g. ORD-1001)</p>
             </div>
           ) : (
@@ -717,7 +706,7 @@ export default function CashierUI() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1.5 rounded-xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-3 py-1.5 shadow-sm">
-                        <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Table</span>
+                        <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">{t('table')}</span>
                         <span className="text-base font-black text-[var(--c-text)]">{selected.tableNumber ?? '—'}</span>
                       </span>
                       <span className="rounded-xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] shadow-sm truncate max-w-[20ch]" title={selected.orderNumber}>{selected.orderNumber}</span>
@@ -726,21 +715,21 @@ export default function CashierUI() {
                     </div>
                     <p className="mt-2 text-xs font-semibold text-[var(--c-muted)]">
                       Waiter <span className="font-black text-[var(--c-text)]">{selected.waiterName || '—'}</span>
-                      {selected.waiterNumber != null ? ` · #${selected.waiterNumber}` : ''} · {fmtDate(selected.createdAt)}
+                      {selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''} {fmtDate(selected.createdAt)}
                     </p>
                     {selected.updatedAt && selected.updatedAt !== selected.createdAt && (
                       <p className="text-[11px] font-medium text-[var(--c-faint)]">Updated {fmtDate(selected.updatedAt)}</p>
                     )}
                     {selected.paymentRejectedAt && String(selected.status).toUpperCase() === 'SERVED' && (
-                      <p className="mt-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">Returned to waiter{selected.paymentRejectionReason ? `: ${selected.paymentRejectionReason}` : ''} — waiting for resubmission</p>
+                      <p className="mt-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">Returned to waiter{selected.paymentRejectionReason ? `: ${selected.paymentRejectionReason}` : ''} waiting for resubmission</p>
                     )}
                   </div>
-                  <button type="button" onClick={clearSelection} className="shrink-0 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] tactile">Close</button>
+                  <button type="button" onClick={clearSelection} className="shrink-0 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]">Close</button>
                 </div>
 
                 {/* Items */}
                 <div className="px-4 sm:px-5 py-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)] mb-3">Items — {selected.items?.length ?? 0} line{selected.items?.length === 1 ? '' : 's'}</h4>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)] mb-3">Items {selected.items?.length ?? 0} line{selected.items?.length === 1 ? '' : 's'}</h4>
                   {!Array.isArray(selected.items) || selected.items.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-[var(--c-border-soft)] bg-[var(--c-bg)] px-4 py-6 text-center text-sm font-medium text-[var(--c-muted)]">No items on this ticket</p>
                   ) : (
@@ -755,14 +744,14 @@ export default function CashierUI() {
                           <div key={`${selected._id}-it-${it.lineId || idx}`} className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${isCancelled ? 'border-[#FECACA] bg-[#FEF2F2] dark:border-[#7F1D1D] dark:bg-[#1C1D24] opacity-80' : 'border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A]'}`}>
                             <span className={`flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${isCancelled ? 'bg-[#FECACA] text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white' : 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white'}`}>{qty}</span>
                             <div className="min-w-0 flex-1">
-                              <p className={`truncate text-sm font-bold ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`} title={nm}>{nm}{isCancelled ? ' · Cancelled' : ''}</p>
-                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} · {fmtMoney(price)} each {it.isExternal ? '· Legacy External' : ''}{isCancelled ? ` · ${it.cancelledStation || 'Station'}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
+                              <p className={`truncate text-sm font-bold ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`} title={nm}>{nm}{isCancelled ? ' Cancelled' : ''}</p>
+                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} {fmtMoney(price)} each {it.isExternal ? 'Legacy External' : ''}{isCancelled ? ` ${it.cancelledStation || 'Station'}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
                               {isCancelled && it.cancelledAt && <p className="text-[10px] text-[#991B1B] dark:text-[#FCA5A5]">Cancelled {fmtDate(it.cancelledAt)} {fmtTime(it.cancelledAt)}</p>}
                               {Array.isArray(it.components) && it.components.length > 0 && (
                                 <ul className="mt-1 space-y-0.5">
                                   {it.components.map((c, ci) => (
                                     <li key={`${it.lineId || idx}-c-${ci}`} className={`truncate text-xs ${c.kind === "NOTE" ? "italic text-[#92400E] dark:text-[#FDBA74]" : "font-medium text-[var(--c-text)]"}`}>
-                                      {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${fmtMoney(c.unitPrice)} = ${fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}${c.inventoryItemId ? " · linked" : ""}`}
+                                      {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${fmtMoney(c.unitPrice)} = ${fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}${c.inventoryItemId ? " linked" : ""}`}
                                     </li>
                                   ))}
                                 </ul>
@@ -785,12 +774,12 @@ export default function CashierUI() {
                       return (
                         <>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{hasCancelled ? 'Payable (Net)' : 'Total'}</span>
+                            <span className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{hasCancelled ? 'Payable (Net)' : t('cashierTotal')}</span>
                             <span className="text-xl sm:text-2xl font-black text-[var(--c-text)]">{fmtMoney(hasCancelled ? net : gross)}</span>
                           </div>
                           {hasCancelled && (
                             <div className="mt-1 flex items-center justify-between text-xs font-semibold text-[#DC2626] dark:text-[#FCA5A5]">
-                              <span>Gross {fmtMoney(gross)} · Cancelled {fmtMoney(cancelled)}</span>
+                              <span>Gross {fmtMoney(gross)} Cancelled {fmtMoney(cancelled)}</span>
                               <span className="rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2 py-0.5 text-[10px] font-black">CANCELLED LINES EXCLUDED</span>
                             </div>
                           )}
@@ -800,23 +789,20 @@ export default function CashierUI() {
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--c-muted)]">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black uppercase ${payBadge(selected.paymentMethod).cls}`}>{payLabel(selected.paymentMethod)}</span>
                       {selected.paymentMethod && String(selected.paymentMethod).toUpperCase() !== 'NONE' && (
-                        <span>· Method: <strong className="text-[var(--c-text)]">{payLabel(selected.paymentMethod)}</strong></span>
+                        <span>Method: <strong className="text-[var(--c-text)]">{payLabel(selected.paymentMethod)}</strong></span>
                       )}
                       {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-bold text-[var(--c-text)]">
-                          🏦 {selected.paymentAccountSnapshot.bankName} · {selected.paymentAccountSnapshot.ownerName} · {selected.paymentAccountSnapshot.accountNumber}
+                          🏦 {selected.paymentAccountSnapshot.bankName} {selected.paymentAccountSnapshot.ownerName} {selected.paymentAccountSnapshot.accountNumber}
                         </span>
                       )}
                       {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && !selected.paymentAccountSnapshot && selIsPaid && (
-                        <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-bold text-[#92400E]">Legacy transfer — account unknown</span>
+                        <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-bold text-[#92400E]">Legacy transfer account unknown</span>
                       )}
-                      {selIsPaid && selected.paidAt && <span>· Paid {fmtDate(selected.paidAt)} {fmtTime(selected.paidAt) && `at ${fmtTime(selected.paidAt)}`}</span>}
-                      {selIsCancelled && <span className="text-[#DC2626]">· Voided</span>}
-                      {!selIsPaid && !selIsCancelled && <span className="text-[var(--c-muted)]">· Unpaid — awaiting settlement</span>}
+                      {selIsPaid && selected.paidAt && <span>Paid {fmtDate(selected.paidAt)} {fmtTime(selected.paidAt) && `at ${fmtTime(selected.paidAt)}`}</span>}
+                      {selIsCancelled && <span className="text-[#DC2626]">Voided</span>}
+                      {!selIsPaid && !selIsCancelled && <span className="text-[var(--c-muted)]">Unpaid awaiting settlement</span>}
                     </div>
-                    {selIsPaid && selected.paidAt && (
-                      <p className="mt-2 text-[11px] font-medium text-[var(--c-muted)]">Payment confirmed by backend. Receipt preview below uses only this order&apos;s stored fields — no calculated tax/discount/change.</p>
-                    )}
                   </div>
 
                   {/* Timestamps — only when present */}
@@ -842,7 +828,7 @@ export default function CashierUI() {
               {/* Payment Action Area */}
               <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Payment</h4>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('cashierPayment')}</h4>
                   {selIsPaid && <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F0FDF4] border border-[#BBF7D0] px-2.5 py-1 text-xs font-black text-[#15803D]">✓ Settled</span>}
                   {selIsCancelled && <span className="inline-flex rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2.5 py-1 text-xs font-black text-[#DC2626]">Voided</span>}
                   {selIsUnpaid && <span className="inline-flex rounded-full bg-white dark:bg-[#12131A] border border-[var(--c-border-soft)] px-2.5 py-1 text-xs font-bold text-[var(--c-muted)]">Awaiting</span>}
@@ -854,20 +840,18 @@ export default function CashierUI() {
 
                 {selIsPaid ? (
                   <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] dark:bg-[#1C1D24] dark:border-[#2A2B36] p-4">
-                    <p className="text-sm font-black text-[#15803D] dark:text-[#86EFAC]">This ticket is PAID — no further payment required.</p>
-                    <p className="mt-1 text-xs font-medium text-[#15803D]/80 dark:text-[#94A3B8]">Backend confirmed <strong>{payLabel(selected.paymentMethod)}</strong>{selected.paymentAccountSnapshot ? ` · ${selected.paymentAccountSnapshot.bankName} · ${selected.paymentAccountSnapshot.ownerName}` : ""} at {fmtDate(selected.paidAt)}. Buttons are disabled to prevent duplicate settlement.</p>
+                    <p className="text-sm font-black text-[#15803D] dark:text-[#86EFAC]">This ticket is PAID.</p>
                     {canShowReceipt && <p className="mt-2 text-xs font-bold text-[var(--c-muted)]">Receipt preview below is printable.</p>}
                   </div>
                 ) : selIsPaymentPending ? (
                   <div className="rounded-xl border border-[#FEF3C7] bg-[#FEF3C7]/50 dark:bg-[#7C2D12]/30 dark:border-[#7C2D12] p-4">
-                    <p className="text-sm font-black text-[#92400E] dark:text-[#FDBA74]">Payment pending verification — {payLabel(selected.paymentMethod)} {selected.paymentAccountSnapshot ? `· ${selected.paymentAccountSnapshot.bankName} · ${selected.paymentAccountSnapshot.ownerName} · ${selected.paymentAccountSnapshot.accountNumber}` : ""}</p>
-                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">Submitted {selected.paymentSubmittedAt ? fmtDate(selected.paymentSubmittedAt) : ""} {selected.paymentSubmittedAt ? fmtTime(selected.paymentSubmittedAt) : ""} — verify receipt before confirming.</p>
-                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">Amount: <strong>{fmtMoney(selected.totalAmount)}</strong> (net {fmtMoney(selected.netAmount ?? selected.totalAmount)})</p>
+                    <p className="text-sm font-black text-[#92400E] dark:text-[#FDBA74]">Payment pending verification {payLabel(selected.paymentMethod)} {selected.paymentAccountSnapshot ? `${selected.paymentAccountSnapshot.bankName} ${selected.paymentAccountSnapshot.ownerName} ${selected.paymentAccountSnapshot.accountNumber}` : ""}</p>
+                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">Submitted {selected.paymentSubmittedAt ? fmtDate(selected.paymentSubmittedAt) : ""} {selected.paymentSubmittedAt ? fmtTime(selected.paymentSubmittedAt) : ""}</p>
+                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">{t('cashierAmount')}: <strong>{fmtMoney(selected.totalAmount)}</strong> (net {fmtMoney(selected.netAmount ?? selected.totalAmount)})</p>
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button type="button" onClick={handleConfirmPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl bg-[#16A34A] text-white px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50 tactile">✓ Confirm PAID</button>
-                      <button type="button" onClick={handleRejectPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-white text-[#DC2626] px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50 tactile">↩ Reject / Return</button>
+                      <button type="button" onClick={handleConfirmPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl bg-[#16A34A] text-white px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">✓ {t('cashierConfirm')} PAID</button>
+                      <button type="button" onClick={handleRejectPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-white text-[#DC2626] px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">↩ {t('cashierReject')} / Return</button>
                     </div>
-                    <p className="mt-2 text-[11px] font-medium text-[#92400E]/70 dark:text-[#FDBA74]/70">Confirm sets paidAt and verifiedBy using server identity; no client amount trusted. Reject returns to SERVED for correction.</p>
                   </div>
                 ) : selIsCancelled ? (
                   <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-4">
@@ -877,15 +861,15 @@ export default function CashierUI() {
                 ) : (
                   <>
                     <p className="text-sm font-medium text-[var(--c-muted)] mb-3">
-                      Submit <strong className="text-[var(--c-text)]">{selected.orderNumber}</strong> for <strong className="text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</strong> for verification. Amount is taken directly from the order&apos;s stored <code className="rounded bg-[var(--c-bg)] px-1 py-0.5 text-xs">totalAmount</code> — no manual entry. Only confirmation marks PAID.
+                      Submit <strong className="text-[var(--c-text)]">{selected.orderNumber}</strong> for <strong className="text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</strong> for verification.
                     </p>
                     <div className="mb-3 grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => { setCashierMethod('CASH'); setPayError(''); }} aria-pressed={cashierMethod === 'CASH'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border tactile ${cashierMethod === 'CASH' ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Cash</button>
-                      <button type="button" onClick={() => { setCashierMethod('TRANSFER'); setPayError(''); }} aria-pressed={cashierMethod === 'TRANSFER'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border tactile ${cashierMethod === 'TRANSFER' ? 'bg-[#1E293B] dark:bg-white text-white dark:text-[#12131A] border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Transfer</button>
+                      <button type="button" onClick={() => { setCashierMethod('CASH'); setPayError(''); }} aria-pressed={cashierMethod === 'CASH'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border ${cashierMethod === 'CASH' ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Cash</button>
+                      <button type="button" onClick={() => { setCashierMethod('TRANSFER'); setPayError(''); }} aria-pressed={cashierMethod === 'TRANSFER'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border ${cashierMethod === 'TRANSFER' ? 'bg-[#1E293B] dark:bg-white text-white dark:text-[#12131A] border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Transfer</button>
                     </div>
                     {cashierMethod === 'TRANSFER' && (
                       <div className="mb-3 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] p-3">
-                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Transfer account — active only</p>
+                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Transfer account active only</p>
                         {paymentAccountsLoading ? (
                           <p className="py-2 text-center text-xs font-medium text-[var(--c-muted)]">Loading accounts…</p>
                         ) : paymentAccounts.length === 0 ? (
@@ -896,10 +880,10 @@ export default function CashierUI() {
                               const accId = String(acc._id || acc.id);
                               const sel = selectedTransferAccount === accId;
                               return (
-                                <button key={accId} type="button" onClick={() => setSelectedTransferAccount(accId)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left tactile ${sel ? 'border-[var(--c-accent)] bg-white dark:bg-[#1C1D24]' : 'border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24]'}`}>
+                                <button key={accId} type="button" onClick={() => setSelectedTransferAccount(accId)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left ${sel ? 'border-[var(--c-accent)] bg-white dark:bg-[#1C1D24]' : 'border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24]'}`}>
                                   <span className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${sel ? 'border-[var(--c-accent)]' : 'border-[var(--c-border-soft)]'}`}>{sel && <span className="h-2 w-2 rounded-full bg-[var(--c-accent)]" />}</span>
                                   <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-xs font-bold text-[var(--c-text)]">{acc.bankName} · {acc.ownerName}</span>
+                                    <span className="block truncate text-xs font-bold text-[var(--c-text)]">{acc.bankName} {acc.ownerName}</span>
                                     <span className="block truncate text-[11px] font-medium text-[var(--c-muted)]">{acc.accountNumber}</span>
                                   </span>
                                 </button>
@@ -915,14 +899,11 @@ export default function CashierUI() {
                         onClick={() => handlePay(cashierMethod)}
                         disabled={payBusy || (cashierMethod === 'TRANSFER' && !selectedTransferAccount)}
                         aria-disabled={payBusy || (cashierMethod === 'TRANSFER' && !selectedTransferAccount)}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-[var(--c-accent)] text-[#1E293B] dark:text-white px-4 py-3.5 text-sm font-black uppercase tracking-wide shadow-sm disabled:opacity-50 disabled:cursor-not-allowed tactile"
+                        className="flex items-center justify-center gap-2 rounded-xl bg-[var(--c-accent)] text-[#1E293B] dark:text-white px-4 py-3.5 text-sm font-black uppercase tracking-wide shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {payBusy ? 'Processing…' : cashierMethod === 'CASH' ? 'Submit Cash for Verification' : 'Submit Transfer for Verification'}
                       </button>
                     </div>
-                    <p className="mt-3 text-[11px] font-medium text-[var(--c-muted)]">
-                      Submit creates <code className="rounded bg-[var(--c-bg)] px-1 py-0.5">PAYMENT_PENDING</code> for verification. Only Confirm marks PAID. Success is shown only after the backend returns the updated order.
-                    </p>
                   </>
                 )}
               </div>
@@ -945,9 +926,9 @@ export default function CashierUI() {
                     <div className="mx-auto max-w-md rounded-xl border border-dashed border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] p-4 shadow-sm">
                       <div className="text-center border-b border-dashed border-[var(--c-border-soft)] pb-3 mb-3">
                         <p className="font-sans text-sm font-black tracking-tight text-[var(--c-text)]">BONO HOTEL</p>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--c-muted)]">Cashier Receipt — Preview</p>
-                        <p className="mt-1 text-[11px] font-bold text-[var(--c-text)]">{selected.orderNumber} · Table {selected.tableNumber}</p>
-                        <p className="text-[11px] text-[var(--c-muted)]">{fmtDate(selected.createdAt)} {selected.paidAt ? `· Paid ${fmtDate(selected.paidAt)}` : '· Unpaid'}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--c-muted)]">Cashier Receipt Preview</p>
+                        <p className="mt-1 text-[11px] font-bold text-[var(--c-text)]">{selected.orderNumber} Table {selected.tableNumber}</p>
+                        <p className="text-[11px] text-[var(--c-muted)]">{fmtDate(selected.createdAt)} {selected.paidAt ? `Paid ${fmtDate(selected.paidAt)}` : 'Unpaid'}</p>
                       </div>
                       <div className="space-y-1">
                         {(selected.items || []).map((it, i) => (
@@ -959,9 +940,9 @@ export default function CashierUI() {
                             </div>
                             {Array.isArray(it.components) && it.components.map((c, ci) => (
                               <div key={`rcpt-${i}-c-${ci}`} className={`ml-6 flex gap-2 text-[11px] ${c.kind === "NOTE" ? "italic text-[#92400E]" : "font-medium text-[var(--c-muted)]"}`}>
-                                <span className="shrink-0 w-6 text-right">{c.kind === "NOTE" ? "·" : `${c.quantity}×`}</span>
+                                <span className="shrink-0 w-6 text-right">{c.kind === "NOTE" ? "" : `${c.quantity}×`}</span>
                                 <span className="flex-1 truncate" title={c.kind === "NOTE" ? c.note : c.name}>{c.kind === "NOTE" ? c.note : c.name}</span>
-                                <span className="shrink-0 w-20 text-right font-bold">{c.kind === "NOTE" ? "—" : fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}</span>
+                                <span className="shrink-0 w-20 text-right font-bold">{c.kind === "NOTE" ? "" : fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}</span>
                               </div>
                             ))}
                           </div>
@@ -972,32 +953,29 @@ export default function CashierUI() {
                         <span className="text-[var(--c-text)]">{fmtMoney(Number(selected.cancelledAmount) > 0 ? selected.netAmount : selected.totalAmount)}</span>
                       </div>
                       {Number(selected.cancelledAmount) > 0 && (
-                        <p className="mt-1 text-right font-mono text-[10px] text-[#DC2626]">Gross {fmtMoney(selected.totalAmount)} · Cancelled {fmtMoney(selected.cancelledAmount)} excluded</p>
+                        <p className="mt-1 text-right font-mono text-[10px] text-[#DC2626]">Gross {fmtMoney(selected.totalAmount)} Cancelled {fmtMoney(selected.cancelledAmount)} excluded</p>
                       )}
                       <div className="mt-2 flex items-center justify-between text-[11px]">
                         <span className="font-bold uppercase tracking-wide text-[var(--c-muted)]">Method</span>
                         <span className={`rounded-full px-2 py-0.5 font-black uppercase text-[10px] ${payBadge(selected.paymentMethod).cls}`}>{payLabel(selected.paymentMethod)}</span>
                       </div>
                       {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
-                        <p className="mt-1 text-right font-mono text-[10px] text-[var(--c-muted)]">🏦 {selected.paymentAccountSnapshot.bankName} · {selected.paymentAccountSnapshot.ownerName} · {selected.paymentAccountSnapshot.accountNumber}</p>
+                        <p className="mt-1 text-right font-mono text-[10px] text-[var(--c-muted)]">🏦 {selected.paymentAccountSnapshot.bankName} {selected.paymentAccountSnapshot.ownerName} {selected.paymentAccountSnapshot.accountNumber}</p>
                       )}
                       {selected.waiterName && (
                         <p className="mt-2 text-center text-[11px] font-medium text-[var(--c-muted)]">Served by {selected.waiterName}{selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''}</p>
                       )}
-                      <p className="mt-3 text-center text-[10px] font-medium text-[var(--c-muted)]">Thank you — amounts from stored order only. No tax/discount simulated.</p>
+                      <p className="mt-3 text-center text-[10px] font-medium text-[var(--c-muted)]">Thank you. Amounts from stored order only. No tax/discount simulated.</p>
                       <div className="mt-3 flex justify-center">
                         <button
                           type="button"
                           onClick={() => window.print()}
-                          className="rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-1.5 font-sans text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] tactile"
+                          className="rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-1.5 font-sans text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]"
                         >
                           Print (browser)
                         </button>
                       </div>
                     </div>
-                    {!selIsPaid && (
-                      <p className="mt-3 text-center font-sans text-[11px] font-medium text-[var(--c-muted)]">This is a preview — payment not yet confirmed by backend. Print after PAID for an issuable receipt.</p>
-                    )}
                   </div>
                 )}
               </div>
@@ -1006,9 +984,6 @@ export default function CashierUI() {
         </section>
       </main>
 
-      <footer className="mx-auto max-w-[1600px] px-4 py-6 text-center text-xs font-medium text-[var(--c-muted)]">
-        Cashier · Phase 1 — MANAGER-authorized settlement only · Amounts from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">totalAmount</code> · No fabricated totals
-      </footer>
     </div>
   );
 }

@@ -1499,7 +1499,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                                 getLocalizedSingleString(it.name) ||
                                 getLocalizedSingleString(it.title) ||
                                 'Item'
-                              }`}{isCancelled ? ` — Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ""}` : ""}
+                              }`}{isCancelled ? ` Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ""}` : ""}
                             </div>
                             {comps.length > 0 && (
                               <ul className="ml-3 mt-0.5 space-y-0.5">
@@ -1575,7 +1575,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                   {t('paymentTitle')}
                 </h2>
                 <p className="truncate text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
-                  {`${t('table')} ${payTarget.tableNumber} · ${payTarget.totalAmount} ETB`}
+                  {`${t('table')} ${payTarget.tableNumber} ${payTarget.totalAmount} ETB`}
                 </p>
               </div>
               <button
@@ -1616,13 +1616,13 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                 <span className="min-w-0">
                   <span className="block text-sm font-black text-[#1E293B] dark:text-white">{payTarget.paymentRejectedAt ? 'RESUBMIT CASH FOR VERIFICATION' : 'SUBMIT CASH FOR VERIFICATION'}</span>
                   <span className="block text-[11px] font-semibold text-[#1E293B]/70 dark:text-white/80">
-                    {t('cash')} · Waiting for cashier — not paid yet
+                    {t('cash')} Waiting for cashier not paid yet
                   </span>
                 </span>
               </button>
 
               <div className="rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#12131A] p-3">
-                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Transfer — select account</p>
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Transfer select account</p>
                 {paymentAccountsLoading ? (
                   <p className="py-3 text-center text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Loading accounts…</p>
                 ) : paymentAccounts.length === 0 ? (
@@ -1643,7 +1643,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                             {selected && <span className="h-2 w-2 rounded-full bg-[#1E293B] dark:bg-white" />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-bold text-[#1E293B] dark:text-white">{acc.bankName} · {acc.ownerName}</span>
+                            <span className="block truncate text-sm font-bold text-[#1E293B] dark:text-white">{acc.bankName} {acc.ownerName}</span>
                             <span className="block truncate text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">{acc.accountNumber}</span>
                           </span>
                         </button>
@@ -1691,7 +1691,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
           onClick={() => setCartOpen(true)}
           className="fixed md:absolute inset-x-4 md:inset-x-3 bottom-4 md:bottom-3 z-40 flex items-center justify-between rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-5 py-3 font-bold text-[#1E293B] dark:text-white shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner"
         >
-          <span className="text-sm">{`${t('cart')} · ${cartCount}`}</span>
+          <span className="text-sm">{`${t('cart')} ${cartCount}`}</span>
           <span className="text-sm text-[#FFD600] dark:text-[#FF5E00]">{`${cartTotal} ETB`}</span>
         </button>
       )}
@@ -1735,10 +1735,10 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           <p className="truncate text-sm font-semibold text-[#1E293B] dark:text-white">
                             {localizedName(item, lang)}
                             {isExternal && (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-[#E2E8F0] dark:bg-[#2A2B36] px-1.5 py-0.5 text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">LEGACY EXTERNAL · {item.type || 'FOOD'}</span>
+                              <span className="ml-2 inline-flex items-center rounded-full bg-[#E2E8F0] dark:bg-[#2A2B36] px-1.5 py-0.5 text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">LEGACY EXTERNAL {item.type || 'FOOD'}</span>
                             )}
                           </p>
-                          <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${item.price} ETB × ${qty} = ${Math.round(item.price * qty * 100) / 100} ETB`}{pricedSum > 0 ? ` + components ${Math.round(pricedSum * 100) / 100} ETB` : ""}{noteCount > 0 ? ` · ${noteCount} note${noteCount > 1 ? "s" : ""}` : ""}</p>
+                          <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${item.price} ETB × ${qty} = ${Math.round(item.price * qty * 100) / 100} ETB`}{pricedSum > 0 ? ` + components ${Math.round(pricedSum * 100) / 100} ETB` : ""}{noteCount > 0 ? ` ${noteCount} note${noteCount > 1 ? "s" : ""}` : ""}</p>
                         </div>
                         <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
                           <button type="button" onClick={() => changeQty(cartKey, -1)} aria-label="decrease quantity" className="flex h-7 w-7 items-center justify-center rounded-lg bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0] dark:border-[#2A2B36] shadow-sm">−</button>
@@ -1753,7 +1753,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           {comps.map((c, idx) => (
                             <li key={`${cartKey}-comp-${idx}`} className={`flex items-center justify-between gap-2 rounded-xl px-2 py-1 text-xs ${c.kind === "NOTE" ? "bg-[#FEF3C7] dark:bg-[#7C2D12] text-[#92400E] dark:text-[#FDBA74] border border-[#FDE68A] dark:border-[#7C2D12]" : "bg-[#F4F5F9] dark:bg-[#12131A] border border-[#E2E8F0]/60 dark:border-[#2A2B36] text-[#1E293B] dark:text-white"}`}>
                               <span className="min-w-0 flex-1 truncate">
-                                {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${Math.round(c.quantity * c.unitPrice * 100) / 100} ETB${c.inventoryItemId ? " · linked" : ""}`}
+                                {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${Math.round(c.quantity * c.unitPrice * 100) / 100} ETB${c.inventoryItemId ? " linked" : ""}`}
                               </span>
                               <button type="button" onClick={() => removeComponentFromCart(cartKey, idx)} className="shrink-0 rounded-lg bg-white dark:bg-[#1C1D24] px-1.5 py-0.5 text-xs font-bold text-[#DC2626] border border-[#FECACA]">✕</button>
                             </li>
@@ -1809,14 +1809,13 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                             <input type="number" min="0" step="0.01" value={compPrice} onChange={(e) => setCompPrice(e.target.value)} placeholder="Unit price ETB *" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                           </div>
                           <details className="rounded-lg border border-dashed border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-2">
-                            <summary className="cursor-pointer text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Inventory link (optional, for stock deduction)</summary>
+                            <summary className="cursor-pointer text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Inventory link (optional)</summary>
                             <div className="mt-2 space-y-2">
-                              <input type="text" value={compInvId} onChange={(e) => setCompInvId(e.target.value)} placeholder="Inventory Item ID (ObjectId) — leave empty for no deduction" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                              <input type="text" value={compInvId} onChange={(e) => setCompInvId(e.target.value)} placeholder="Inventory Item ID (ObjectId). Leave empty for no deduction" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                               <div className="grid grid-cols-2 gap-2">
                                 <input type="number" step="0.001" value={compStockQty} onChange={(e) => setCompStockQty(e.target.value)} placeholder="Stock qty per unit" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                                 <input type="text" value={compStockUnit} onChange={(e) => setCompStockUnit(e.target.value)} placeholder="Stock unit e.g. kg" maxLength={20} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                               </div>
-                              <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">Manual price is selling price, not cost. Cost is fetched from inventory. Leave empty for no stock movement.</p>
                             </div>
                           </details>
                           {compError && <p className="text-xs text-[#DC2626]">{compError}</p>}
@@ -1848,7 +1847,6 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                 <span className="font-semibold text-[#64748B] dark:text-[#94A3B8]">{t('cart')}</span>
                 <span className="font-bold text-[#1E293B] dark:text-white">{`${cartTotal} ETB`}</span>
               </div>
-              <p className="mb-3 rounded-xl border border-dashed border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-2 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Components are added per item above — Notes are informational only, Priced add-ons are billable. Manual price is selling price, not cost.</p>
               <button
                 type="button"
                 disabled={submitting || cartEntries.length === 0}

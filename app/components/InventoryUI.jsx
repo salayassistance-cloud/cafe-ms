@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { safeFetchJson } from '@/lib/clientFetch';
+import { useLanguage } from '@/app/components/LanguageProvider';
+import LanguageToggle from '@/app/components/LanguageToggle';
+import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import {
   IconArchiveFilled,
   IconAlertTriangleFilled,
@@ -46,6 +49,7 @@ function getMenuDisplayName(m) {
 }
 
 export default function InventoryUI() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('stock');
 
   // Data
@@ -168,8 +172,8 @@ export default function InventoryUI() {
       setItems(Array.isArray(list) ? list : []);
     } catch (err) {
       const m = err?.message || 'Failed to load inventory';
-      if (err?.status === 401) setItemsError('Unauthorized — please sign in as Manager.');
-      else if (err?.status === 403) setItemsError('Forbidden — Manager access required.');
+      if (err?.status === 401) setItemsError('Unauthorized. Please sign in as Manager.');
+      else if (err?.status === 403) setItemsError('Forbidden. Manager access required.');
       else setItemsError(m);
     } finally {
       setLoadingItems(false);
@@ -185,8 +189,8 @@ export default function InventoryUI() {
       setSuppliers(Array.isArray(list) ? list : []);
     } catch (err) {
       const m = err?.message || 'Failed to load suppliers';
-      if (err?.status === 401) setSuppliersError('Unauthorized — please sign in as Manager.');
-      else if (err?.status === 403) setSuppliersError('Forbidden — Manager access required.');
+      if (err?.status === 401) setSuppliersError('Unauthorized. Please sign in as Manager.');
+      else if (err?.status === 403) setSuppliersError('Forbidden. Manager access required.');
       else setSuppliersError(m);
     } finally {
       setLoadingSuppliers(false);
@@ -202,8 +206,8 @@ export default function InventoryUI() {
       setRecipes(Array.isArray(list) ? list : []);
     } catch (err) {
       const m = err?.message || 'Failed to load recipes';
-      if (err?.status === 401) setRecipesError('Unauthorized — please sign in as Manager.');
-      else if (err?.status === 403) setRecipesError('Forbidden — Manager access required.');
+      if (err?.status === 401) setRecipesError('Unauthorized. Please sign in as Manager.');
+      else if (err?.status === 403) setRecipesError('Forbidden. Manager access required.');
       else setRecipesError(m);
     } finally {
       setLoadingRecipes(false);
@@ -239,8 +243,8 @@ export default function InventoryUI() {
       setDashboard(payload);
     } catch (err) {
       const m = err?.message || 'Failed to load dashboard';
-      if (err?.status === 401) setDashboardError('Unauthorized — please sign in as Manager.');
-      else if (err?.status === 403) setDashboardError('Forbidden — Manager access required.');
+      if (err?.status === 401) setDashboardError('Unauthorized. Please sign in as Manager.');
+      else if (err?.status === 403) setDashboardError('Forbidden. Manager access required.');
       else setDashboardError(m);
     } finally {
       setLoadingDashboard(false);
@@ -256,8 +260,8 @@ export default function InventoryUI() {
       setFoodCostData(payload);
     } catch (err) {
       const m = err?.message || 'Failed to load food cost';
-      if (err?.status === 401) setFoodCostError('Unauthorized — please sign in as Manager.');
-      else if (err?.status === 403) setFoodCostError('Forbidden — Manager access required.');
+      if (err?.status === 401) setFoodCostError('Unauthorized. Please sign in as Manager.');
+      else if (err?.status === 403) setFoodCostError('Forbidden. Manager access required.');
       else setFoodCostError(m);
     } finally {
       setLoadingFoodCost(false);
@@ -386,9 +390,9 @@ export default function InventoryUI() {
       });
       // Handle replay vs new: both are success, refresh only after confirmed
       if (data?.data?.replayed) {
-        setSuccessMsg(`Already received — replayed ${data.data.movement.quantity} ${data.data.movement.unit || ''}`);
+        setSuccessMsg(`Already received. Replayed ${data.data.movement.quantity} ${data.data.movement.unit || ''}`);
       } else {
-        setSuccessMsg(`Received ${qty} — new stock ${data?.data?.newStock ?? ''}`);
+        setSuccessMsg(`Received ${qty}. New stock ${data?.data?.newStock ?? ''}`);
       }
       setShowReceive(false);
       setReceiveForm({ itemId: '', quantity: '', unitCost: '', unit: '', supplier: '', notes: '' });
@@ -401,17 +405,17 @@ export default function InventoryUI() {
       if (status === 409) {
         // Same key + different payload: instruct new key for new receipt, clear draft fingerprint so next submit generates fresh key
         if (/different payload/i.test(msg)) {
-          setReceiveError(`${msg} — change was detected; a new receipt will use a new Idempotency-Key. Review payload before retrying.`);
+          setReceiveError(`${msg}. Change was detected; a new receipt will use a new Idempotency-Key. Review payload before retrying.`);
           clearReceiveDraft();
           setReceiveIdempotencyKey('');
         } else {
-          setReceiveError(msg || 'Idempotency-Key already used with different payload — use a new key for a new receipt');
+          setReceiveError(msg || 'Idempotency-Key already used with different payload. Use a new key for a new receipt');
           // Keep key for user to decide, but draft remains for explicit retry of same payload
         }
       } else if (status === 503 || status >= 500) {
         // Includes new 503 "Receipt status unknown — retry with the same Idempotency-Key to confirm."
         // Keep same key (and draft) for retry — survives reload via sessionStorage
-        setReceiveError(`${msg || 'Server error'} — retry with same Idempotency-Key to avoid duplicate`);
+        setReceiveError(`${msg || 'Server error'}. Retry with same Idempotency-Key to avoid duplicate`);
         saveReceiveDraft(key, currentFp);
       } else if (status === 400) {
         // Validation never wrote to DB — safe to keep key if payload will be retried with same fingerprint (after fixing other fields)
@@ -656,26 +660,28 @@ export default function InventoryUI() {
 
   return (
     <div className="min-h-screen bg-[var(--c-bg)] text-[var(--c-text)]">
-      {/* Header */}
-      <header className="sticky top-0 z-20 bg-[var(--c-header)] dark:bg-[#1C1D24] border-b border-[var(--c-border-soft)] dark:border-[#2A2B36] shadow-sm">
+      {/* Header — contained curved container matching Menu CRUD / Manager Reports */}
+      <header className="sticky top-4 z-20 mx-4 sm:mx-6 mt-4 rounded-2xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] dark:border-[#2A2B36] shadow-sm">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white dark:bg-[#12131A] border border-[var(--c-border-soft)] shadow-sm text-[var(--c-accent)]">
-                <IconArchiveFilled size={20} aria-hidden={true} className="h-5 w-5" />
-              </div>
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-black tracking-tight leading-none text-[var(--c-text)]">Bono Inventory Management</h1>
-                <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Stock · Suppliers · Recipes · Reports — Live data</p>
+                <h1 className="text-lg sm:text-xl font-black tracking-tight leading-none text-[var(--c-text)]">{t('invTitle')}</h1>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[var(--c-muted)] shadow-sm">
-                <span className="h-2 w-2 rounded-full bg-[#16A34A]" aria-hidden="true" />
-                API connected
-              </span>
-              <Link href="/" className="hidden sm:inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">Home</Link>
-              <Link href="/manager/reports" className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm tactile">Reports</Link>
+              <LanguageToggle includeOromia={false} />
+              <Link
+                href="/"
+                aria-label="Home"
+                title="Home"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
+                </svg>
+              </Link>
+              <ThemeToggleHome />
             </div>
           </div>
         </div>
@@ -705,11 +711,11 @@ export default function InventoryUI() {
                   role="tab"
                   onClick={() => setActiveTab(tab.key)}
                   aria-selected={active}
-                  className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide border transition-all tactile ${
+                  className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide border transition-all ${
                     active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#12131A] text-[var(--c-muted)] border-[var(--c-border-soft)] hover:text-[var(--c-text)]'
                   }`}
                 >
-                  {tab.label}
+                  {tab.key === 'stock' ? t('invStock') : tab.key === 'suppliers' ? t('invSuppliers') : tab.key === 'recipes' ? t('invRecipes') : tab.label}
                 </button>
               );
             })}
@@ -728,7 +734,6 @@ export default function InventoryUI() {
                 </div>
                 {loadingItems ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[var(--c-text)]">{totalItems}</p>}
                 <p className="text-xs font-medium text-[var(--c-muted)]">{loadingItems ? 'Loading…' : `${totalItems} items in inventory`}</p>
-                <p className="text-[11px] font-bold text-[var(--c-faint)]">Live from API</p>
               </div>
               <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
@@ -737,7 +742,6 @@ export default function InventoryUI() {
                 </div>
                 {loadingItems ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[#D97706] dark:text-[#FBBF24]">{lowStockCount}</p>}
                 <p className="text-xs font-medium text-[var(--c-muted)]">{outOfStockCount} out of stock</p>
-                <p className="text-[11px] font-bold text-[var(--c-faint)]">Status derived in UI</p>
               </div>
               <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
@@ -746,16 +750,14 @@ export default function InventoryUI() {
                 </div>
                 {loadingItems ? <div className="h-7 w-24 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[var(--c-text)]">{fmtCost(inventoryValue)}</p>}
                 <p className="text-xs font-medium text-[var(--c-muted)]">sum(stock × cost)</p>
-                <p className="text-[11px] font-bold text-[var(--c-faint)]">UI calculation only</p>
               </div>
               <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Stock Status</p>
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F4F5F9] dark:bg-[#12131A] border border-[var(--c-border-soft)] text-[var(--c-muted)]"><IconChartBar size={16} className="h-4 w-4" /></span>
                 </div>
-                {loadingItems ? <div className="h-7 w-24 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-sm font-black text-[var(--c-text)]">{outOfStockCount} out · {lowStockCount} low · {totalItems - lowStockCount - outOfStockCount} ok</p>}
+                {loadingItems ? <div className="h-7 w-24 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-sm font-black text-[var(--c-text)]">{outOfStockCount} out {lowStockCount} low {totalItems - lowStockCount - outOfStockCount} ok</p>}
                 <p className="text-xs font-medium text-[var(--c-muted)]">Distribution</p>
-                <p className="text-[11px] font-bold text-[var(--c-faint)]">No backend analytics</p>
               </div>
             </section>
 
@@ -764,13 +766,12 @@ export default function InventoryUI() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
                 <div>
                   <h2 className="text-sm font-black text-[var(--c-text)]">Inventory Stock</h2>
-                  <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Live data from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/inventory/items</code> — UI-calculated value.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingItems ? '…' : `${items.length} items`}</span>
-                  <button type="button" onClick={() => { const willOpen = !showReceive; setShowReceive((v) => !v); if (willOpen) { setReceiveIdempotencyKey(''); setReceiveError(''); clearReceiveDraft(); } else { setReceiveError(''); } }} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">{showReceive ? 'Close Receive' : 'Receive Stock'}</button>
-                  <button type="button" onClick={() => setShowAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm tactile">{showAdd ? 'Close' : '+ Add Item'}</button>
-                  <button type="button" onClick={fetchItems} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">Refresh</button>
+                  <button type="button" onClick={() => { const willOpen = !showReceive; setShowReceive((v) => !v); if (willOpen) { setReceiveIdempotencyKey(''); setReceiveError(''); clearReceiveDraft(); } else { setReceiveError(''); } }} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">{showReceive ? t('close') : t('invReceive')}</button>
+                  <button type="button" onClick={() => setShowAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showAdd ? t('close') : `+ ${t('invAddItem')}`}</button>
+                  <button type="button" onClick={fetchItems} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">{t('invRefresh')}</button>
                 </div>
               </div>
 
@@ -783,7 +784,7 @@ export default function InventoryUI() {
                       <select value={receiveForm.itemId} onChange={(e) => { const v = e.target.value; const it = items.find((x) => String(x._id||x.id)===String(v)); setReceiveForm({ ...receiveForm, itemId: v, unit: it ? it.unit : receiveForm.unit }); }} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
                         <option value="">Select item</option>
                         {items.map((it) => (
-                          <option key={it._id||it.id} value={it._id||it.id}>{it.name} — {it.unit} (stock {it.currentStock})</option>
+                          <option key={it._id||it.id} value={it._id||it.id}>{it.name} {it.unit} (stock {it.currentStock})</option>
                         ))}
                       </select>
                     </label>
@@ -813,7 +814,7 @@ export default function InventoryUI() {
                       <input value={receiveForm.notes} onChange={(e) => setReceiveForm({ ...receiveForm, notes: e.target.value })} placeholder="Invoice #123, delivery notes" maxLength={500} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <div className="sm:col-span-3 flex items-center gap-2">
-                      <button type="submit" disabled={receiveBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm disabled:opacity-50 tactile">{receiveBusy ? 'Receiving…' : 'Submit Receipt'}</button>
+                      <button type="submit" disabled={receiveBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm disabled:opacity-50">{receiveBusy ? 'Receiving…' : 'Submit Receipt'}</button>
                       <button type="button" onClick={() => { setShowReceive(false); setReceiveError(''); setReceiveIdempotencyKey(''); clearReceiveDraft(); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
                       {receiveError && <span className="text-xs font-semibold text-[#DC2626]">{receiveError}</span>}
                     </div>
@@ -851,7 +852,7 @@ export default function InventoryUI() {
                       <input type="number" min="0" step="0.01" value={addForm.cost} onChange={(e) => setAddForm({ ...addForm, cost: e.target.value })} placeholder="850" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <div className="sm:col-span-3 flex items-center gap-2">
-                      <button type="submit" disabled={addBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{addBusy ? 'Saving…' : 'Create Item'}</button>
+                      <button type="submit" disabled={addBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{addBusy ? 'Saving…' : 'Create Item'}</button>
                       {addError && <span className="text-xs font-semibold text-[#DC2626]">{addError}</span>}
                     </div>
                   </form>
@@ -873,7 +874,7 @@ export default function InventoryUI() {
               ) : items.length === 0 ? (
                 <div className="px-4 sm:px-5 py-12 text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] mb-3"><IconStackFilled size={20} className="h-5 w-5" /></div>
-                  <p className="text-sm font-black text-[var(--c-text)]">No inventory items yet</p>
+                  <p className="text-sm font-black text-[var(--c-text)]">{t('invNoItems')}</p>
                   <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">Add your first item with <strong className="text-[var(--c-text)]">+ Add Item</strong>. Data is persisted via <code className="rounded bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-1">POST /api/inventory/items</code>.</p>
                 </div>
               ) : (
@@ -882,13 +883,13 @@ export default function InventoryUI() {
                     <table className="w-full text-sm">
                       <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
                         <tr>
-                          <th className="px-4 py-3 font-black">Item</th>
+                          <th className="px-4 py-3 font-black">{t('invItems')}</th>
                           <th className="px-4 py-3 font-black">Category</th>
-                          <th className="px-4 py-3 font-black">Unit</th>
-                          <th className="px-4 py-3 text-right font-black">Current</th>
+                          <th className="px-4 py-3 font-black">{t('invUnit')}</th>
+                          <th className="px-4 py-3 text-right font-black">{t('invCurrentStock')}</th>
                           <th className="px-4 py-3 text-right font-black">Minimum</th>
-                          <th className="px-4 py-3 text-right font-black">Cost</th>
-                          <th className="px-4 py-3 text-right font-black">Status</th>
+                          <th className="px-4 py-3 text-right font-black">{t('invCost')}</th>
+                          <th className="px-4 py-3 text-right font-black">{t('status')}</th>
                           <th className="px-4 py-3 text-right font-black">Actions</th>
                         </tr>
                       </thead>
@@ -907,7 +908,7 @@ export default function InventoryUI() {
                             <td className="px-4 py-3.5 text-right font-medium text-[var(--c-muted)]">{Number(row.minimumStock) ?? 0}</td>
                             <td className="px-4 py-3.5 text-right font-bold text-[var(--c-text)]">{fmtCost(row.cost)}</td>
                             <td className="px-4 py-3.5 text-right"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${statusCls(row.status)}`}>{row.status}</span></td>
-                            <td className="px-4 py-3.5 text-right"><button type="button" onClick={() => openEdit(row)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]">Edit</button></td>
+                            <td className="px-4 py-3.5 text-right"><button type="button" onClick={() => openEdit(row)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]">{t('edit')}</button></td>
                           </tr>
                         ))}
                       </tbody>
@@ -917,24 +918,20 @@ export default function InventoryUI() {
                     {items.map((row) => (
                       <div key={`m-${row._id || row.id}`} className="px-4 py-3.5 flex flex-col gap-2">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0"><p className="truncate text-sm font-black text-[var(--c-text)]">{row.name}</p><p className="mt-1 inline-flex rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--c-muted)]">{row.category} · {row.unit}</p></div>
+                          <div className="min-w-0"><p className="truncate text-sm font-black text-[var(--c-text)]">{row.name}</p><p className="mt-1 inline-flex rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--c-muted)]">{row.category} {row.unit}</p></div>
                           <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-black uppercase ${statusCls(row.status)}`}>{row.status}</span>
                         </div>
                         <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-[var(--c-muted)]">
                           <span>Current: <strong className="text-[var(--c-text)]">{Number(row.currentStock) ?? 0}</strong></span>
                           <span>Min: <strong className="text-[var(--c-text)]">{Number(row.minimumStock) ?? 0}</strong></span>
                           <span>Cost: <strong className="text-[var(--c-text)]">{fmtCost(row.cost)}</strong></span>
-                          <button type="button" onClick={() => openEdit(row)} className="ml-auto inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">Edit</button>
+                          <button type="button" onClick={() => openEdit(row)} className="ml-auto inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">{t('edit')}</button>
                         </div>
                       </div>
                     ))}
                   </div>
                 </>
               )}
-
-              <div className="border-t border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-3 text-[11px] font-medium text-[var(--c-muted)]">
-                Live from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/inventory/items</code> — <code>PATCH /api/inventory/items/[id]</code> cannot change <code>currentStock</code> directly.
-              </div>
             </section>
 
             {/* Edit Item Modal */}
@@ -942,7 +939,7 @@ export default function InventoryUI() {
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md">
                 <div className="w-full max-w-lg rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Item — {editItem.name}</h3>
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Item {editItem.name}</h3>
                     <button type="button" onClick={() => setEditItem(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
                   </div>
                   <form onSubmit={handleEditItem} className="grid gap-3 sm:grid-cols-2">
@@ -975,7 +972,7 @@ export default function InventoryUI() {
                       </select>
                     </label>
                     <div className="sm:col-span-2 flex items-center gap-2">
-                      <button type="submit" disabled={editBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{editBusy ? 'Saving…' : 'Save'}</button>
+                      <button type="submit" disabled={editBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editBusy ? 'Saving…' : 'Save'}</button>
                       <button type="button" onClick={() => setEditItem(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
                       {editError && <span className="text-xs font-semibold text-[#DC2626]">{editError}</span>}
                     </div>
@@ -990,12 +987,11 @@ export default function InventoryUI() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
               <div>
                 <h2 className="text-sm font-black text-[var(--c-text)]">Suppliers</h2>
-                <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Live from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/inventory/suppliers</code></p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingSuppliers ? '…' : `${suppliers.length} suppliers`}</span>
-                <button type="button" onClick={() => setShowSupAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm tactile">{showSupAdd ? 'Close' : '+ Add Supplier'}</button>
-                <button type="button" onClick={fetchSuppliers} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">Refresh</button>
+                <button type="button" onClick={() => setShowSupAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showSupAdd ? 'Close' : '+ Add Supplier'}</button>
+                <button type="button" onClick={fetchSuppliers} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">{t('invRefresh')}</button>
               </div>
             </div>
             {suppliersError && (
@@ -1028,7 +1024,7 @@ export default function InventoryUI() {
                     </select>
                   </label>
                   <div className="sm:col-span-2 flex items-center gap-2">
-                    <button type="submit" disabled={supBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{supBusy ? 'Saving…' : 'Create Supplier'}</button>
+                    <button type="submit" disabled={supBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{supBusy ? 'Saving…' : 'Create Supplier'}</button>
                     {supError && <span className="text-xs font-semibold text-[#DC2626]">{supError}</span>}
                   </div>
                 </form>
@@ -1052,11 +1048,11 @@ export default function InventoryUI() {
                   <div key={s._id || s.id} className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-black text-[var(--c-text)]">{s.name}</p>
-                      <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{s.contact || '—'} · {s.address || '—'}</p>
+                      <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{s.contact || '—'} {s.address || '—'}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${s.status === 'Active' ? 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0] dark:bg-[rgba(16,185,129,0.12)] dark:text-[#6EE7B7]' : 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]'}`}>{s.status}</span>
-                      <button type="button" onClick={() => openEditSup(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">Edit</button>
+                      <button type="button" onClick={() => openEditSup(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">{t('edit')}</button>
                     </div>
                   </div>
                 ))}
@@ -1066,7 +1062,7 @@ export default function InventoryUI() {
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md">
                 <div className="w-full max-w-lg rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Supplier — {editSup.name}</h3>
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Supplier {editSup.name}</h3>
                     <button type="button" onClick={() => setEditSup(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
                   </div>
                   <form onSubmit={handleEditSupplier} className="grid gap-3 sm:grid-cols-2">
@@ -1090,7 +1086,7 @@ export default function InventoryUI() {
                       </select>
                     </label>
                     <div className="sm:col-span-2 flex items-center gap-2">
-                      <button type="submit" disabled={editSupBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{editSupBusy ? 'Saving…' : 'Save'}</button>
+                      <button type="submit" disabled={editSupBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editSupBusy ? 'Saving…' : 'Save'}</button>
                       <button type="button" onClick={() => setEditSup(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
                       {editSupError && <span className="text-xs font-semibold text-[#DC2626]">{editSupError}</span>}
                     </div>
@@ -1098,21 +1094,17 @@ export default function InventoryUI() {
                 </div>
               </div>
             )}
-            <div className="border-t border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-3 text-[11px] font-medium text-[var(--c-muted)]">
-              Live from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/inventory/suppliers</code>
-            </div>
           </section>
         ) : activeTab === 'recipes' ? (
           <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
               <div>
-                <h2 className="text-sm font-black text-[var(--c-text)]">Recipes — Menu ↔ Inventory</h2>
-                <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Live from <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">/api/recipes</code> — no deduction, relationship only.</p>
+                <h2 className="text-sm font-black text-[var(--c-text)]">Recipes Menu ↔ Inventory</h2>
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingRecipes ? '…' : `${recipes.length} recipes`}</span>
-                <button type="button" onClick={() => setShowRecipeAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm tactile">{showRecipeAdd ? 'Close' : '+ Add Recipe'}</button>
-                <button type="button" onClick={fetchRecipes} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">Refresh</button>
+                <button type="button" onClick={() => setShowRecipeAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showRecipeAdd ? 'Close' : '+ Add Recipe'}</button>
+                <button type="button" onClick={fetchRecipes} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">{t('invRefresh')}</button>
               </div>
             </div>
 
@@ -1134,7 +1126,7 @@ export default function InventoryUI() {
                       <select value={recipeForm.menuItemId} onChange={(e) => setRecipeForm({ ...recipeForm, menuItemId: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
                         <option value="">Select menu item</option>
                         {menuItems.map((m) => (
-                          <option key={m._id || m.id} value={m._id || m.id}>{getMenuDisplayName(m)} — {m.price != null ? fmtCost(m.price) : ''}</option>
+                          <option key={m._id || m.id} value={m._id || m.id}>{getMenuDisplayName(m)} {m.price != null ? fmtCost(m.price) : ''}</option>
                         ))}
                       </select>
                     )}
@@ -1168,7 +1160,7 @@ export default function InventoryUI() {
                     ))}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="submit" disabled={recipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{recipeBusy ? 'Saving…' : 'Create Recipe'}</button>
+                    <button type="submit" disabled={recipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{recipeBusy ? 'Saving…' : 'Create Recipe'}</button>
                     {recipeError && <span className="text-xs font-semibold text-[#DC2626]">{recipeError}</span>}
                   </div>
                 </form>
@@ -1197,16 +1189,16 @@ export default function InventoryUI() {
                         <p className="mt-1 flex flex-wrap gap-1.5">
                           {(r.ingredients || []).map((ing, idx) => (
                             <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-2 py-0.5 text-xs font-bold text-[var(--c-muted)]">
-                              {ing.inventoryItem?.name || String(ing.inventoryItemId).slice(-4)} · {ing.quantity} {ing.unit}
+                              {ing.inventoryItem?.name || String(ing.inventoryItemId).slice(-4)} {ing.quantity} {ing.unit}
                             </span>
                           ))}
                           {(!r.ingredients || r.ingredients.length === 0) && <span className="text-xs text-[var(--c-muted)]">No ingredients</span>}
                         </p>
-                        <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{r.ingredients?.length || 0} ingredients · {r.isActive === false ? 'Inactive' : 'Active'}</p>
+                        <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{r.ingredients?.length || 0} ingredients {r.isActive === false ? 'Inactive' : 'Active'}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${r.isActive === false ? 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]' : 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]'}`}>{r.isActive === false ? 'Inactive' : 'Active'}</span>
-                        <button type="button" onClick={() => openEditRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">Edit</button>
+                        <button type="button" onClick={() => openEditRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">{t('edit')}</button>
                         {r.isActive !== false && (
                           <button type="button" onClick={() => handleDeactivateRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#FECACA] bg-white px-2.5 text-xs font-bold text-[#DC2626]">Deactivate</button>
                         )}
@@ -1222,7 +1214,7 @@ export default function InventoryUI() {
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md overflow-y-auto">
                 <div className="w-full max-w-xl rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)] my-auto">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Recipe — {editRecipe.menuItem?.name || editRecipe.menuItemId}</h3>
+                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Recipe {editRecipe.menuItem?.name || editRecipe.menuItemId}</h3>
                     <button type="button" onClick={() => setEditRecipe(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
                   </div>
                   <form onSubmit={handleEditRecipe} className="space-y-3">
@@ -1268,7 +1260,7 @@ export default function InventoryUI() {
                       <span className="text-xs font-bold text-[var(--c-muted)]">Active</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <button type="submit" disabled={editRecipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50 tactile">{editRecipeBusy ? 'Saving…' : 'Save'}</button>
+                      <button type="submit" disabled={editRecipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editRecipeBusy ? 'Saving…' : 'Save'}</button>
                       <button type="button" onClick={() => setEditRecipe(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
                       {editRecipeError && <span className="text-xs font-semibold text-[#DC2626]">{editRecipeError}</span>}
                     </div>
@@ -1277,15 +1269,12 @@ export default function InventoryUI() {
               </div>
             )}
 
-            <div className="border-t border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-3 text-[11px] font-medium text-[var(--c-muted)]">
-              Relationship only — no stock is deducted. Use <code className="rounded bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-1">POST /api/recipes</code> / <code>PATCH /api/recipes/[id]</code>.
-            </div>
           </section>
         ) : (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-black text-[var(--c-text)]">Inventory Intelligence</h2>
-              <button type="button" onClick={fetchDashboard} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm tactile">Refresh</button>
+              <button type="button" onClick={fetchDashboard} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">{t('invRefresh')}</button>
             </div>
             {loadingDashboard ? (
               <div className="grid gap-4">
@@ -1332,12 +1321,10 @@ export default function InventoryUI() {
                 <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4">
                   <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost (historical)</h3>
                   <p className="mt-2 text-2xl font-black text-[var(--c-text)]">{fmtCost(dashboard.foodCost?.foodCost)}</p>
-                  <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Sum <code className="rounded bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-1">StockMovement.totalCost</code> where <code>reason:SaleDeduction</code></p>
                 </section>
                 <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
                   <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
                     <h3 className="text-sm font-black text-[var(--c-text)]">Consumption</h3>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">type:OUT reason:SaleDeduction grouped before lookup</p>
                   </div>
                   {(!dashboard.consumption || dashboard.consumption.length === 0) ? (
                     <div className="px-4 sm:px-5 py-8 text-center">
@@ -1362,7 +1349,6 @@ export default function InventoryUI() {
                 <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
                   <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
                     <h3 className="text-sm font-black text-[var(--c-text)]">Waste</h3>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">totalCost snapshot, null-safe</p>
                   </div>
                   <div className="px-4 sm:px-5 py-3 flex flex-wrap gap-4 text-xs font-bold text-[var(--c-muted)]">
                     <span>Total quantity: <strong className="text-[var(--c-text)]">{dashboard.waste?.totalWasteQuantity ?? 0}</strong></span>
@@ -1390,7 +1376,6 @@ export default function InventoryUI() {
                 <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
                   <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
                     <h3 className="text-sm font-black text-[var(--c-text)]">Top Ingredients (Top 10)</h3>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">Aggregation early $match, lookup after group</p>
                   </div>
                   {(!dashboard.topIngredients || dashboard.topIngredients.length === 0) ? (
                     <div className="px-4 sm:px-5 py-8 text-center">
@@ -1435,12 +1420,10 @@ export default function InventoryUI() {
                     <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4">
                       <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost Summary</h3>
                       <p className="mt-2 text-2xl font-black text-[var(--c-text)]">{fmtCost(foodCostData.summary?.foodCost)}</p>
-                      <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Historical <code className="rounded bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-1">totalCost</code> snapshot (never current cost)</p>
                     </section>
                     <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
                       <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
                         <h3 className="text-sm font-black text-[var(--c-text)]">Daily Food Cost Trend</h3>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">Grouped by <code>createdAt</code> daily</p>
                       </div>
                       {(!foodCostData.trend || foodCostData.trend.length === 0) ? (
                         <div className="px-4 sm:px-5 py-8 text-center">
@@ -1465,7 +1448,6 @@ export default function InventoryUI() {
                     <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
                       <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
                         <h3 className="text-sm font-black text-[var(--c-text)]">Top Cost Ingredients</h3>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">Grouped before lookup, sorted by totalCost</p>
                       </div>
                       {(!foodCostData.topIngredients || foodCostData.topIngredients.length === 0) ? (
                         <div className="px-4 sm:px-5 py-8 text-center">
@@ -1494,7 +1476,6 @@ export default function InventoryUI() {
         )}
       </main>
 
-      <footer className="mx-auto max-w-[1600px] px-4 sm:px-6 py-6 text-center text-xs font-medium text-[var(--c-muted)]">Inventory · Live API · Manager-protected · Recipes are relationship only</footer>
     </div>
   );
 }

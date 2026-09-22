@@ -7,8 +7,8 @@ import { safeFetchJson } from '@/lib/clientFetch';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import { useLanguage } from '@/app/components/LanguageProvider';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
-import ManagerSecurityButton from '@/app/components/ManagerSecurityButton';
 import EthiopianDateRangePicker from '@/app/components/EthiopianDateRangePicker';
+import ManagerSidebar from '@/app/components/ManagerSidebar';
 import {
   ethQuickRanges,
   toEthiopian,
@@ -174,8 +174,6 @@ export default function ManagerReports() {
   const [selectedCompletedId, setSelectedCompletedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileMenuRef = useRef(null);
 
   const dataRef = useRef(null);
   useEffect(() => {
@@ -287,21 +285,6 @@ export default function ManagerReports() {
     };
   }, [fetchReports]);
 
-  useEffect(() => {
-    function onDoc(e) {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target)) setMobileMenuOpen(false);
-    }
-    function onResize() {
-      if (typeof window !== 'undefined' && window.innerWidth >= 768) setMobileMenuOpen(false);
-    }
-    if (mobileMenuOpen) document.addEventListener('mousedown', onDoc);
-    window.addEventListener('resize', onResize);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [mobileMenuOpen]);
-
   function exportCSV() {
     if (!data) return;
     const rows = [
@@ -349,154 +332,31 @@ export default function ManagerReports() {
     ) || [];
 
   return (
-    <div className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] p-4 text-[#1E293B] dark:text-white sm:p-6">
-      {/* ============ TIER 1: TOP HEADER BAR — transparent in dark ============ */}
+    <div className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col lg:flex-row">
+      <ManagerSidebar onExportCsv={exportCSV} onExportPdf={exportPDF} />
+      <div className="flex-1 min-w-0 p-4 text-[#1E293B] dark:text-white sm:p-6 overflow-x-hidden">
+        {/* ============ TIER 1: TOP HEADER BAR — transparent in dark ============ */}
       <header className="relative rounded-2xl bg-white dark:bg-[#1C1D24] px-4 py-3 border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner sm:px-6">
-        {/* DESKTOP LAYOUT (md and up) */}
-        <div className="hidden md:flex md:flex-wrap md:items-center md:justify-between md:gap-3">
-          {/* Left: Brand & Title */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-xl font-extrabold text-[#1E293B] dark:text-white sm:text-2xl">
               {t('managerReports')}
             </h1>
           </div>
-
-          {/* Right: Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* PROMINENT Menu Management — routes to /manager/menu-crud (spec) */}
+          <div className="flex items-center gap-2">
+            <LanguageToggle includeOromia={false} />
             <Link
-              href="/manager/menu-crud"
-              className="flex h-10 items-center gap-1.5 rounded-full bg-[#FFD600] dark:bg-[#FF5500] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner"
+              href="/"
+              title={t('home')}
+              aria-label={t('home')}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
             >
-              {t('menuManagement')}
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
+              </svg>
             </Link>
-
-            {/* EXPORT CSV */}
-            <button
-              type="button"
-              onClick={exportCSV}
-              className="flex h-10 items-center gap-1.5 rounded-full bg-white dark:bg-[#1C1D24] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner transition-all duration-200  hover:bg-[#F8FAFC] dark:hover:bg-[#252631] "
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              {t('exportCsv')}
-            </button>
-
-            {/* EXPORT PDF */}
-            <button
-              type="button"
-              onClick={exportPDF}
-              className="flex h-10 items-center gap-1.5 rounded-full bg-[#FFD600] dark:bg-[#FF5500] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner transition-all duration-200  hover:bg-[#FF5500] dark:hover:bg-[#FF5500] "
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-              {t('exportPdf')}
-            </button>
-
-            {/* Central PIN & Session Management — canonical Staff, single source */}
-            <ManagerSecurityButton
-              title={t('securityPins')}
-              className="flex h-10 items-center gap-1.5 rounded-full bg-white dark:bg-[#1C1D24] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out active:shadow-inner hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
-            />
-
-            {/* Language → Home → Dark/Light (all at right corner) */}
-            <div className="flex items-center gap-2">
-              <LanguageToggle includeOromia={false} />
-              <Link
-                href="/"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner transition-all duration-200  hover:bg-[#F8FAFC] dark:hover:bg-[#252631] "
-                title={t('home')}
-                aria-label={t('home')}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
-                </svg>
-              </Link>
-              <ThemeToggleHome />
-            </div>
+            <ThemeToggleHome />
           </div>
-        </div>
-
-        {/* MOBILE LAYOUT (< md) — hamburger for 4 actions */}
-        <div className="flex flex-col gap-2 md:hidden" ref={mobileMenuRef}>
-          {/* Row 1: Title + Theme Toggle + Home + Hamburger */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h1 className="text-base font-extrabold text-[#1E293B] dark:text-white">
-                {t('managerReports')}
-              </h1>
-            </div>
-              <div className="flex items-center gap-2">
-                <LanguageToggle includeOromia={false} />
-                <Link
-                  href="/"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner transition-all duration-200  hover:bg-[#F8FAFC] dark:hover:bg-[#252631] "
-                  title={t('home')}
-                  aria-label={t('home')}
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
-                  </svg>
-                </Link>
-                <ThemeToggleHome />
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen((v) => !v)}
-                  aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-                  aria-expanded={mobileMenuOpen}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out active:shadow-inner"
-                >
-                  {mobileMenuOpen ? (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  ) : (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-          </div>
-
-          {/* Hamburger dropdown — absolute, inside viewport, no horizontal overflow */}
-          {mobileMenuOpen && (
-            <div className="absolute left-2 right-2 top-full z-40 mt-2 rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_12px_30px_rgba(0,0,0,0.15)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] p-2 space-y-1 max-w-[calc(100vw-1rem)]">
-              <Link
-                href="/manager/menu-crud"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex h-10 items-center rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors"
-              >
-                {t('menuManagement')}
-              </Link>
-              <button
-                type="button"
-                onClick={() => { setMobileMenuOpen(false); exportPDF(); }}
-                className="flex h-10 w-full items-center gap-1.5 rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                {t('exportPdf')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setMobileMenuOpen(false); exportCSV(); }}
-                className="flex h-10 w-full items-center gap-1.5 rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                {t('exportCsv')}
-              </button>
-              <ManagerSecurityButton
-                title="Security & PINs"
-                className="flex h-10 w-full items-center gap-1.5 rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors"
-              />
-            </div>
-          )}
         </div>
       </header>
 
@@ -579,13 +439,13 @@ export default function ManagerReports() {
                 value={fmtETB(kpis.revenue)}
                 delta={kpis.revenueDeltaPct}
                 suffix={t('revenueDelta')}
-                sub={kpis.componentRevenue != null ? `Base ${fmtETB(kpis.baseRevenue ?? 0)} · Components ${fmtETB(kpis.componentRevenue ?? 0)}` : undefined}
+                sub={kpis.componentRevenue != null ? `Base ${fmtETB(kpis.baseRevenue ?? 0)} Components ${fmtETB(kpis.componentRevenue ?? 0)}` : undefined}
               />
               <KpiCard
                 index={1}
                 label={t('completedOrders')}
                 value={kpis.completedOrders.toLocaleString()}
-                sub={`${kpis.cancelledOrders} ${t('cancelled')} · ${kpis.activeOrders} ${t('active')}`}
+                sub={`${kpis.cancelledOrders} ${t('cancelled')} ${kpis.activeOrders} ${t('active')}`}
               />
               <KpiCard
                 index={2}
@@ -891,13 +751,12 @@ export default function ManagerReports() {
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">Historical snapshot — renaming/disabling an account does not rewrite past payments.</p>
               </Section>
             )}
 
             {/* COMPLETED SERVICES — details from persisted PAID orders, no fake data */}
             <Section
-              title="Completed Services — Details"
+              title="Completed Services Details"
               action={
                 <button type="button" onClick={() => fetchCompleted()} className="rounded-full bg-white dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1.5 text-xs font-bold text-[#1E293B] dark:text-white">Refresh</button>
               }
@@ -916,23 +775,23 @@ export default function ManagerReports() {
                       <div key={`completed-${oid}`} className="rounded-2xl bg-[#F4F5F9] dark:bg-[#252631] p-4">
                         <button type="button" onClick={() => setSelectedCompletedId(expanded ? null : oid)} className="flex w-full items-center justify-between gap-3 text-left">
                           <div className="min-w-0">
-                            <p className="truncate font-extrabold text-[#1E293B] dark:text-white">{o.orderNumber} · Table {o.tableNumber ?? '—'} · {fmtETB(o.totalAmount)}</p>
-                            <p className="mt-1 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Waiter {o.waiterName || '—'} · {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'} · {payMethod}{o.paymentAccountSnapshot ? ` · ${o.paymentAccountSnapshot.bankName || ''} ${o.paymentAccountSnapshot.ownerName || ''}`.trim() : ''} · {o.status}</p>
+                            <p className="truncate font-extrabold text-[#1E293B] dark:text-white">{o.orderNumber} Table {o.tableNumber ?? '—'} {fmtETB(o.totalAmount)}</p>
+                            <p className="mt-1 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Waiter {o.waiterName || '—'} {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'} {payMethod}{o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName || ''} ${o.paymentAccountSnapshot.ownerName || ''}`.trim() : ''} {o.status}</p>
                           </div>
                           <span className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">{expanded ? 'Hide' : 'Inspect'}</span>
                         </button>
                         {expanded && (
                           <div className="mt-3 space-y-3 rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-sm">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Order</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{o.orderNumber} · ID {String(o._id).slice(0, 8)}… · Table {o.tableNumber} · Waiter {o.waiterName || '—'}{o.waiterNumber != null ? ` #${o.waiterNumber}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Ordered {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'}</p></div>
-                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Payment</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{payMethod}{o.paymentAccountSnapshot ? ` · ${o.paymentAccountSnapshot.bankName || ''} · ${o.paymentAccountSnapshot.ownerName || ''} · ${o.paymentAccountSnapshot.accountNumber || ''}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Submitted {o.paymentSubmittedAt ? new Date(o.paymentSubmittedAt).toLocaleString('en-GB') : '—'} · Verified {o.paymentVerifiedAt || o.paidAt ? new Date(o.paymentVerifiedAt || o.paidAt).toLocaleString('en-GB') : '—'} · Status {o.status}</p></div>
+                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Order</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{o.orderNumber} ID {String(o._id).slice(0, 8)}… Table {o.tableNumber} Waiter {o.waiterName || '—'}{o.waiterNumber != null ? ` #${o.waiterNumber}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Ordered {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'}</p></div>
+                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Payment</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{payMethod}{o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName || ''} ${o.paymentAccountSnapshot.ownerName || ''} ${o.paymentAccountSnapshot.accountNumber || ''}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Submitted {o.paymentSubmittedAt ? new Date(o.paymentSubmittedAt).toLocaleString('en-GB') : '—'} Verified {o.paymentVerifiedAt || o.paidAt ? new Date(o.paymentVerifiedAt || o.paidAt).toLocaleString('en-GB') : '—'} Status {o.status}</p></div>
                             </div>
-                            <div><p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Items — server prices, no frontend totals</p>
+                            <div><p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Items server prices, no frontend totals</p>
                               <ul className="mt-2 space-y-1.5">
                                 {(o.items || []).map((it, idx) => (
                                   <li key={`c-item-${idx}`} className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] px-2.5 py-2">
                                     <div className="flex justify-between gap-2"><span className="font-bold text-[#1E293B] dark:text-white">{Number(it.quantity) || 0}× {typeof it.name === 'string' ? it.name : 'Item'} ({it.type || 'FOOD'})</span><span className="font-bold text-[#1E293B] dark:text-white">{fmtETB(Number(it.subTotal ?? Number(it.price) * Number(it.quantity)))}</span></div>
-                                    <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Unit {fmtETB(Number(it.price))} · Qty {Number(it.quantity)}{it.cancelled ? ` · Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
+                                    <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Unit {fmtETB(Number(it.price))} Qty {Number(it.quantity)}{it.cancelled ? ` Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
                                     {Array.isArray(it.components) && it.components.length > 0 && (
                                       <ul className="mt-1 space-y-0.5">
                                         {it.components.map((c, ci) => (
@@ -945,11 +804,10 @@ export default function ManagerReports() {
                               </ul>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Totals (server)</p><p className="mt-1 font-extrabold text-[#1E293B] dark:text-white">Total {fmtETB(o.totalAmount)}{Number(o.cancelledAmount) > 0 ? ` · Net ${fmtETB(o.netAmount)} · Cancelled ${fmtETB(o.cancelledAmount)}` : ''}</p></div>
-                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Preparation</p><p className="mt-1 text-[#1E293B] dark:text-white">Kitchen {o.kitchenStatus || '—'} · Barista {o.baristaStatus || '—'}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Ready {o.readyAt ? new Date(o.readyAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'} · Served {o.servedAt ? new Date(o.servedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'}</p></div>
+                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Totals (server)</p><p className="mt-1 font-extrabold text-[#1E293B] dark:text-white">Total {fmtETB(o.totalAmount)}{Number(o.cancelledAmount) > 0 ? ` Net ${fmtETB(o.netAmount)} Cancelled ${fmtETB(o.cancelledAmount)}` : ''}</p></div>
+                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Preparation</p><p className="mt-1 text-[#1E293B] dark:text-white">Kitchen {o.kitchenStatus || '—'} Barista {o.baristaStatus || '—'}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Ready {o.readyAt ? new Date(o.readyAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'} Served {o.servedAt ? new Date(o.servedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'}</p></div>
                               <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Status</p><p className="mt-1 font-bold text-[#1E293B] dark:text-white">{o.status}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Paid {o.paidAt ? new Date(o.paidAt).toLocaleString('en-GB') : '—'}</p></div>
                             </div>
-                            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Amounts from stored order only. Only PAID counts as revenue; pending/rejected/cancelled excluded. No cost/profit inferred for unlinked components.</p>
                           </div>
                         )}
                       </div>
@@ -1050,7 +908,7 @@ export default function ManagerReports() {
           </>
         )}
       </main>
-
+      </div>
     </div>
   );
 }
@@ -1381,7 +1239,7 @@ const TrendChart = memo(function TrendChart({ rows, t, lang }) {
                 {t('revenueOrderVelocity')}
           </p>
           <p className="mt-0.5 text-sm font-extrabold text-[#1E293B] dark:text-white">
-            {ethShortLabel(rows[0], lang)} — {ethShortLabel(rows[n - 1], lang)}
+            {ethShortLabel(rows[0], lang)} {ethShortLabel(rows[n - 1], lang)}
             <span className="ml-2 text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
               {n} {n === 1 ? t('day') : t('days')}
             </span>

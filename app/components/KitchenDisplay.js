@@ -592,6 +592,36 @@ export default function KitchenDisplay({
         </div>
       )}
 
+      {/* Status summary — read-only, derived from already-fetched visibleOrders */}
+      {(() => {
+        const counts = (() => {
+          let newOrders = 0, inProgress = 0, ready = 0;
+          for (const o of visibleOrders) {
+            const st = view === 'DRINK' ? (o.baristaStatus || o.status) : (o.kitchenStatus || o.status);
+            if (st === 'PENDING') newOrders++;
+            else if (st === 'PREPARING') inProgress++;
+            else if (st === 'READY') ready++;
+          }
+          return { newOrders, inProgress, ready };
+        })();
+        return (
+          <section aria-label="Order status summary" className="mx-4 mt-3 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-center shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{t('newOrders')}</p>
+              <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{counts.newOrders}</p>
+            </div>
+            <div className="rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-center shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{t('inProgress')}</p>
+              <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{counts.inProgress}</p>
+            </div>
+            <div className="rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-center shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{t('ready')}</p>
+              <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{counts.ready}</p>
+            </div>
+          </section>
+        );
+      })()}
+
       <main className="p-4">
         {initialLoading ? (
           <BoardSkeleton />
