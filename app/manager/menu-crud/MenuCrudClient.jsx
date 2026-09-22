@@ -55,27 +55,10 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState('KITCHEN'); // Foods = KITCHEN, Drinks = BARISTA
   const [dietFilter, setDietFilter] = useState('all'); // 'all' | 'fasting' | 'nonFasting'
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const mobileNavRef = useRef(null);
 
   // Sync when server data changes (revalidate)
   useEffect(() => { setCategories(initialCategories || []); }, [initialCategories]);
   useEffect(() => { setItems(initialItems || []); }, [initialItems]);
-
-  useEffect(() => {
-    function onDoc(e) {
-      if (mobileNavRef.current && !mobileNavRef.current.contains(e.target)) setMobileNavOpen(false);
-    }
-    function onResize() {
-      if (typeof window !== 'undefined' && window.innerWidth >= 768) setMobileNavOpen(false);
-    }
-    if (mobileNavOpen) document.addEventListener('mousedown', onDoc);
-    window.addEventListener('resize', onResize);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [mobileNavOpen]);
 
   // Filtered by station tab
   const filteredCategories = categories.filter((c) => {
@@ -761,15 +744,6 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               <button type="button" onClick={() => handleTabChange('BARISTA')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'BARISTA' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]'}`}>{t('drink')}</button>
             </div>
             <LanguageToggle includeOromia={false} />
-            <Link href="/manager/reports" className={BTN_SECONDARY}>
-              {t('managerReports')}
-            </Link>
-            <Link href="/menu" target="_blank" className={BTN_PRIMARY}>
-              {t('viewMenu')}
-            </Link>
-            <Link href="/waiter" target="_blank" className={BTN_SECONDARY}>
-              {t('viewWaiter')}
-            </Link>
             <div className="flex items-center gap-2">
               <ThemeToggleHome />
               <Link
@@ -786,7 +760,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
           </div>
         </div>
         {/* MOBILE */}
-        <div className="flex flex-col gap-2 md:hidden" ref={mobileNavRef}>
+        <div className="flex flex-col gap-2 md:hidden">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-base font-extrabold text-[#1E293B] dark:text-white">
               {t('menuManagement')}
@@ -794,42 +768,12 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             <div className="flex items-center gap-2">
               <LanguageToggle includeOromia={false} />
               <ThemeToggleHome />
-              <button
-                type="button"
-                onClick={() => setMobileNavOpen((v) => !v)}
-                aria-label={mobileNavOpen ? t('navCloseMenu') : t('navOpenMenu')}
-                aria-expanded={mobileNavOpen}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out active:shadow-inner"
-              >
-                {mobileNavOpen ? (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                ) : (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                )}
-              </button>
             </div>
           </div>
           <div className="flex items-center justify-center gap-1 rounded-full bg-[#F4F5F9] dark:bg-[#12131A] p-1 border border-[#E2E8F0]/60 dark:border-[#2A2B36] self-center">
             <button type="button" onClick={() => handleTabChange('KITCHEN')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'KITCHEN' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36]'}`}>{t('food')}</button>
             <button type="button" onClick={() => handleTabChange('BARISTA')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'BARISTA' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36]'}`}>{t('drink')}</button>
           </div>
-          {mobileNavOpen && (
-            <div className="absolute left-2 right-2 top-full z-40 mt-2 rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_12px_30px_rgba(0,0,0,0.15)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] p-2 space-y-1 max-w-[calc(100vw-1rem)]">
-              <Link href="/manager/reports" onClick={() => setMobileNavOpen(false)} className="flex h-10 items-center rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors">
-                {t('managerReports')}
-              </Link>
-              <Link href="/menu" target="_blank" onClick={() => setMobileNavOpen(false)} className="flex h-10 items-center rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors">
-                {t('viewMenu')}
-              </Link>
-              <Link href="/waiter" target="_blank" onClick={() => setMobileNavOpen(false)} className="flex h-10 items-center rounded-xl px-3 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white hover:bg-[#F4F5F9] dark:hover:bg-[#252631] transition-colors">
-                {t('viewWaiter')}
-              </Link>
-            </div>
-          )}
         </div>
       </header>
 

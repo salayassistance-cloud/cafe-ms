@@ -19,15 +19,27 @@ function currentIsDark() {
 }
 
 export default function ThemeToggleHome() {
-  const [isDark, setIsDark] = useState(() => currentIsDark());
+  // Hydration-safe: server and first client render both assume dark (matching
+  // ThemeProvider + THEME_INIT_SCRIPT default). Real preference is reconciled
+  // from the DOM after mount — never synchronously during render.
+  const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    // Defer so setState isn't synchronous within the effect body.
+    const t = setTimeout(() => {
+      if (active) setIsDark(currentIsDark());
+    }, 0);
     const observer = new MutationObserver(() => setIsDark(currentIsDark()));
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class"],
     });
-    return () => observer.disconnect();
+    return () => {
+      active = false;
+      clearTimeout(t);
+      observer.disconnect();
+    };
   }, []);
 
   const toggle = () => {
