@@ -6,8 +6,8 @@ export default function manifest() {
     short_name: SITE_CONFIG.shortName,
     description:
       "የአስተናጋጅ ትዕዛዝ ማስገቢያ — Waiter order entry for Hotel Management System",
-    id: "/waiter",
-    start_url: "/waiter",
+    id: "/",
+    start_url: "/launch",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

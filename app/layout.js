@@ -3,6 +3,7 @@ import "./globals.css";
 import { LanguageProvider } from "./components/LanguageProvider";
 import { ThemeProvider } from "./components/ThemeProvider";
 import BottomNav from "./components/BottomNav";
+import PwaRouteTracker from "./components/PwaRouteTracker";
 import { SITE_CONFIG } from "@/lib/constants";
 
 // Runs before first paint to apply the persisted theme class to <html>, so the
@@ -53,6 +54,7 @@ export default function RootLayout({ children }) {
         <ThemeProvider>
           <LanguageProvider>
             {children}
+            <PwaRouteTracker />
             <BottomNav />
             {/* Phase 5: ServiceWorker disabled — offline POS state must not be served stale. See public/sw.js unregister handler. */}
           </LanguageProvider>
