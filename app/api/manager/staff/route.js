@@ -2,7 +2,6 @@ import { connectToDatabase } from "@/lib/mongodb";
 import { withApi } from "@/lib/withApi";
 import { getStaffModel, STAFF_ROLES } from "@/lib/models/Staff";
 import { hashPin } from "@/lib/pinCrypto";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/sessionCrypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validatePin, validateObjectId, sanitizeName } from "@/lib/validate";
@@ -17,7 +16,7 @@ export const dynamic = "force-dynamic";
 // Returns: { staff: [{id,name,username,role,isActive,waiterNumber,createdAt,updatedAt}], counts: {total,active,disabled,byRole} }
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "manager_staff_list", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -83,7 +82,7 @@ async function getHandler(request) {
 // Body: { staffId, name?, username?, isActive? }  — role change NOT allowed, MANAGER creation NOT allowed via PATCH
 async function patchHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "manager_staff_patch", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -176,6 +175,14 @@ async function patchHandler(request) {
   try {
     const updated = await Staff.findByIdAndUpdate(staffId, { $set: updates }, { new: true, runValidators: true });
     if (!updated) return fail("Staff not found", 404);
+    // AUTH-ARCH-3: disabling an account revokes its server-side sessions.
+    // Best-effort — the disable itself already succeeded.
+    if (updates.isActive === false) {
+      try {
+        const { revokeAllStaffSessions } = await import("@/lib/sessionStore");
+        await revokeAllStaffSessions(conn, staffId, "DISABLED");
+      } catch {}
+    }
     return ok(
       {
         updated: true,
@@ -220,7 +227,7 @@ async function handler(request) {
   }
   const staffId = body.staffId ? validateObjectId(body.staffId) : null;
   const newPin = body.newPin ? validatePin(body.newPin) : null;
-  const currentManagerPinRaw = String(body.currentManagerPin || body.managerPin || "").trim();
+  const currentManagerPinRaw = String(body.currentManagerPin || "").trim();
   const currentManagerPin = currentManagerPinRaw ? validatePin(currentManagerPinRaw) : null;
   if (currentManagerPinRaw && !currentManagerPin) return NextResponse.json({ success: false, message: "Manager PIN must be 4 digits" }, { status: 400 });
 
@@ -231,39 +238,25 @@ async function handler(request) {
     return NextResponse.json({ success: false, message: "newPin must be 4 digits" }, { status: 400 });
   }
 
-  // Verify manager session + PIN re-auth (canonical Staff)
+  // Verify manager session via the canonical resolver (AUTH-ARCH-4):
+  // live Staff.role === MANAGER (tab credential first, then the canonical
+  // server session) + optional PIN re-auth below.
   let managerPayload = null;
   try {
     const store = await cookies();
-    managerPayload = verifySessionToken(store.get(SESSION_COOKIE)?.value);
-    if (!managerPayload || managerPayload.role !== "MANAGER") {
+    const { getLiveSessionFromCookies } = await import("@/lib/serverAuth");
+    managerPayload = await getLiveSessionFromCookies(store, ["MANAGER"]);
+    if (!managerPayload) {
       return NextResponse.json({ success: false, message: "Manager authentication required" }, { status: 403 });
     }
     if (currentManagerPin) {
       const conn = await connectToDatabase();
-      let valid = false;
-      // Try Staff canonical first (managerPayload.staffId preferred)
-      try {
-        const { getStaffModel } = await import("@/lib/models/Staff");
-        const { verifyPin, isHashedPin } = await import("@/lib/pinCrypto");
-        const StaffM = getStaffModel(conn);
-        let mgrStaff = null;
-        if (managerPayload.staffId) mgrStaff = await StaffM.findById(managerPayload.staffId);
-        if (!mgrStaff && managerPayload.name) {
-          const { findStaff } = await import("@/lib/staffService");
-          mgrStaff = await findStaff(conn, managerPayload.name, "MANAGER");
-        }
-        if (mgrStaff && mgrStaff.pinHash) {
-          if (isHashedPin(mgrStaff.pinHash)) valid = verifyPin(currentManagerPin, mgrStaff.pinHash);
-          else valid = String(mgrStaff.pinHash) === String(currentManagerPin);
-        }
-      } catch {}
-      // Fallback to SystemAuth legacy if Staff not found / not valid
-      if (!valid) {
-        const { verifyRolePin } = await import("@/lib/authService");
-        valid = await verifyRolePin(conn, "MANAGER", currentManagerPin);
-      }
-      if (!valid) return NextResponse.json({ success: false, message: "Manager PIN incorrect" }, { status: 401 });
+      // AUTH-ARCH-8F: step-up re-auth against the requesting MANAGER's own
+      // Staff PIN only. The former SystemAuth role-PIN fallback is removed:
+      // a missing Staff record fails closed instead of consulting legacy.
+      const { verifyStaffPinById } = await import("@/lib/staffService");
+      const checked = await verifyStaffPinById(conn, managerPayload.staffId, currentManagerPin);
+      if (!checked.ok) return NextResponse.json({ success: false, message: "Manager PIN incorrect" }, { status: 401 });
     }
   } catch (e) {
     return NextResponse.json({ success: false, message: "Manager authentication required" }, { status: 403 });
@@ -279,24 +272,12 @@ async function handler(request) {
 
   // For KITCHEN/BARISTA/MANAGER, PIN is per-role (single PIN) — update ALL staff of that role atomically
   // For WAITER, PIN is per-person — update only that staff
+  // AUTH-ARCH-8C/8F: Staff-only. SystemAuth is never written by PIN
+  // management (the former role-PIN mirror is retired with authService).
+  // Mirroring the new PIN into a second store would only preserve a
+  // duplicate credential authority.
   if (["KITCHEN", "BARISTA", "MANAGER"].includes(targetRole)) {
     await Staff.updateMany({ role: targetRole }, { $set: { pinHash: newHash } });
-    // Also sync SystemAuth singleton for legacy compatibility and to invalidate old PIN
-    try {
-      const { getSystemAuth } = await import("@/lib/authService");
-      const sysDoc = await getSystemAuth(conn);
-      const fieldMap = { KITCHEN: "kitchenPin", BARISTA: "baristaPin", MANAGER: "managerPin" };
-      const field = fieldMap[targetRole];
-      if (field) {
-        sysDoc[field] = newHash;
-        await sysDoc.save();
-        // Invalidate snapshot cache via updatePins logic — getSystemAuth already invalidates on save via update path
-        // But also clear derived cache
-        try {
-          const { hashPin: _hp } = await import("@/lib/pinCrypto");
-        } catch {}
-      }
-    } catch {}
     // Also update the in-memory staff doc for response
     staff.pinHash = newHash;
   } else {
@@ -312,6 +293,18 @@ async function handler(request) {
   try {
     const { verifyPin, isHashedPin } = await import("@/lib/pinCrypto");
     if (reloaded && isHashedPin(reloaded.pinHash)) newValid = verifyPin(newPin, reloaded.pinHash);
+  } catch {}
+
+  // AUTH-ARCH-3: manager PIN reset invalidates the target's server-side
+  // sessions. Role-wide resets (KITCHEN/BARISTA/MANAGER share one PIN) also
+  // revoke that role's sessions. Scoped to affected identities only.
+  // Best-effort: the reset already succeeded and stays reported as success.
+  try {
+    const { revokeAllStaffSessions, revokeRoleSessions } = await import("@/lib/sessionStore");
+    await revokeAllStaffSessions(conn, staffId, "PIN_RESET");
+    if (["KITCHEN", "BARISTA", "MANAGER"].includes(targetRole)) {
+      await revokeRoleSessions(conn, targetRole, "PIN_RESET");
+    }
   } catch {}
 
   return NextResponse.json({ success: true, message: `PIN updated for ${staff.name}`, staff: { id: String(staff._id), name: staff.name, role: staff.role }, verified: newValid }, { status: 200 });

@@ -13,30 +13,39 @@ import {
   toEthiopian,
   fromEthiopian,
   gregYMD,
-  formatEthiopian,
+  getEthiopianMonthName,
   ethQuickRanges,
+  addisYMDToUTCStart,
+  ethDayNumber,
+  daysInEthMonth,
   ET_MONTHS_AM,
   ET_MONTHS_EN,
   ET_MONTHS_OM,
+  ET_WEEKDAYS_AM,
+  ET_WEEKDAYS_EN,
   ET_PRESET_LABELS_AM,
 } from '@/lib/ethiopianCalendar';
 import { useLanguage } from '@/app/components/LanguageProvider';
 
-const ET_WEEKDAYS_AM = ['ሰኞ', 'ማክሰ', 'ረቡዕ', 'ሐሙስ', 'አርብ', 'ቅዳሜ', 'እሑድ'];
-
-function ymdToDate(ymd) {
-  const [y, m, d] = String(ymd).split('-').map(Number);
-  return new Date(y, m - 1, d);
+// Canonical transport bridge (Phase C / Phase E):
+// Gregorian YYYY-MM-DD transport (Addis wall, API contract)
+// → Addis civil-midnight UTC instant → Ethiopian business date.
+// Never `new Date(y, m - 1, d)` — browser timezone must not influence the instant.
+function transportToEthiopian(ymd) {
+  const start = addisYMDToUTCStart(ymd);
+  if (!start) return toEthiopian(new Date());
+  return toEthiopian(start);
 }
 
-function ethDayNumber(ec) {
-  const daysBeforeYear = 365 * (ec.year - 1) + Math.floor((ec.year - 1) / 4);
-  return daysBeforeYear + (ec.month - 1) * 30 + (ec.day - 1);
-}
-
-function daysInEthMonth(year, month) {
-  if (month >= 1 && month <= 12) return 30;
-  return year % 4 === 0 ? 6 : 5; // Pagume
+// Language-aware EC-object label reusing the canonical month-name helper and
+// the same suffix rule as formatEthiopianDate (E.C. for en/om, ዓ.ም. for am).
+// Same presentation convention as Cashier/Staff: "Meskerem 12, 2019 E.C."
+function formatECLabel(ec, lang) {
+  if (!ec) return '—';
+  const l = lang === 'en' ? 'en' : lang === 'om' ? 'om' : 'am';
+  const monthName = getEthiopianMonthName(ec.month, l) || '';
+  const suffix = l === 'am' ? 'ዓ.ም.' : 'E.C.';
+  return `${monthName} ${ec.day}, ${ec.year} ${suffix}`;
 }
 
 function nextMonth(view) {
@@ -61,15 +70,15 @@ function CalendarIcon() {
 export default function EthiopianDateRangePicker({ from, to, onChange }) {
   const { t, lang } = useLanguage();
   const [open, setOpen] = useState(false);
-  const [fromEC, setFromEC] = useState(() => toEthiopian(ymdToDate(from)));
-  const [toEC, setToEC] = useState(() => toEthiopian(ymdToDate(to)));
+  const [fromEC, setFromEC] = useState(() => transportToEthiopian(from));
+  const [toEC, setToEC] = useState(() => transportToEthiopian(to));
   const [view, setView] = useState({ year: fromEC.year, month: fromEC.month });
   const ref = useRef(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFromEC(toEthiopian(ymdToDate(from)));
-    setToEC(toEthiopian(ymdToDate(to)));
+    setFromEC(transportToEthiopian(from));
+    setToEC(transportToEthiopian(to));
   }, [from, to]);
 
   useEffect(() => {
@@ -174,7 +183,7 @@ export default function EthiopianDateRangePicker({ from, to, onChange }) {
           </button>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center">
-          {ET_WEEKDAYS_AM.map((w) => (
+          {(lang === 'en' ? ET_WEEKDAYS_EN : ET_WEEKDAYS_AM).map((w) => (
             <span key={w} className="text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">
               {w}
             </span>
@@ -209,8 +218,8 @@ export default function EthiopianDateRangePicker({ from, to, onChange }) {
     );
   }
 
-  const labelFrom = formatEthiopian(fromEC, { withYear: true });
-  const labelTo = formatEthiopian(toEC || fromEC, { withYear: true });
+  const labelFrom = formatECLabel(fromEC, lang);
+  const labelTo = formatECLabel(toEC || fromEC, lang);
 
   return (
     <div className="relative" ref={ref}>
@@ -221,7 +230,7 @@ export default function EthiopianDateRangePicker({ from, to, onChange }) {
       >
         <CalendarIcon />
         <span className="normal-case tracking-normal">
-          {labelFrom} – {labelTo} <span className="opacity-60">• EC</span>
+          {labelFrom} – {labelTo}
         </span>
       </button>
 

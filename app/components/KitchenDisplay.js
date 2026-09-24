@@ -1,13 +1,29 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
-import { safeFetchJson, updateOrderStatusClient } from '@/lib/clientFetch';
+import { safeFetchJson, updateOrderStatusClient, getSessionErrorKind, tabLogout } from '@/lib/clientFetch';
+import { stationForView, stationStatusOf, stationActionOf, applyStationUpdate } from '@/lib/stationStatus';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import SettingsGear from '@/app/components/SettingsGear';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import { useLanguage } from '@/app/components/LanguageProvider';
+import { formatEthiopianClock } from '@/lib/ethiopianCalendar';
+import { playChime, notifyBrowser } from '@/lib/notify';
+
+// Canonical business clock: Ethiopian 12h day + 12h night (Addis-aware).
+// `new Date(value)` only wraps an existing UTC instant, never local midnight.
+function fmtCancelledClock(value, lang) {
+  try {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return formatEthiopianClock(d, lang === 'en' ? 'en' : 'am');
+  } catch {
+    return '';
+  }
+}
 
 const FALLBACK_POLL_MS = 30000;
 const TICK_MS = 1000;
@@ -94,7 +110,7 @@ export default function KitchenDisplay({
   const VIEWS = [{ key: station, label: stationLabel }];
 
 
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   const hasMounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
@@ -105,10 +121,50 @@ export default function KitchenDisplay({
   const [muted, setMuted] = useState(false);
   const [newIds, setNewIds] = useState(() => new Set());
   const [confirmingId, setConfirmingId] = useState(null);
-  const [pendingIds, setPendingIds] = useState(() => new Set());
+  // Single source of in-flight station-action truth.
+  // Key: String(orderId) — value: { station: 'KITCHEN'|'BARISTA', action: 'START_PREP'|'MARK_READY'|'ARCHIVE', targetStatus }.
+  // Station is fixed per mount (view), so orderId implies the station, but the
+  // meta preserves the exact station+action for deterministic pending labels and
+  // to block only this order's station action (never the whole board, never the
+  // other station). Render reads the STATE map; callbacks/merge read the REF.
+  const [pendingByOrder, setPendingByOrder] = useState(() => new Map());
+  const pendingByOrderRef = useRef(new Map());
+  const [itemPending, setItemPending] = useState(() => new Set());
+  const itemPendingRef = useRef(new Set());
   const [actionError, setActionError] = useState("");
+  const ordersRef = useRef([]);
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
 
-  const audioCtxRef = useRef(null);
+  // AUTH-ARCH-6: explicit session-ended state (revoked/expired/invalid/
+  // disabled). While set: authenticated polling stops (no storm), SSE is
+  // suspended, stale in-flight results are discarded via authGenRef, and an
+  // overlay requires an explicit re-login. Server order data is never
+  // touched; no credentials are handled here (PinGuard owns login).
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const sessionEndedRef = useRef(false);
+  const authGenRef = useRef(0);
+
+  const enterSessionEnded = useCallback(() => {
+    authGenRef.current += 1;
+    sessionEndedRef.current = true;
+    setSessionEnded(true);
+    // No timer clearing needed: scheduleRefresh/fetchOrders early-return on
+    // sessionEndedRef, so any already-scheduled tick is a harmless no-op.
+  }, []);
+
+  const signInAgain = useCallback(async () => {
+    // Tab-scoped logout: only this tab's Session is revoked.
+    try {
+      await tabLogout();
+    } catch {}
+    authGenRef.current += 1;
+    sessionEndedRef.current = false;
+    setSessionEnded(false);
+    try { window.location.assign(view === 'DRINK' ? '/barista' : '/kds'); } catch {}
+  }, [view]);
+
   const seenIdsRef = useRef(new Set());
   const mutedRef = useRef(muted);
 
@@ -116,50 +172,32 @@ export default function KitchenDisplay({
     mutedRef.current = muted;
   }, [muted]);
 
-  const playChime = useCallback(() => {
-    const Ctx = typeof window !== 'undefined' ? window.AudioContext || window.webkitAudioContext : null;
-    if (!Ctx) return;
-    let ctx = audioCtxRef.current;
-    if (!ctx) {
-      try {
-        ctx = new Ctx();
-        audioCtxRef.current = ctx;
-      } catch {
-        return;
-      }
-    }
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    const t0 = ctx.currentTime;
-    [880, 1320, 1760].forEach((freq, i) => {
-      const start = t0 + i * 0.14;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.35, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.45);
-    });
-  }, []);
-
   const fetchOrders = useCallback(async () => {
+    // Session ended: never fire authenticated refreshes (no retry storm).
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     try {
       // Station-specific fetch: FOOD=Kitchen, DRINK=Barista via dest param (server filters items.type)
       // This prevents Kitchen seeing DRINK-only work and vice versa, and reduces payload.
       const dest = view === 'DRINK' ? 'DRINK' : view === 'FOOD' ? 'FOOD' : 'ALL';
       const url = dest === 'ALL' ? '/api/orders?status=ACTIVE' : `/api/orders?status=ACTIVE&dest=${dest}`;
       const data = await safeFetchJson(url, { cache: 'no-store' });
+      // Stale success after revocation must not repopulate the board.
+      if (gen !== authGenRef.current) return;
       if (!data.success) throw new Error('bad body');
       const incoming = Array.isArray(data.data?.orders) ? data.data.orders : [];
 
       const prevSeen = seenIdsRef.current;
       for (const o of incoming) {
-        if (!prevSeen.has(o._id) && !mutedRef.current) {
-          playChime();
+        if (!prevSeen.has(o._id)) {
+          if (!mutedRef.current) playChime();
+          // Background tabs get a system notification where permission exists
+          // (permission is granted via an explicit user gesture elsewhere).
+          notifyBrowser({
+            title: `${o.orderNumber || 'Order'} · Table ${o.tableNumber ?? '—'}`,
+            body: `${(o.items || []).length} items · ${stationLabel}`,
+            tag: `new-order-${o._id}`,
+          });
           setNewIds((s) => new Set(s).add(o._id));
           setTimeout(() => {
             setNewIds((s) => {
@@ -175,13 +213,58 @@ export default function KitchenDisplay({
       for (const o of incoming) nextSeen.add(o._id);
       seenIdsRef.current = nextSeen;
 
-      setOrders(incoming);
+      // Per-order reconciliation: polling/SSE must never regress an in-flight
+      // station action with stale data. Only the exact in-flight order keeps its
+      // optimistic station field; every other order takes canonical server truth.
+      // No global board lock — other orders update normally while one is pending.
+      setOrders((prev) => {
+        if (pendingByOrderRef.current.size === 0 && itemPendingRef.current.size === 0) {
+          return incoming;
+        }
+        const prevById = new Map();
+        for (const o of prev) prevById.set(String(o._id), o);
+        return incoming.map((inc) => {
+          const pid = String(inc._id);
+          const prevOrder = prevById.get(pid);
+          if (!prevOrder) return inc;
+          let merged = inc;
+          const pending = pendingByOrderRef.current.get(pid) || pendingByOrderRef.current.get(inc._id);
+          if (pending) {
+            const field = pending.station === 'BARISTA' ? 'baristaStatus' : pending.station === 'KITCHEN' ? 'kitchenStatus' : null;
+            if (field && prevOrder[field] !== undefined && inc[field] !== prevOrder[field]) {
+              merged = { ...merged, [field]: prevOrder[field] };
+            }
+          }
+          if (itemPendingRef.current.size > 0 && Array.isArray(inc.items) && Array.isArray(prevOrder.items)) {
+            const prevLineById = new Map();
+            for (const it of prevOrder.items) {
+              if (it && it.lineId) prevLineById.set(String(it.lineId), it);
+            }
+            let itemsChanged = false;
+            const nextItems = (merged.items || []).map((it) => {
+              const lid = it && it.lineId ? String(it.lineId) : null;
+              if (!lid || !itemPendingRef.current.has(lid)) return it;
+              const prevLine = prevLineById.get(lid);
+              if (prevLine && !!it.cancelled !== !!prevLine.cancelled) {
+                itemsChanged = true;
+                return { ...it, cancelled: prevLine.cancelled, cancelReason: prevLine.cancelReason, cancelledStation: prevLine.cancelledStation };
+              }
+              return it;
+            });
+            if (itemsChanged) merged = { ...merged, items: nextItems };
+          }
+          return merged;
+        });
+      });
       setConnError(false);
     } catch (err) {
-      if (err && err.status === 401) {
-        setActionError("Your session has expired. Please sign in again.");
-        setTimeout(() => { try { window.location.assign(view === 'DRINK' ? '/barista' : '/kds'); } catch {} }, 1500);
-        setConnError(true);
+      if (gen !== authGenRef.current) return;
+      // Explicit session end enters the re-login state (polling/SSE stop).
+      // Transient failures (503/network) keep state and cadence.
+      if (getSessionErrorKind(err)) {
+        enterSessionEnded();
+        setActionError("");
+        setConnError(false);
       } else if (err && err.status === 403) {
         setActionError("Your account does not have permission to perform this action.");
         setConnError(false);
@@ -194,7 +277,7 @@ export default function KitchenDisplay({
     } finally {
       setInitialLoading(false);
     }
-  }, [playChime, view]);
+  }, [view, stationLabel, enterSessionEnded]);
 
   const refreshTimer = useRef(null);
   const scheduleRefresh = useCallback(() => {
@@ -204,11 +287,13 @@ export default function KitchenDisplay({
 
   // Only order events should trigger an order refresh — menu-changed (and any
   // other future event) must not cause redundant KDS/Barista order refetches.
+  // SSE suspended while the session is ended (no reconnect until re-login).
   useOrderEvents((event) => {
+    if (sessionEndedRef.current) return;
     if (event && (event.type === "orders-changed" || event.type === "ORDER_READY")) {
       scheduleRefresh();
     }
-  });
+  }, !sessionEnded);
 
   useEffect(() => {
     const t = setTimeout(fetchOrders, 0);
@@ -235,20 +320,31 @@ export default function KitchenDisplay({
   }, []);
 
   const updateOrder = useCallback(async (orderId, status, waiterInfo) => {
-    if (pendingIds.has(orderId)) return;
-    setPendingIds((s) => new Set(s).add(orderId));
+    // One action = one in-flight request for this exact order+station.
+    // Stable identity is String(orderId); station is fixed per mount (view).
+    const pid = String(orderId);
+    if (pendingByOrderRef.current.has(pid)) return;
+    // Session ended: station must not mutate with a stale identity.
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
+    // Optimistic: station-SCOPED ONLY — touches this station's status field
+    // and nothing else. Overall order.status is left for the server response
+    // (canonical derivation); failure reverts. The other station's field is
+    // never written, never derived, never copied.
+    const stationKey = stationForView(view);
+    if (!stationKey) return;
+    const action = status === 'PREPARING' ? 'START_PREP' : status === 'READY' ? 'MARK_READY' : null;
+    if (!action) return;
+    const meta = { station: stationKey, action, targetStatus: status };
+    pendingByOrderRef.current.set(pid, meta);
+    setPendingByOrder((prev) => new Map(prev).set(pid, meta));
     setActionError("");
-    // Optimistic: immediately show target status on the per-station field
     const prevOrdersRef = { current: null };
     setOrders((prev) => {
       prevOrdersRef.current = prev;
       return prev.map((o) => {
-        if (o._id !== orderId) return o;
-        // Keep optimistic in sync with station status for immediate UI
-        const next = { ...o, status };
-        if (view === 'DRINK') next.baristaStatus = status;
-        else next.kitchenStatus = status;
-        return next;
+        if (String(o._id) !== pid) return o;
+        return applyStationUpdate(o, stationKey, status);
       });
     });
     try {
@@ -259,62 +355,90 @@ export default function KitchenDisplay({
       );
       if (!data.success) throw new Error(data.error || data.message || "Update failed");
       const updated = data.data?.order;
+      // Stale success after revocation: revert optimistic, apply nothing.
+      if (gen !== authGenRef.current) {
+        if (prevOrdersRef.current) setOrders(prevOrdersRef.current);
+        return;
+      }
       if (updated) {
         setOrders((prev) => prev.map((o) => (o._id === orderId ? { ...o, ...updated } : o)));
       }
     } catch (err) {
       // Revert optimistic on failure
       if (prevOrdersRef.current) setOrders(prevOrdersRef.current);
-      if (err && err.status === 401) setActionError("Your session has expired. Please sign in again.");
+      if (getSessionErrorKind(err)) enterSessionEnded();
       else if (err && err.status === 403) setActionError("Your account does not have permission to perform this action.");
       else if (err && err.status === 503) setActionError("Service temporarily unavailable. Please try again.");
       else setActionError(err?.message || "Failed to update order. Please retry.");
-      setTimeout(() => setActionError(""), 4000);
+      // AUTH-ARCH-11 §21: a valid server state conflict (another actor moved
+      // first) reconciles instead of retrying — refetch canonical state once
+      // so the now-invalid action disappears. No retry loop is scheduled.
+      if (!getSessionErrorKind(err) && err && err.status !== 503 && /station is|no active|already finished|already cancelled|terminal state|Invalid .* request/i.test(err?.message || "")) {
+        scheduleRefresh();
+      } else {
+        setTimeout(() => setActionError(""), 4000);
+      }
     } finally {
-      setPendingIds((s) => {
-        const n = new Set(s);
-        n.delete(orderId);
+      pendingByOrderRef.current.delete(pid);
+      setPendingByOrder((prev) => {
+        const n = new Map(prev);
+        n.delete(pid);
         return n;
       });
     }
-  }, [pendingIds, view]);
+  }, [view, enterSessionEnded, scheduleRefresh]);
 
   // Legacy whole-order archive — preserved for history but X now means item Cancel/Reject (not archive).
   // Kept for backward compat; UI no longer uses global archive button.
+  // Shares the single pending map so an in-flight station action blocks archive
+  // for the same order (and vice versa) without a second duplicate lock.
   const handleArchiveOrder = useCallback(async (orderId) => {
-    if (pendingIds.has(orderId)) return;
-    setPendingIds((s) => new Set(s).add(orderId));
+    const pid = String(orderId);
+    if (pendingByOrderRef.current.has(pid)) return;
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
+    const meta = { station: stationForView(view), action: 'ARCHIVE', targetStatus: 'ARCHIVED' };
+    pendingByOrderRef.current.set(pid, meta);
+    setPendingByOrder((prev) => new Map(prev).set(pid, meta));
     const prevRef = { current: null };
     setOrders((prev) => {
       prevRef.current = prev;
-      return prev.filter((o) => o._id !== orderId);
+      return prev.filter((o) => String(o._id) !== pid);
     });
     seenIdsRef.current.delete(orderId);
     try {
       const data = await updateOrderStatusClient(orderId, 'ARCHIVED');
       if (!data?.success) throw new Error(data.error || data.message || "Archive failed");
+      if (gen !== authGenRef.current) {
+        if (prevRef.current) setOrders(prevRef.current);
+        return;
+      }
       setConfirmingId((cur) => (cur === orderId ? null : cur));
     } catch (err) {
       if (prevRef.current) setOrders(prevRef.current);
-      setActionError(err?.message || "Failed to archive. Please retry.");
+      if (getSessionErrorKind(err)) enterSessionEnded();
+      else setActionError(err?.message || "Failed to archive. Please retry.");
       setTimeout(() => setActionError(""), 3000);
     } finally {
-      setPendingIds((s) => {
-        const n = new Set(s);
-        n.delete(orderId);
+      pendingByOrderRef.current.delete(pid);
+      setPendingByOrder((prev) => {
+        const n = new Map(prev);
+        n.delete(pid);
         return n;
       });
     }
-  }, [pendingIds]);
+  }, [enterSessionEnded, view]);
 
   // Item-level Cancel/Reject — station may cancel only own items, never whole order.
-  const [itemPending, setItemPending] = useState(() => new Set());
   const [cancelReason, setCancelReason] = useState("");
   const [cancelTarget, setCancelTarget] = useState(null); // {orderId, lineId}
   const handleCancelItem = useCallback(async (orderId, lineId) => {
     if (!lineId) return;
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     const key = String(lineId);
-    if (itemPending.has(key)) return;
+    if (itemPendingRef.current.has(key)) return;
+    itemPendingRef.current.add(key);
     setItemPending((s) => new Set(s).add(key));
     setActionError("");
     const reason = cancelReason.trim().slice(0, 200);
@@ -342,6 +466,11 @@ export default function KitchenDisplay({
       });
       if (!data?.success) throw new Error(data?.error || data?.message || "Cancel failed");
       const updated = data?.data?.order;
+      // Stale success after revocation: revert optimistic, apply nothing.
+      if (gen !== authGenRef.current) {
+        if (prevRef.current) setOrders(prevRef.current);
+        return;
+      }
       if (updated) {
         setOrders((prev) => prev.map((o) => (o._id === orderId ? { ...o, ...updated } : o)));
         // If all active lines cancelled, order will be status CANCELLED and drop from ACTIVE query on next fetch
@@ -354,18 +483,26 @@ export default function KitchenDisplay({
       setCancelReason("");
     } catch (err) {
       if (prevRef.current) setOrders(prevRef.current);
-      if (err && err.status === 401) setActionError("Your session has expired. Please sign in again.");
+      if (getSessionErrorKind(err)) enterSessionEnded();
       else if (err && err.status === 403) setActionError(err.message || "Forbidden: cannot cancel this item.");
+      else if (err && /already finished preparing/i.test(err?.message || "")) setActionError(t('cannotCancelReady'));
       else setActionError(err?.message || "Failed to cancel item. Please retry.");
-      setTimeout(() => setActionError(""), 4000);
+      // AUTH-ARCH-11 §21: reconcile on state conflicts (already-cancelled /
+      // finished lines changed by another actor); never retry the mutation.
+      if (!getSessionErrorKind(err) && err && err.status !== 503 && /already cancelled|already finished|not found|terminal state/i.test(err?.message || "")) {
+        scheduleRefresh();
+      } else {
+        setTimeout(() => setActionError(""), 4000);
+      }
     } finally {
+      itemPendingRef.current.delete(key);
       setItemPending((s) => {
         const n = new Set(s);
         n.delete(key);
         return n;
       });
     }
-  }, [itemPending, cancelReason, view]);
+  }, [cancelReason, view, t, enterSessionEnded, scheduleRefresh]);
 
   const visibleOrders = orders.filter((o) =>
     view === 'ALL' ? true : o.items.some((it) => it.type === view && !it.cancelled)
@@ -373,7 +510,9 @@ export default function KitchenDisplay({
   // Also keep orders with only cancelled items of this station for history (faded) — but active view excludes fully cancelled
   const offline = connError;
 
-  function renderItems(items, view, orderId) {
+  // stationLocked: this station already marked its lines READY (or the whole
+  // order is READY) — finished lines cannot be cancelled (server enforces too).
+  function renderItems(items, view, orderId, stationLocked) {
     if (!items || items.length === 0) return null;
     // Only render items belonging to THIS station (FOOD=Kitchen, DRINK=Barista).
     const relevant = items.filter((it) => it.type === view);
@@ -400,7 +539,7 @@ export default function KitchenDisplay({
                 {it.type}{isCancelled && it.cancelReason ? ` · ${it.cancelReason}` : ""}
               </p>
               {isCancelled && (
-                <p className="text-xs text-[#991B1B] dark:text-[#FCA5A5]">Cancelled{it.cancelledStation ? ` by ${it.cancelledStation}` : ""}{it.cancelledAt ? ` ${new Date(it.cancelledAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}` : ""}</p>
+                <p className="text-xs text-[#991B1B] dark:text-[#FCA5A5]">Cancelled{it.cancelledStation ? ` by ${it.cancelledStation}` : ""}{it.cancelledAt ? ` ${fmtCancelledClock(it.cancelledAt, lang)}` : ""}</p>
               )}
               {Array.isArray(it.components) && it.components.length > 0 && (
                 <ul className="mt-1 space-y-0.5">
@@ -413,7 +552,7 @@ export default function KitchenDisplay({
                 </ul>
               )}
             </div>
-            {!isCancelled ? (
+            {!isCancelled && !stationLocked ? (
               lineId ? (
                 cancelTarget && cancelTarget.lineId === lineId && cancelTarget.orderId === orderId ? (
                   <div className="flex shrink-0 flex-col gap-1">
@@ -429,9 +568,9 @@ export default function KitchenDisplay({
               ) : (
                 <span className="shrink-0 rounded-lg bg-[#F4F5F9] px-2 py-1 text-xs font-bold text-[#94A3B8]">Legacy</span>
               )
-            ) : (
+            ) : isCancelled ? (
               <span className="shrink-0 rounded-full bg-[#FECACA] px-2 py-1 text-xs font-black text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white">Cancelled</span>
-            )}
+            ) : null}
           </li>
           );
         })}
@@ -447,11 +586,31 @@ export default function KitchenDisplay({
     const isNew = newIds.has(order._id);
     // Per-station status — Kitchen shows kitchenStatus, Barista shows baristaStatus.
     // For mixed orders this keeps each station's preparation state independent.
-    const stationStatus =
-      view === "DRINK"
-        ? order.baristaStatus || order.status
-        : order.kitchenStatus || order.status;
+    // FORCEFUL SEPARATION: overall order.status is NEVER consulted here — it can
+    // reflect the OTHER station's progress (e.g. PREPARING after Kitchen's Start
+    // Prep while Barista is still PENDING). Missing station state means PENDING,
+    // identical to the server's null-as-not-started semantics.
+    const stationKey = stationForView(view);
+    const stationStatus = stationKey ? stationStatusOf(order, stationKey) : (order.status || 'PENDING');
+    // UI parity with the server active-line definition (see visibleOrders):
+    // Start/Ready require at least one active line for this station, so a stale
+    // ticket left on screen after EDIT_ITEMS removes the last station line
+    // offers no action. Cancel behavior is untouched (J.4 rules intact).
+    // Active-line gating lives inside stationActionOf (no action without work).
+    const stationAction = stationKey ? stationActionOf(order, stationKey) : null;
     const badge = statusBadge(stationStatus, t);
+    // Exact in-flight identity for this ticket: String(orderId) in the single
+    // pending map. Never array index / item name / table number.
+    const pendingInfo = pendingByOrder.get(String(order._id));
+    const isPending = !!pendingInfo;
+    const stationShort = stationKey === 'BARISTA' ? 'Barista' : 'Kitchen';
+    const pendingLabel = !pendingInfo
+      ? null
+      : pendingInfo.action === 'START_PREP'
+        ? 'Starting…'
+        : pendingInfo.action === 'MARK_READY'
+          ? 'Marking Ready…'
+          : 'Saving…';
 
     return (
       <article
@@ -486,47 +645,65 @@ export default function KitchenDisplay({
           </div>
         </div>
 
-        {renderItems(order.items, view, order._id)}
+        {renderItems(
+          order.items,
+          view,
+          order._id,
+          stationStatus === 'READY'
+        )}
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">
-            {t('order')}
+            {stationShort} · {t('order')}
           </span>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${badge.cls}`}>
+          <span
+            title={`${stationShort} ${stationStatus}`}
+            aria-label={`${stationShort} ${badge.label}`}
+            className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${badge.cls}`}
+          >
             {badge.label}
           </span>
         </div>
 
         <div className="mt-2 flex gap-2">
-          {stationStatus === 'PENDING' && (
+          {isPending ? (
             <button
               type="button"
-              onClick={() => updateOrder(order._id, 'PREPARING')}
-              disabled={pendingIds.has(order._id)}
-              className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-3 text-base font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+              aria-live="polite"
+              aria-label={`${stationShort} ${pendingLabel}`}
+              className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-3 text-base font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {pendingIds.has(order._id) ? "PREPARING..." : t('startPrep')}
+              {pendingLabel}
             </button>
+          ) : (
+            <>
+              {stationAction === 'START_PREP' && (
+                <button
+                  type="button"
+                  onClick={() => updateOrder(order._id, 'PREPARING')}
+                  className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-3 text-base font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {t('startPrep')}
+                </button>
+              )}
+              {stationAction === 'MARK_READY' && (
+                <button
+                  type="button"
+                  onClick={() => updateOrder(order._id, 'READY', order.waiterInfo)}
+                  className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-3 text-base font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {t('markReady')}
+                </button>
+              )}
+            </>
           )}
-          {stationStatus === 'PREPARING' && (
-            <button
-              type="button"
-              onClick={() => updateOrder(order._id, 'READY', order.waiterInfo)}
-              disabled={pendingIds.has(order._id)}
-              className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-3 text-base font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {pendingIds.has(order._id) ? "UPDATING..." : t('markReady')}
-            </button>
-          )}
-          {stationStatus === 'READY' && (
+          {stationStatus === 'READY' && !isPending && (
             <div className="flex-1 rounded-xl border border-[#FFD600]/20 dark:border-[#FF5E00]/20 bg-[rgba(255,214,0,0.12)] dark:bg-[rgba(255,94,0,0.12)] py-3 text-center text-base font-black text-[#8A6D00] dark:text-[#FF8A3D]">
               {t('awaitingPickup')}
             </div>
           )}
         </div>
-        {pendingIds.has(order._id) && stationStatus !== 'READY' && (
-          <p className="mt-1 text-center text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">Updating…</p>
-        )}
       </article>
     );
   }
@@ -543,6 +720,28 @@ export default function KitchenDisplay({
 
   return (
     <div className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] text-[#1E293B] dark:text-white">
+      {/* AUTH-ARCH-6: explicit session-ended state. Blocks station actions
+          until re-login (existing PinGuard flow). No credentials handled here,
+          nothing auto-submitted, no order state touched. */}
+      {sessionEnded && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/40 dark:bg-[#12131A]/80 px-4 py-6" role="alertdialog" aria-modal="true" aria-label="Session ended">
+          <div className="w-full max-w-sm rounded-3xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-6 text-center shadow-[0_10px_25px_-5px_rgba(0,0,0,0.15)]">
+            <h2 className="text-lg font-extrabold tracking-tight text-[#1E293B] dark:text-white">
+              Session ended
+            </h2>
+            <p className="mt-2 text-sm font-medium text-[#64748B] dark:text-[#94A3B8]">
+              Please sign in again to continue.
+            </p>
+            <button
+              type="button"
+              onClick={signInAgain}
+              className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] text-sm font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner"
+            >
+              Sign in again
+            </button>
+          </div>
+        </div>
+      )}
       <header className="sticky top-0 z-30 bg-[#FFDC00] dark:bg-transparent border-b border-[#E2E8F0]/60 dark:border-transparent dark:border-none px-4 py-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-none backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -592,12 +791,15 @@ export default function KitchenDisplay({
         </div>
       )}
 
-      {/* Status summary — read-only, derived from already-fetched visibleOrders */}
+      {/* Status summary — read-only, derived from already-fetched visibleOrders.
+          Station-scoped like the ticket buttons: overall order.status is never
+          consulted, so one station's progress cannot inflate the other's counts. */}
       {(() => {
+        const summaryStation = stationForView(view);
         const counts = (() => {
           let newOrders = 0, inProgress = 0, ready = 0;
           for (const o of visibleOrders) {
-            const st = view === 'DRINK' ? (o.baristaStatus || o.status) : (o.kitchenStatus || o.status);
+            const st = summaryStation ? stationStatusOf(o, summaryStation) : (o.status || 'PENDING');
             if (st === 'PENDING') newOrders++;
             else if (st === 'PREPARING') inProgress++;
             else if (st === 'READY') ready++;

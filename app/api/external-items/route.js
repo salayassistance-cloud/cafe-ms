@@ -19,7 +19,7 @@ async function postHandler(request) {
 // section for historical data only. Waiter may read only their own requests when no manager role.
 async function getHandler(request) {
   const auth = await requireAuth(request);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const role = String(auth.payload.role).toUpperCase();
   if (!["MANAGER", "WAITER"].includes(role)) return fail("Forbidden", 403);
 

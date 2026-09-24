@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 // Reusable 4-digit PIN keypad — Exact palette spec: #F4F5F9/#FFFFFF/#FFD600 light, #12131A/#1C1D24/#FF5E00 dark
 
 export default function PinKeypad({
@@ -11,6 +13,24 @@ export default function PinKeypad({
   hideSubmit = false,
 }) {
   const digits = String(value).slice(0, 4);
+
+  // Keyboard Enter submits the SAME canonical onSubmit as the Verify button.
+  // The keypad has no native text input (digits live in parent state), so
+  // without this, Enter does nothing on keypad screens. Focused native
+  // controls (buttons/inputs) are skipped so their own Enter behavior
+  // (button click / form submit) runs exactly once — no double submission.
+  useEffect(() => {
+    function onKey(e) {
+      if (!e || e.key !== "Enter") return;
+      const t = e.target;
+      if (t && t.closest && t.closest("button,input,select,textarea,a,[contenteditable]")) return;
+      if (disabled || digits.length !== 4 || !onSubmit) return;
+      e.preventDefault();
+      onSubmit(digits);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [digits, disabled, onSubmit]);
 
   function press(d) {
     if (disabled) return;

@@ -1,5 +1,5 @@
 import { connectToDatabase } from "@/lib/mongodb";
-import { verifyRolePin } from "@/lib/authService";
+import { verifyStaffPinById } from "@/lib/staffService";
 import { getOrderModel } from "@/lib/models/Order";
 import { withApi } from "@/lib/withApi";
 import { ok, fail } from "@/lib/apiResponse";
@@ -11,12 +11,14 @@ export const dynamic = "force-dynamic";
 
 // POST /api/manager/settings/clear-orders
 // Manager-triggered order-history reset. Wipes every order, resets the order
-// sequence counter, and releases every locked waiter slot. Requires authenticated
-// MANAGER session (HttpOnly cookie) + re-authentication via currentManagerPin
-// for destructive confirmation (prevents CSRF/session-only bypass).
+// sequence counter, and releases every locked waiter slot. Requires an
+// authenticated MANAGER session (canonical resolver: tab credential first,
+// then server session, then legacy compat) + step-up re-authentication with
+// the REQUESTING MANAGER's own Staff PIN (prevents CSRF/session-only bypass
+// for this destructive confirmation). No SystemAuth involvement.
 async function handler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
 
   const rl = checkRateLimit(request, { key: "clear_orders", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
@@ -38,8 +40,13 @@ async function handler(request) {
   } catch {
     return fail("Database temporarily unavailable", 503);
   }
-  const authorised = await verifyRolePin(conn, "MANAGER", currentManagerPin);
-  if (!authorised) {
+  // AUTH-ARCH-8A: step-up re-authentication against the requesting MANAGER's
+  // own Staff PIN (canonical Staff credential). The legacy SystemAuth role-PIN
+  // check was removed: it verified a shared role secret instead of the
+  // authenticated staff member, and kept this flow on SystemAuth. Sessions
+  // without a Staff identity (legacy bootstrap) cannot pass this step.
+  const authorised = await verifyStaffPinById(conn, auth.payload.staffId, currentManagerPin);
+  if (!authorised.ok) {
     return fail("Manager PIN incorrect", 401);
   }
 

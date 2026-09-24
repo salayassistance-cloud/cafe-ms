@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Used by /waiter to check if already logged in as WAITER
 async function handler(request) {
   const auth = await requireAuth(request);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   // Return minimal safe session info
   const p = auth.payload;
   return ok({

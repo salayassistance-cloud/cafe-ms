@@ -1,7 +1,6 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import { withApi } from "@/lib/withApi";
-import { verifyStaffPin, ensureDefaultStaff, isValidRole } from "@/lib/staffService";
-import { createSessionToken, SESSION_COOKIE, SESSION_COOKIE_OPTS } from "@/lib/sessionCrypto";
+import { verifyStaffPin, isValidRole } from "@/lib/staffService";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validateLoginStaffPayload } from "@/lib/validate";
@@ -48,9 +47,9 @@ async function handler(request) {
   } catch {
     return NextResponse.json({ success: false, message: "Database temporarily unavailable" }, { status: 503 });
   }
-  try {
-    await ensureDefaultStaff(conn);
-  } catch {}
+  // AUTH-ARCH-8B: no automatic bootstrap. Login resolves an EXISTING Staff
+  // identity only; a missing account fails authentication below. Staff
+  // provisioning belongs exclusively to authorized Staff Management.
 
   const result = await verifyStaffPin(conn, name, pin, role);
   if (!result.ok) {
@@ -58,35 +57,61 @@ async function handler(request) {
   }
 
   const staff = result.staff;
-  const payload = {
-    role,
-    staffId: String(staff._id),
-    name: staff.name,
-    staffName: staff.name,
-  };
-  // For waiter, also include waiterName/Number (canonical waiterNumber field, not name parsing)
+  // Waiter display fallback (response only — never a credential): canonical
+  // waiterNumber field, else legacy "Waiter N" name parsing for migration data.
+  let waiterNumber = null;
   if (role === "WAITER") {
-    payload.waiterName = staff.name;
     if (Number.isInteger(staff.waiterNumber) && staff.waiterNumber >= 1 && staff.waiterNumber <= 10) {
-      payload.waiterNumber = staff.waiterNumber;
+      waiterNumber = staff.waiterNumber;
     } else {
-      // Legacy fallback: parse "Waiter N" from name only if waiterNumber not set (migration compatibility)
       const m = staff.name.match(/Waiter\s+(\d+)/i);
       if (m) {
         const n = Number(m[1]);
-        if (n >= 1 && n <= 10) payload.waiterNumber = n;
+        if (n >= 1 && n <= 10) waiterNumber = n;
       }
     }
   }
 
-  const token = createSessionToken(payload);
   const store = await cookies();
-  store.set(SESSION_COOKIE, token, SESSION_COOKIE_OPTS);
+  // AUTH-ARCH-8D: canonical server-side session ONLY. No bono_sess issuance
+  // on normal Staff login — the opaque session ID (no staffId/role/name/
+  // waiterNumber/permissions) is the sole cookie credential, plus a tab
+  // credential bound to the same row. A Session persistence failure now fails
+  // the login (503) instead of falling back to a legacy cookie: there is no
+  // legacy net anymore, and a success response without a usable session would
+  // strand the caller in 401s.
+  let created = null;
+  let tabCredential = null;
+  try {
+    const { createSession, attachTabCredential } = await import("@/lib/sessionStore");
+    const { NEW_SESSION_COOKIE, NEW_SESSION_COOKIE_OPTS, getRequestMeta } = await import("@/lib/serverSessionCookies");
+    const meta = getRequestMeta(request);
+    // Tab isolation: every login mints an independent Session row and never
+    // revokes the presented cookie session — the browser-wide cookie may
+    // belong to ANOTHER tab's live station session, and revoking it logged
+    // other tabs out with SESSION_REVOKED. Stale rows expire via TTL.
+    created = await createSession(conn, {
+      staffId: staff._id,
+      role: staff.role,
+      userAgent: meta.userAgent,
+      ip: meta.ip,
+    });
+    store.set(NEW_SESSION_COOKIE, created.sessionId, NEW_SESSION_COOKIE_OPTS);
+    try {
+      tabCredential = await attachTabCredential(conn, created.sessionId);
+    } catch {}
+  } catch {}
+  if (!created) {
+    return NextResponse.json({ success: false, message: "Database temporarily unavailable" }, { status: 503 });
+  }
 
   return NextResponse.json(
     {
       success: true,
-      staff: { id: String(staff._id), name: staff.name, role: staff.role, waiterNumber: staff.waiterNumber ?? payload.waiterNumber ?? null },
+      staff: { id: String(staff._id), name: staff.name, role: staff.role, waiterNumber: staff.waiterNumber ?? waiterNumber ?? null },
+      // Memory-only tab credential (absent only when binding failed; the
+      // cookie session remains fully usable via the canonical cookie path).
+      ...(tabCredential ? { tabCredential } : {}),
     },
     { status: 200 }
   );

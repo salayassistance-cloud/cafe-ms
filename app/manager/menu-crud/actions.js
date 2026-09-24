@@ -1,31 +1,54 @@
-﻿"use server";
+"use server";
 
 import { revalidatePath } from "next/cache";
 import { publish } from "@/lib/eventHub";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { cookies } from "next/headers";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/sessionCrypto";
+import { NEW_SESSION_COOKIE } from "@/lib/serverSessionCookies";
 
 // Centralized guard for menu CRUD — canonical policy is MANAGER only (lib/policy.js)
-// Server Actions cannot use requireAuth(request) (no Request); we verify the
-// HttpOnly cookie directly, identical to lib/authServer getPortalSession.
-async function assertManager() {
+// AUTH-ARCH-4/8F: canonical resolver (lib/serverAuth). Manager means LIVE
+// Staff.role === MANAGER with Staff.isActive === true — never a cookie
+// payload, roleSnapshot, or client claim alone.
+// Server Actions cannot use requireAuth(request) (no Request); this is the
+// same authority as lib/authServer getPortalSession.
+async function assertManager(formDataOrId) {
+  // AUTH-ARCH-11: tab-scoped Server Action auth. Server Actions receive no
+  // Request headers, so the tab credential (if the tab holds one) travels in
+  // the FormData field `tabSession` (see appendTabCredential in
+  // lib/clientFetch). Tab credential is tried FIRST (explicit per-tab
+  // context beats the shared browser cookie); otherwise the existing
+  // cookie-based canonical resolution applies unchanged.
+  const tabCredential = (() => {
+    try {
+      if (formDataOrId && typeof formDataOrId.get === "function") {
+        const v = formDataOrId.get("tabSession");
+        if (typeof v === "string" && v.trim()) return v.trim();
+      }
+    } catch {}
+    return null;
+  })();
+  if (tabCredential) {
+    try {
+      const { resolveTabSession } = await import("@/lib/serverAuth");
+      const payload = await resolveTabSession(tabCredential, ["MANAGER"]);
+      if (payload) return null;
+      return { success: false, error: "Forbidden: requires MANAGER role" };
+    } catch {
+      return { success: false, error: "Authentication required" };
+    }
+  }
   try {
     const store = await cookies();
-    const token = store.get(SESSION_COOKIE)?.value;
-    if (!token) return { success: false, error: "Authentication required" };
-    const payload = verifySessionToken(token);
-    if (!payload || String(payload.role).toUpperCase() !== "MANAGER") {
-      return { success: false, error: "Forbidden: requires MANAGER role" };
-    }
-    const { SESSION_IDLE_TIMEOUT_MS } = await import("@/lib/sessionCrypto");
-    if (payload.iat && Date.now() - Number(payload.iat) > SESSION_IDLE_TIMEOUT_MS) {
-      return { success: false, error: "Your session has expired due to inactivity. Please sign in again." };
-    }
+    const { getLiveSessionFromCookies } = await import("@/lib/serverAuth");
+    const payload = await getLiveSessionFromCookies(store, ["MANAGER"]);
+    if (payload) return null;
+    const hasCredential = store.get(NEW_SESSION_COOKIE)?.value;
+    if (!hasCredential) return { success: false, error: "Authentication required" };
+    return { success: false, error: "Forbidden: requires MANAGER role" };
   } catch {
     return { success: false, error: "Authentication required" };
   }
-  return null;
 }
 
 function parseBool(v) {
@@ -56,7 +79,7 @@ function revalidateAll() {
   revalidatePath("/");
   // Push a lightweight "menu changed" event so already-open /menu and Waiter
   // terminals refetch the authoritative catalog immediately (real-time sync).
-  // Reuses the existing SSE eventHub — no second event system, one event per
+  // Reuses the existing SSE eventHub � no second event system, one event per
   // mutation (revalidateAll runs once per CRUD action).
   try {
     publish({ type: "menu-changed" });
@@ -66,7 +89,7 @@ function revalidateAll() {
 }
 
 export async function createCategory(prevState, formData) {
-  const authErr = await assertManager();
+  const authErr = await assertManager(formData);
   if (authErr) return authErr;
   const hasLocalizedNames = ["nameEn", "nameAm", "nameOm"].some((key) => formData.has(key));
   const legacyName = formData.get("name")?.toString().trim() || "";
@@ -120,14 +143,14 @@ export async function createCategory(prevState, formData) {
 }
 
 export async function deleteCategory(formDataOrId) {
-  const authErr = await assertManager();
+  const authErr = await assertManager(formDataOrId);
   if (authErr) return authErr;
   const id = typeof formDataOrId === "string" ? formDataOrId : formDataOrId.get("id")?.toString() || formDataOrId.get("_id")?.toString();
   if (!id) return { success: false, error: "Category id required" };
   try {
     const { conn, Category, MenuItem } = await getDbModels();
     // Advisory pre-transaction count (canonical _id match, both aliases). UI relatedCount is
-    // advisory only and is never trusted here — the transaction-time recount below is authoritative.
+    // advisory only and is never trusted here � the transaction-time recount below is authoritative.
     const count = await MenuItem.countDocuments({ $or: [{ category: id }, { categoryId: id }] });
     // Attempt transactional cascade delete for atomicity (requires replica set)
     let session = null;
@@ -136,7 +159,7 @@ export async function deleteCategory(formDataOrId) {
       session.startTransaction();
       // FIX3 H1: authoritative recount inside the transaction snapshot (both aliases, canonical _id).
       // Ensures items committed before the transaction snapshot are included in the delete.
-      // Does NOT claim to prevent concurrent inserts after the snapshot — MongoDB snapshot
+      // Does NOT claim to prevent concurrent inserts after the snapshot � MongoDB snapshot
       // isolation does not lock the collection; concurrent inserts after snapshot may survive.
       // Food/Drink/category isolation preserved: filter is strictly this category _id.
       const txCount = await MenuItem.countDocuments({ $or: [{ category: id }, { categoryId: id }] }).session(session);
@@ -163,8 +186,8 @@ export async function deleteCategory(formDataOrId) {
           const menuRes = await MenuItem.deleteMany({ $or: [{ category: id }, { categoryId: id }] });
           const catRes = await Category.deleteOne({ _id: id });
           if (catRes.deletedCount === 0) {
-            // Items may have been deleted but category missing — do not report success
-            return { success: false, error: `Category not found — ${menuRes.deletedCount} item(s) were deleted before failure` };
+            // Items may have been deleted but category missing � do not report success
+            return { success: false, error: `Category not found � ${menuRes.deletedCount} item(s) were deleted before failure` };
           }
           revalidateAll();
           const msg = menuRes.deletedCount > 0 ? `Category and ${menuRes.deletedCount} menu item(s) deleted` : "Category deleted";
@@ -183,7 +206,7 @@ export async function deleteCategory(formDataOrId) {
 }
 
 export async function updateCategory(prevState, formData) {
-  const authErr = await assertManager();
+  const authErr = await assertManager(formData);
   if (authErr) return authErr;
   const id = formData.get("id")?.toString().trim();
   const hasLocalizedNames = ["nameEn", "nameAm", "nameOm"].some((key) => formData.has(key));
@@ -242,7 +265,7 @@ export async function updateCategory(prevState, formData) {
 }
 
 export async function createMenuItem(prevState, formData) {
-  const authErr = await assertManager();
+  const authErr = await assertManager(formData);
   if (authErr) return authErr;
   try {
     const nameEn = formData.get("nameEn")?.toString().trim() || "";
@@ -280,7 +303,7 @@ export async function createMenuItem(prevState, formData) {
         return { success: false, error: `Image upload failed: ${err.message}` };
       }
     }
-    // No fallback stored in DB — empty string preserved, display fallback via MENU_IMAGE_FALLBACK ('/placeholders/avenue.png') in UI component
+    // No fallback stored in DB � empty string preserved, display fallback via MENU_IMAGE_FALLBACK ('/placeholders/avenue.png') in UI component
     const fastingFlags = {};
     if (formData.get("isFasting") == null && formData.get("isNonFasting") == null) {
       fastingFlags.isFasting = false;
@@ -336,7 +359,7 @@ export async function createMenuItem(prevState, formData) {
 }
 
 export async function updateMenuItem(prevState, formData) {
-  const authErr = await assertManager();
+  const authErr = await assertManager(formData);
   if (authErr) return authErr;
   try {
     const id = formData.get("id")?.toString().trim() || formData.get("_id")?.toString().trim();
@@ -459,7 +482,7 @@ export async function updateMenuItem(prevState, formData) {
     if (hasFasting) update.isFasting = parseBool(formData.get("isFasting"));
     if (hasNonFasting) update.isNonFasting = parseBool(formData.get("isNonFasting"));
     const res = await MenuItem.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: false });
-    if (!res) return { success: false, error: "Failed to update — not found" };
+    if (!res) return { success: false, error: "Failed to update � not found" };
     revalidateAll();
     return { success: true, message: "Menu item updated", itemId: String(res._id) };
   } catch (e) {
@@ -468,7 +491,7 @@ export async function updateMenuItem(prevState, formData) {
 }
 
 export async function deleteMenuItem(formDataOrId) {
-  const authErr = await assertManager();
+  const authErr = await assertManager(formDataOrId);
   if (authErr) return authErr;
   const id = typeof formDataOrId === "string" ? formDataOrId : formDataOrId.get("id")?.toString() || formDataOrId.get("_id")?.toString() || formDataOrId.get("itemId")?.toString();
   if (!id) return { success: false, error: "Item id required" };

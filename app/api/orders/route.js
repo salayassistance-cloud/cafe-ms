@@ -5,7 +5,6 @@ import { publish } from "@/lib/eventHub";
 import { withApi } from "@/lib/withApi";
 import { ok, fail } from "@/lib/apiResponse";
 import { cookies } from "next/headers";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/sessionCrypto";
 import { requireAuth } from "@/lib/security";
 import { can, canTransition } from "@/lib/policy";
 import { validateCreateOrderPayload, sanitizeString, validateDateString } from "@/lib/validate";
@@ -25,7 +24,7 @@ export const dynamic = "force-dynamic";
 // authenticated WAITER or MANAGER (policy: orders:create). Browser is untrusted.
 async function postHandler(request) {
   const auth = await requireAuth(request, ["WAITER", "MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "orders:create")) return fail("Forbidden: requires WAITER or MANAGER", 403);
 
   // Rate limit: 30 orders per minute per IP (prevents spam)
@@ -119,7 +118,7 @@ async function postHandler(request) {
 // Requires authentication (policy: orders:read = any authenticated staff).
 async function getHandler(request) {
   const auth = await requireAuth(request);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "orders:read")) return fail("Forbidden", 403);
   const { searchParams } = new URL(request.url);
   // Validate query params - reject overly long values to prevent DoS
@@ -174,7 +173,10 @@ async function getHandler(request) {
 
   if (rawDest) {
     const d = rawDest.trim().toUpperCase();
-    if (d === "FOOD" || d === "DRINK") query["items.type"] = d;
+    // Canonical station ownership: active line = type matches station AND not cancelled (same element).
+    // Prevents Kitchen seeing DRINK-only work (or cancelled-only FOOD) and vice versa, and avoids
+    // payload leakage where a mixed order with cancelled FOOD still matches a bare "items.type" filter.
+    if (d === "FOOD" || d === "DRINK") query["items"] = { $elemMatch: { type: d, cancelled: { $ne: true } } };
     else if (d !== "ALL" && d.length > 0) return fail("Invalid dest param", 400);
   }
 

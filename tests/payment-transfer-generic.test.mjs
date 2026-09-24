@@ -30,14 +30,16 @@ describe('Generic TRANSFER payment (Telebirr brand removed) - DB-free', () => {
   test('Dynamic active-account selection uses PaymentInfo source (no hardcode)', () => {
     const cashier = readSrc('app/components/CashierUI.jsx');
     const waiter = readSrc('app/components/WaiterUI.js');
-    for (const src of [cashier, waiter]) {
-      assert.ok(src.includes('/api/payment-info'), 'fetches PaymentInfo API');
-      assert.ok(src.includes('isActive !== false'), 'filters active only');
-      assert.ok(!src.includes('0911') || src.includes('accountNumber'), 'no hardcoded account numbers');
-    }
-    // Cashier mirrors Waiter: method state + selectedTransferAccount + loading
-    assert.ok(cashier.includes('selectedTransferAccount'), 'Cashier has account selection');
-    assert.ok(cashier.includes('cashierMethod'), 'Cashier has method selector');
+    // WAITER submits payment, so the waiter flow keeps dynamic account selection.
+    assert.ok(waiter.includes('/api/payment-info'), 'waiter fetches PaymentInfo API');
+    assert.ok(waiter.includes('isActive !== false'), 'filters active only');
+    assert.ok(!waiter.includes('0911') || waiter.includes('accountNumber'), 'no hardcoded account numbers');
+    // Canonical role split (P0-5): CASHIER only confirms/rejects PAYMENT_PENDING
+    // and must not submit, so it carries no submit-time account/method selection.
+    assert.ok(!cashier.includes('Submit Cash for Verification') && !cashier.includes('Submit Transfer for Verification'), 'Cashier has no submit path');
+    assert.ok(cashier.includes('handleConfirmPending') && cashier.includes('handleRejectPending'), 'Cashier confirms/rejects');
+    // Confirmation relies on the persisted snapshot, never a cashier-picked account.
+    assert.ok(cashier.includes('paymentAccountSnapshot'), 'Cashier displays persisted snapshot');
   });
 
   test('Account snapshot preserved (historical correctness)', () => {
@@ -102,14 +104,14 @@ describe('Generic TRANSFER payment (Telebirr brand removed) - DB-free', () => {
     assert.equal([confirmed].filter((o) => o.status === 'PAID').length, 1);
   });
 
-  test('Manager completed-service details use actual order/payment data', () => {
+  test('Manager item metrics use actual order/payment data', () => {
+    // The legacy Completed Services Details section was intentionally removed;
+    // item completion is now reported via canonical line-level KPIs.
     const managerSrc = readSrc('app/manager/reports/page.js');
-    assert.ok(managerSrc.includes('Completed Services'), 'Manager has completed details section');
-    assert.ok(managerSrc.includes('/api/orders?status=PAID'), 'Fetches persisted PAID orders');
-    assert.ok(managerSrc.includes('paymentAccountSnapshot'), 'Shows snapshot account');
-    assert.ok(managerSrc.includes('paymentSubmittedAt'), 'Shows submission time');
-    assert.ok(managerSrc.includes('paymentVerifiedAt') || managerSrc.includes('paidAt'), 'Shows verification time');
-    assert.ok(managerSrc.includes('netAmount') || managerSrc.includes('totalAmount'), 'Uses server totals');
+    assert.ok(!managerSrc.includes('Completed Services Details'), 'Legacy details section removed');
+    assert.ok(managerSrc.includes('completedItems'), 'Completed Items KPI from analytics');
+    assert.ok(managerSrc.includes('cancelledItems'), 'Cancelled Items section from analytics');
+    assert.ok(managerSrc.includes('cancelledItemsDetail'), 'Cancelled detail rows from analytics');
     // No fake totals
     assert.ok(!managerSrc.includes('Math.random') || managerSrc.includes('fmtETB'), 'No fabricated financials');
   });

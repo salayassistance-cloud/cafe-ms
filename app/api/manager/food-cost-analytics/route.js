@@ -5,6 +5,10 @@ import { withApi } from "@/lib/withApi";
 import { ok, fail, isDbError } from "@/lib/apiResponse";
 import { validateDateString } from "@/lib/validate";
 import {
+  addisYMDToUTCStart,
+  addisYMDToUTCNextStart,
+} from "@/lib/ethiopianCalendar";
+import {
   getFoodCostSummary,
   getFoodCostTrend,
   getTopCostIngredients,
@@ -15,7 +19,7 @@ export const dynamic = "force-dynamic";
 // GET /api/manager/food-cost-analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:read")) return fail("Forbidden: requires MANAGER", 403);
 
   const { searchParams } = new URL(request.url);
@@ -25,21 +29,22 @@ async function getHandler(request) {
   let from = null;
   let to = null;
 
+  // Canonical Addis business-day half-open [from 00:00, to next 00:00).
+  // `to` is exclusive (next Addis midnight). Never server-local setHours.
   if (rawFrom) {
     const v = validateDateString(rawFrom);
     if (!v) return fail("Invalid from date (use YYYY-MM-DD)", 400);
-    const d = new Date(v);
-    d.setHours(0, 0, 0, 0);
-    from = d;
+    from = addisYMDToUTCStart(v);
+    if (!from) return fail("Invalid from date (use YYYY-MM-DD)", 400);
   }
   if (rawTo) {
     const v = validateDateString(rawTo);
     if (!v) return fail("Invalid to date (use YYYY-MM-DD)", 400);
-    const d = new Date(v);
-    d.setHours(23, 59, 59, 999);
-    to = d;
+    to = addisYMDToUTCNextStart(v);
+    if (!to) return fail("Invalid to date (use YYYY-MM-DD)", 400);
   }
-  if (from && to && from > to) return fail("from date must be before to date", 400);
+  if (from && to && from.getTime() >= to.getTime())
+    return fail("from date must be before to date", 400);
 
   try {
     const conn = await connectToDatabase();

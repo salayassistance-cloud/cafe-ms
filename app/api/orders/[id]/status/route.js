@@ -1,5 +1,5 @@
 import { connectToDatabase } from "@/lib/mongodb";
-import { updateOrderStatus, serveOrder, payOrder } from "@/lib/orderService";
+import { updateOrderStatus, serveOrder, payOrder, confirmPayment } from "@/lib/orderService";
 import { getOrderModel } from "@/lib/models/Order";
 import { publish } from "@/lib/eventHub";
 import { withApi } from "@/lib/withApi";
@@ -16,6 +16,8 @@ function mapServiceError(err) {
   if (isDbError(err)) return fail("Database connection error. Please retry shortly.", 503);
   const msg = err?.message ? String(err.message) : "";
   if (/not found/i.test(msg)) return fail(msg, 404);
+  // Idempotent repeat cancellation is not a server failure — report conflict, never generic 500.
+  if (/already cancelled/i.test(msg)) return fail(msg, 409);
   if (/cannot|invalid|only|must|terminal|required/i.test(msg)) return fail(msg, 400);
   console.error("[api] orders/[id]/status unhandled:", err);
   return fail("Internal Server Error", 500);
@@ -26,7 +28,7 @@ function mapServiceError(err) {
 // All body fields validated; route param sanitized. Requires auth + canTransition.
 async function patchHandler(request, { params }) {
   const auth = await requireAuth(request);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "orders_status", limit: 60, windowMs: 60_000 });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -45,8 +47,11 @@ async function patchHandler(request, { params }) {
   const raw = validated.data.status;
   if (!raw) return fail("status is required", 400);
 
-  if (!canTransition(auth.payload.role, raw)) return fail(`Forbidden: ${raw} requires ${raw==="PREPARING"||raw==="READY"?"KITCHEN/BARISTA/MANAGER":raw==="SERVED"||raw==="PAID"?"WAITER/MANAGER":"authorized role"}`,403);
-  if (raw==="PAID" && !can(auth.payload.role,"orders:payment")) return fail("Forbidden: payment requires WAITER/MANAGER",403);
+  if (!canTransition(auth.payload.role, raw)) return fail(`Forbidden: ${raw} requires ${raw==="PREPARING"||raw==="READY"?"KITCHEN/BARISTA/MANAGER":raw==="SERVED"||raw==="PAYMENT_PENDING"?"WAITER/MANAGER":raw==="PAID"?"CASHIER/MANAGER":"authorized role"}`,403);
+  // Canonical payment-confirm authorization (policy: orders:payment:confirm =
+  // [CASHIER, MANAGER]). The legacy WAITER/MANAGER check below rejected every
+  // CASHIER unconditionally, contradicting the canonical matrix.
+  if (raw==="PAID" && !can(auth.payload.role,"orders:payment:confirm")) return fail("Forbidden: payment confirm requires CASHIER/MANAGER",403);
 
   try {
     let conn;
@@ -75,8 +80,22 @@ async function patchHandler(request, { params }) {
     if (s === "SERVED") {
       doc = await serveOrder(conn, sanitizedId);
     } else if (s === "PAID") {
-      const pm = validated.data.paymentMethod;
-      doc = await payOrder(conn, sanitizedId, { paymentMethod: pm, actorId: auth.payload.staffId });
+      // Canonical parity with PATCH /api/orders/[id] (P1): PAYMENT_PENDING →
+      // confirmPayment(); MANAGER-only legacy direct settlement from SERVED;
+      // anything else is a clean 400. Authorization above already restricts
+      // this branch; no duplicate payment logic lives here.
+      const OrderForPay = getOrderModel(conn);
+      const qPay = mongoose.isValidObjectId(sanitizedId) ? { $or: [{ orderNumber: sanitizedId }, { _id: sanitizedId }] } : { orderNumber: sanitizedId };
+      const existingForPay = await OrderForPay.findOne(qPay).select("status").lean();
+      if (!existingForPay) return fail("Order not found", 404);
+      if (existingForPay.status === "PAYMENT_PENDING") {
+        doc = await confirmPayment(conn, sanitizedId, { actorId: auth.payload.staffId });
+      } else if (String(auth.payload.role || "").toUpperCase() === "MANAGER" && existingForPay.status === "SERVED") {
+        const pm = validated.data.paymentMethod;
+        doc = await payOrder(conn, sanitizedId, { paymentMethod: pm, actorId: auth.payload.staffId });
+      } else {
+        return fail("Order must be submitted for verification before payment", 400);
+      }
     } else {
       const opts = {};
       if (s === "READY" && sessionStaff) {
@@ -88,15 +107,9 @@ async function patchHandler(request, { params }) {
           if (role === "KITCHEN") opts.kitchenStaffId = sid;
           if (role === "BARISTA") opts.baristaStaffId = sid;
         }
-        if (validated.data.kitchenStaffId) opts.kitchenStaffId = validated.data.kitchenStaffId;
-        if (validated.data.baristaStaffId) opts.baristaStaffId = validated.data.baristaStaffId;
-      } else if (s === "READY") {
-        if (validated.data.kitchenStaffId) opts.kitchenStaffId = validated.data.kitchenStaffId;
-        if (validated.data.baristaStaffId) opts.baristaStaffId = validated.data.baristaStaffId;
-        if (validated.data.staffId) {
-          opts.staffId = validated.data.staffId;
-          opts.staffRole = validated.data.staffRole;
-        }
+        // AUTH-ARCH-4: READY attribution is the authenticated session only.
+        // Client-supplied kitchenStaffId/baristaStaffId/staffId are ignored
+        // (no client sends them; accepting them would poison audit fields).
       }
       doc = (await updateOrderStatus(conn, sanitizedId, s, opts)).doc;
     }
@@ -134,7 +147,7 @@ export const PATCH = withApi(patchHandler);
 // Also support GET for symmetry — WAITER owner-filtered
 async function getHandler(request, { params }) {
   const auth = await requireAuth(request);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role,"orders:read")) return fail("Forbidden",403);
   const { id } = await params;
   const sanitizedId = sanitizeString(id, { maxLen: 50 });

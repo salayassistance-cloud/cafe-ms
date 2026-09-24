@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // Returns recipes with menu item + inventory item info — MANAGER only
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "recipe:read") && !can(auth.payload.role, "inventory:read")) {
     return fail("Forbidden: requires MANAGER", 403);
   }
@@ -56,7 +56,7 @@ async function getHandler(request) {
 // Create recipe — MANAGER only
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "recipe:mutate") && !can(auth.payload.role, "inventory:mutate")) {
     return fail("Forbidden: requires MANAGER", 403);
   }

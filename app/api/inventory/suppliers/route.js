@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // List suppliers — MANAGER only
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:read")) return fail("Forbidden: requires MANAGER", 403);
 
   try {
@@ -37,7 +37,7 @@ async function getHandler(request) {
 // Create supplier — MANAGER only, requires name
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:mutate")) return fail("Forbidden: requires MANAGER", 403);
 
   const len = request.headers.get("content-length");

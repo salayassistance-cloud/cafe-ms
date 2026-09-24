@@ -12,7 +12,9 @@ import ManagerSidebar from '@/app/components/ManagerSidebar';
 import {
   ethQuickRanges,
   toEthiopian,
-  formatEthiopian,
+  formatEthiopianDate,
+  formatEthiopianDateTime,
+  addisYMDToUTCStart,
   ET_MONTHS_AM,
   ET_MONTHS_EN,
   ET_MONTHS_OM,
@@ -32,14 +34,6 @@ const INTERVALS = [
   { key: 'custom', labelKey: 'custom' },
 ];
 
-function toLocalYMD(d) {
-  const x = new Date(d);
-  const y = x.getFullYear();
-  const m = String(x.getMonth() + 1).padStart(2, '0');
-  const day = String(x.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function fmtETB(n) {
   const v = Number(n) || 0;
   return `ETB ${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
@@ -52,11 +46,13 @@ function fmtDur(sec) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-// Display-only conversion: Ethiopian-clock period words (ቀን/ማታ) → AM/PM.
-// This is purely a localization of the label text; the underlying report
-// timestamps, timezone and aggregation are never touched.
-function toAMPM(label) {
+// Display-only localization of Ethiopian-clock period words.
+// English mode maps ቀን/ማታ → AM/PM (established Reports convention);
+// Amharic mode keeps the backend ቀን/ማታ labels untouched.
+// The underlying report timestamps, timezone and aggregation are never touched.
+function toAMPM(label, lang) {
   if (!label) return label;
+  if (lang !== 'en') return String(label);
   return String(label).replace(/ቀን/g, 'AM').replace(/ማታ/g, 'PM');
 }
 
@@ -77,13 +73,16 @@ function localizeShiftName(name, lang) {
   const perMatch = String(name).match(/\(([^)]+)\)/);
   const period = perMatch ? perMatch[1].trim() : '';
   const periodLocal = (periodMap[period] && periodMap[period][lang]) || period;
+  // Amharic mode keeps Ethiopian-clock words (ቀን/ማታ); other modes use the
+  // established English AM/PM convention. Hour numbers are never converted.
+  const amMode = lang === 'am';
   let range;
-  if (/Shift\s*A/i.test(name)) range = '12 AM - 6:30 AM';
-  else if (/Shift\s*C/i.test(name)) range = '12 PM - 6 PM';
+  if (/Shift\s*A/i.test(name)) range = amMode ? '12 ቀን - 6:30 ቀን' : '12 AM - 6:30 AM';
+  else if (/Shift\s*C/i.test(name)) range = amMode ? '12 ማታ - 6 ማታ' : '12 PM - 6 PM';
   else {
-    range = String(name)
-      .replace(/ቀን/g, 'AM')
-      .replace(/ማታ/g, 'PM')
+    range = String(name);
+    if (!amMode) range = range.replace(/ቀን/g, 'AM').replace(/ማታ/g, 'PM');
+    range = range
       .replace(/·/g, ' ')
       .replace(/→/g, ' - ')
       .replace(/\([^)]*\)/g, '')
@@ -91,9 +90,9 @@ function localizeShiftName(name, lang) {
       .trim();
   }
   if (!key) {
-    return String(name)
-      .replace(/ቀን/g, 'AM')
-      .replace(/ማታ/g, 'PM')
+    let fallback = String(name);
+    if (!amMode) fallback = fallback.replace(/ቀን/g, 'AM').replace(/ማታ/g, 'PM');
+    return fallback
       .replace(/·/g, ' ')
       .replace(/→/g, ' - ')
       .replace(/\s+/g, ' ')
@@ -102,9 +101,28 @@ function localizeShiftName(name, lang) {
   return periodLocal ? `${key} ${range} (${periodLocal})` : `${key} ${range}`;
 }
 
-function ymdToDate(ymd) {
-  const [y, m, d] = String(ymd).split('-').map(Number);
-  return new Date(y, m - 1, d);
+// Canonical Phase E bridge (Phase C foundation):
+// Transport YYYY-MM-DD (Addis wall, API contract) → Addis civil-midnight UTC
+// instant. Never `new Date(y, m - 1, d)` — browser timezone must not shift the
+// business day. Display stays Ethiopian; transport stays YYYY-MM-DD.
+function transportKeyToEthiopian(ymd) {
+  const start = addisYMDToUTCStart(ymd);
+  if (!start) return null;
+  return toEthiopian(start);
+}
+
+// User-facing instant formatting — canonical Ethiopian calendar +
+// Africa/Addis_Ababa wall time. Never browser-local toLocaleString for
+// business dates. `new Date(value)` here only wraps an existing UTC instant.
+function formatOrderDateTime(value, lang) {
+  try {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return formatEthiopianDateTime(d, lang === 'en' ? 'en' : 'am');
+  } catch {
+    return '—';
+  }
 }
 
 // All presets resolve to Gregorian YYYY-MM-DD bounds (the API contract) but are
@@ -168,10 +186,6 @@ export default function ManagerReports() {
   const [to, setTo] = useState(init.to);
   const [itemFilter, setItemFilter] = useState('ALL');
   const [data, setData] = useState(null);
-  const [externalItems, setExternalItems] = useState([]);
-  const [completedOrders, setCompletedOrders] = useState([]);
-  const [completedLoading, setCompletedLoading] = useState(false);
-  const [selectedCompletedId, setSelectedCompletedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -180,33 +194,12 @@ export default function ManagerReports() {
     dataRef.current = data;
   }, [data]);
 
-  const fetchCompleted = useCallback(async () => {
-    setCompletedLoading(true);
-    try {
-      // Recent completed PAID orders for inspection — uses persisted order/payment snapshots, no fake data
-      const cjson = await safeFetchJson('/api/orders?status=PAID', { cache: 'no-store' }).catch(() => null);
-      const list = cjson?.data?.orders || cjson?.orders || [];
-      setCompletedOrders(Array.isArray(list) ? list.slice(0, 50) : []);
-    } catch {
-      setCompletedOrders([]);
-    } finally {
-      setCompletedLoading(false);
-    }
-  }, []);
-
   const fetchReports = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError('');
     try {
       const qs = new URLSearchParams({ from, to, interval });
-      const eqs = new URLSearchParams({ from, to });
-      // PERFORMANCE FIX: Analytics and external-items are independent — fetch concurrently
-      // instead of sequential await (saved ~300-600ms on reports load after manager login).
-      const [json, ejson] = await Promise.all([
-        safeFetchJson(`/api/manager/analytics?${qs.toString()}`, { cache: 'no-store' }),
-        safeFetchJson(`/api/external-items?${eqs.toString()}`, { cache: 'no-store' }).catch(() => null),
-      ]);
-      fetchCompleted();
+      const json = await safeFetchJson(`/api/manager/analytics?${qs.toString()}`, { cache: 'no-store' });
       if (!json.success) throw new Error(json.error || json.message || 'Failed');
       const d = json.data || {};
       setData({
@@ -222,15 +215,6 @@ export default function ManagerReports() {
         paymentBreakdown: d.paymentBreakdown || [],
         kitchen: d.kitchen || {},
       });
-
-      // External item requests — surfaced separately (tagged EXTERNAL ITEM) so
-      // Manager can review non-menu waiter requests without mixing them into
-      // normal menu item statistics.
-      try {
-        if (ejson && ejson.success) setExternalItems(ejson.data?.requests || []);
-      } catch {
-        /* non-fatal — external section simply stays empty */
-      }
     } catch (err) {
       const status = err?.status;
       if (status === 401 || status === 403) {
@@ -259,7 +243,7 @@ export default function ManagerReports() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [from, to, interval, t, fetchCompleted]);
+  }, [from, to, interval, t]);
 
   // Phase 5: SSE-first, on-demand — fetch on mount / filters, silent revalidate on visibility or 60s idle.
   // No aggressive 3s poll (was 20 req/min per tab).
@@ -285,10 +269,42 @@ export default function ManagerReports() {
     };
   }, [fetchReports]);
 
+  // Business brand for the printed/PDF header — existing /api/brand
+  // config (read-only here), operational fallback otherwise.
+  const [brandName, setBrandName] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    safeFetchJson('/api/brand', { cache: 'no-store' }).then((raw) => {
+      if (cancelled) return;
+      const n = raw?.data?.brand?.name;
+      if (typeof n === 'string' && n.trim()) setBrandName(n.trim());
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const reportBrand = (brandName || 'AVENUE HOTEL').toUpperCase();
+
+  // Gate @media print on the dedicated document: while report data is loaded
+  // the browser prints ONLY #bono-report-doc; otherwise normal printing.
+  const printableDoc = !!(data && !loading);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (printableDoc) document.body.classList.add('bono-print-report');
+    else document.body.classList.remove('bono-print-report');
+    return () => document.body.classList.remove('bono-print-report');
+  }, [printableDoc]);
+
   function exportCSV() {
     if (!data) return;
+    // Machine-readable cells: null/undefined become empty (never the strings
+    // "null"/"undefined"); quotes are RFC-4180 doubled; every field is quoted
+    // so commas/newlines inside values cannot break spreadsheet import.
+    // Leading BOM keeps UTF-8 (Ethiopian-calendar text) intact in Excel.
+    const csvCell = (c) => {
+      if (c == null) return '""';
+      return `"${String(c).replace(/"/g, '""')}"`;
+    };
     const rows = [
-      [t('csvReport'), `${t('managerReports')} (${data.range.from} to ${data.range.to})`],
+      [t('csvReport'), `${t('managerReports')} (${formatOrderDateTime(data.range.from, lang)} to ${formatOrderDateTime(data.range.to, lang)})`],
       [''],
       [t('csvKpi'), t('csvValue')],
       [t('totalRevenue'), data.kpis.revenue],
@@ -296,7 +312,7 @@ export default function ManagerReports() {
       [t('completedOrders'), data.kpis.completedOrders],
       [t('cancelledOrders'), data.kpis.cancelledOrders],
       [`${t('avgFulfillment')} (s)`, data.kpis.avgFulfillmentSec],
-      [t('peakHour'), toAMPM(data.kpis.peakHourLabel)],
+      [t('peakHour'), toAMPM(data.kpis.peakHourLabel, lang)],
       [''],
       [t('csvTopItem'), t('csvCategory'), t('csvQty'), t('csvRevenue')],
       ...data.topItems.map((i) => [i.title, i.category, i.qty, i.revenue]),
@@ -309,8 +325,8 @@ export default function ManagerReports() {
         w.avgFulfillmentSec,
       ]),
     ];
-    const csv = rows
-      .map((r) => r.map((c) => `\"${String(c).replace(/\"/g, '\"\"')}\"`).join(','))
+    const csv = '\uFEFF' + rows
+      .map((r) => r.map(csvCell).join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -432,14 +448,14 @@ export default function ManagerReports() {
         {data && !loading && (
           <>
             {/* KPI CARDS — revenue distinguishable: base vs components, notes have 0 revenue */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <KpiCard
                 index={0}
                 label={t('totalRevenue')}
                 value={fmtETB(kpis.revenue)}
                 delta={kpis.revenueDeltaPct}
                 suffix={t('revenueDelta')}
-                sub={kpis.componentRevenue != null ? `Base ${fmtETB(kpis.baseRevenue ?? 0)} Components ${fmtETB(kpis.componentRevenue ?? 0)}` : undefined}
+                sub={kpis.componentRevenue != null ? `${t('reportItemsLabel')} ${fmtETB(kpis.baseRevenue ?? 0)} ${t('reportExtraLabel')} ${fmtETB(kpis.componentRevenue ?? 0)}` : undefined}
               />
               <KpiCard
                 index={1}
@@ -449,17 +465,24 @@ export default function ManagerReports() {
               />
               <KpiCard
                 index={2}
+                label={t('completedItems')}
+                value={(kpis.completedItems ?? 0).toLocaleString()}
+                sub={`${kpis.cancelledItems ?? 0} ${t('cancelledItems')}`}
+              />
+              <KpiCard
+                index={3}
                 label={t('avgFulfillment')}
                 value={fmtDur(kpis.avgFulfillmentSec)}
                 sub={t('prepReady')}
               />
               <KpiCard
-                index={3}
+                index={4}
                 label={t('peakHour')}
-                value={toAMPM(kpis.peakHourLabel)}
+                value={toAMPM(kpis.peakHourLabel, lang)}
                 sub={fmtETB(kpis.peakHourRevenue)}
               />
             </section>
+
 
             {/* HOURLY */}
             {interval === 'hourly' && (
@@ -469,7 +492,7 @@ export default function ManagerReports() {
                     {t('noSales')}
                   </p>
                 ) : (
-                  <HourlyBars hourly={data.hourly} />
+                  <HourlyBars hourly={data.hourly} lang={lang} />
                 )}
               </Section>
             )}
@@ -754,70 +777,6 @@ export default function ManagerReports() {
               </Section>
             )}
 
-            {/* COMPLETED SERVICES — details from persisted PAID orders, no fake data */}
-            <Section
-              title="Completed Services Details"
-              action={
-                <button type="button" onClick={() => fetchCompleted()} className="rounded-full bg-white dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1.5 text-xs font-bold text-[#1E293B] dark:text-white">Refresh</button>
-              }
-            >
-              {completedLoading ? (
-                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">Loading completed services…</p>
-              ) : completedOrders.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">No completed PAID services in recent history.</p>
-              ) : (
-                <div className="space-y-3">
-                  {completedOrders.map((o) => {
-                    const oid = String(o._id || o.orderNumber);
-                    const expanded = selectedCompletedId === oid;
-                    const payMethod = String(o.paymentMethod || 'NONE').toUpperCase() === 'TELEBIRR' ? 'TRANSFER' : String(o.paymentMethod || 'NONE').toUpperCase();
-                    return (
-                      <div key={`completed-${oid}`} className="rounded-2xl bg-[#F4F5F9] dark:bg-[#252631] p-4">
-                        <button type="button" onClick={() => setSelectedCompletedId(expanded ? null : oid)} className="flex w-full items-center justify-between gap-3 text-left">
-                          <div className="min-w-0">
-                            <p className="truncate font-extrabold text-[#1E293B] dark:text-white">{o.orderNumber} Table {o.tableNumber ?? '—'} {fmtETB(o.totalAmount)}</p>
-                            <p className="mt-1 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">Waiter {o.waiterName || '—'} {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'} {payMethod}{o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName || ''} ${o.paymentAccountSnapshot.ownerName || ''}`.trim() : ''} {o.status}</p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-1 text-xs font-bold text-[#1E293B] dark:text-white">{expanded ? 'Hide' : 'Inspect'}</span>
-                        </button>
-                        {expanded && (
-                          <div className="mt-3 space-y-3 rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-sm">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Order</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{o.orderNumber} ID {String(o._id).slice(0, 8)}… Table {o.tableNumber} Waiter {o.waiterName || '—'}{o.waiterNumber != null ? ` #${o.waiterNumber}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Ordered {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB') : '—'}</p></div>
-                              <div><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Payment</p><p className="mt-1 font-semibold text-[#1E293B] dark:text-white">{payMethod}{o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName || ''} ${o.paymentAccountSnapshot.ownerName || ''} ${o.paymentAccountSnapshot.accountNumber || ''}` : ''}</p><p className="mt-1 text-[#64748B] dark:text-[#94A3B8]">Submitted {o.paymentSubmittedAt ? new Date(o.paymentSubmittedAt).toLocaleString('en-GB') : '—'} Verified {o.paymentVerifiedAt || o.paidAt ? new Date(o.paymentVerifiedAt || o.paidAt).toLocaleString('en-GB') : '—'} Status {o.status}</p></div>
-                            </div>
-                            <div><p className="text-xs font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Items server prices, no frontend totals</p>
-                              <ul className="mt-2 space-y-1.5">
-                                {(o.items || []).map((it, idx) => (
-                                  <li key={`c-item-${idx}`} className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] px-2.5 py-2">
-                                    <div className="flex justify-between gap-2"><span className="font-bold text-[#1E293B] dark:text-white">{Number(it.quantity) || 0}× {typeof it.name === 'string' ? it.name : 'Item'} ({it.type || 'FOOD'})</span><span className="font-bold text-[#1E293B] dark:text-white">{fmtETB(Number(it.subTotal ?? Number(it.price) * Number(it.quantity)))}</span></div>
-                                    <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Unit {fmtETB(Number(it.price))} Qty {Number(it.quantity)}{it.cancelled ? ` Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
-                                    {Array.isArray(it.components) && it.components.length > 0 && (
-                                      <ul className="mt-1 space-y-0.5">
-                                        {it.components.map((c, ci) => (
-                                          <li key={`c-comp-${ci}`} className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">{c.kind === 'NOTE' ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${fmtETB(Number(c.unitPrice))} = ${fmtETB(Number(c.lineSum ?? c.quantity * c.unitPrice))}`}</li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Totals (server)</p><p className="mt-1 font-extrabold text-[#1E293B] dark:text-white">Total {fmtETB(o.totalAmount)}{Number(o.cancelledAmount) > 0 ? ` Net ${fmtETB(o.netAmount)} Cancelled ${fmtETB(o.cancelledAmount)}` : ''}</p></div>
-                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Preparation</p><p className="mt-1 text-[#1E293B] dark:text-white">Kitchen {o.kitchenStatus || '—'} Barista {o.baristaStatus || '—'}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Ready {o.readyAt ? new Date(o.readyAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'} Served {o.servedAt ? new Date(o.servedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'}</p></div>
-                              <div className="rounded-lg bg-[#F4F5F9] dark:bg-[#252631] p-2.5"><p className="font-bold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Status</p><p className="mt-1 font-bold text-[#1E293B] dark:text-white">{o.status}</p><p className="text-[#64748B] dark:text-[#94A3B8]">Paid {o.paidAt ? new Date(o.paidAt).toLocaleString('en-GB') : '—'}</p></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <p className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">Recent PAID only (up to 50). Revenue KPIs above respect date filters; details are inspection only and never double-count.</p>
-            </Section>
-
             {/* KITCHEN SPEED */}
             <Section title={t('kitchenBaristaSpeed')}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -840,63 +799,57 @@ export default function ManagerReports() {
               </p>
             </Section>
 
-            {/* EXTERNAL ITEM REQUESTS — clearly tagged, distinct from normal menu items */}
-            <Section title={t('externalItemRequests')}>
-              {externalItems.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
-                  {t('noExternalItems')}
+            {/* CANCELLED ITEMS — line-level count + detail, bottom of the completed-order reporting area */}
+            <Section title={t('cancelledItems')}>
+              <div className="mb-3 flex items-baseline gap-2">
+                <p className="text-2xl font-extrabold text-[#1E293B] dark:text-white">
+                  {(kpis.cancelledItems ?? 0).toLocaleString()}
+                </p>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                  {t('cancelledItems')}
+                </p>
+              </div>
+              {(!data.cancelledItemsDetail || data.cancelledItemsDetail.length === 0) ? (
+                <p className="py-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                  {t('noSales')}
                 </p>
               ) : (
                 <div className="overflow-hidden rounded-2xl">
                   <table className="w-full text-sm">
                     <thead className="bg-[#F4F5F9] dark:bg-[#252631] text-left text-xs uppercase text-[#64748B] dark:text-[#94A3B8]">
                       <tr>
-                      <th className="px-3 py-2">{t('tag')}</th>
-                      <th className="px-3 py-2">{t('item')}</th>
-                      <th className="px-3 py-2 text-right">{t('qty')}</th>
-                      <th className="px-3 py-2">{t('type')}</th>
-                      <th className="px-3 py-2 text-right">{t('price')}</th>
-                      <th className="px-3 py-2">{t('waiter')}</th>
-                      <th className="px-3 py-2 text-right">{t('table')}</th>
-                      <th className="px-3 py-2">{t('status')}</th>
+                        <th className="px-3 py-2">{t('item')}</th>
+                        <th className="px-3 py-2 text-right">{t('qty')}</th>
+                        <th className="px-3 py-2">{t('type')}</th>
+                        <th className="px-3 py-2">{t('table')}</th>
+                        <th className="px-3 py-2">{t('cancelled')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {externalItems.map((e) => (
-                        <tr key={`ext-${e._id}`} className="">
-                          <td className="px-3 py-2">
-                            <span className="rounded-full bg-[#FFD600]/15 px-2 py-0.5 text-[10px] font-bold text-[#8A6D00] dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FF8A3D]">
-                                {t('externalItemTag')}
-                            </span>
-                          </td>
+                      {data.cancelledItemsDetail.map((c, idx) => (
+                        <tr key={`cancelled-${c.orderNumber || 'na'}-${c.name}-${idx}`}>
                           <td className="px-3 py-2 font-semibold text-[#1E293B] dark:text-white">
-                            {e.itemName}
-                          </td>
-                          <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
-                            {e.quantity}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                e.type === 'FOOD'
-                                  ? 'bg-[var(--hms-glow-a)] text-[#FFD600] dark:text-[#FF5500]'
-                                  : 'bg-[var(--hms-badge-bg)] text-[#1E293B] dark:text-white'
-                              }`}
-                            >
-                              {e.type}
+                            {c.name}
+                            {c.note ? (
+                              <span className="block text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8]">
+                                {c.note}
+                              </span>
+                            ) : null}
+                            <span className="block text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8]">
+                              {c.orderNumber} {c.at ? formatOrderDateTime(c.at, lang) : ''}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-right font-bold text-[#FFD600] dark:text-[#FF5500]">
-                            {fmtETB(e.price)}
-                          </td>
-                          <td className="px-3 py-2 text-[#1E293B] dark:text-white">
-                            {e.waiterName || 'Waiter'}
-                          </td>
                           <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
-                            {e.tableNumber ?? '—'}
+                            {c.quantity}
                           </td>
                           <td className="px-3 py-2 text-[#64748B] dark:text-[#94A3B8]">
-                            {e.status}
+                            {c.station || c.type || '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
+                            {c.tableNumber ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-[#FFD600] dark:text-[#FF5500]">
+                            {c.quantity}
                           </td>
                         </tr>
                       ))}
@@ -905,10 +858,96 @@ export default function ManagerReports() {
                 </div>
               )}
             </Section>
+
           </>
         )}
       </main>
       </div>
+
+      {/* Dedicated print/PDF document — hidden on screen (.bono-print-only),
+          the ONLY node printed via @media print. Same `data` object as the
+          dashboard above; no values invented, no totals recalculated.
+          Flat 2D tables with repeating headers; charts are intentionally
+          excluded (data tables carry the same information). */}
+      {printableDoc && (
+        <div id="bono-report-doc" className="bono-print-only" aria-hidden="true">
+          <div style={{ textAlign: 'center', marginBottom: 8 }}>
+            <h1 style={{ fontSize: 18, fontWeight: 800 }}>{reportBrand}</h1>
+            <p style={{ fontWeight: 700 }}>{t('managerReports')}</p>
+            <p>Period: {formatOrderDateTime(data.range?.from ?? from, lang)} to {formatOrderDateTime(data.range?.to ?? to, lang)}</p>
+            <p>View: {interval} · Item filter: {itemFilter}</p>
+            <p>Generated: {formatOrderDateTime(new Date().toISOString(), lang)}</p>
+          </div>
+
+          <h2>KPIs</h2>
+          <table width="100%" cellPadding="4" cellSpacing="0" border="1">
+            <thead><tr><th align="left">{t('csvKpi')}</th><th align="right">{t('csvValue')}</th></tr></thead>
+            <tbody>
+              <tr><td>{t('totalRevenue')}</td><td align="right">{fmtETB(kpis.revenue)}</td></tr>
+              <tr><td>{t('revenueDelta')} %</td><td align="right">{kpis.revenueDeltaPct ?? '—'}</td></tr>
+              <tr><td>{t('completedOrders')}</td><td align="right">{kpis.completedOrders ?? '—'}</td></tr>
+              <tr><td>{t('cancelledOrders')}</td><td align="right">{kpis.cancelledOrders ?? '—'}</td></tr>
+              <tr><td>{t('avgFulfillment')} (s)</td><td align="right">{kpis.avgFulfillmentSec ?? '—'}</td></tr>
+              <tr><td>{t('peakHour')}</td><td align="right">{toAMPM(kpis.peakHourLabel, lang)} ({fmtETB(kpis.peakHourRevenue)})</td></tr>
+            </tbody>
+          </table>
+
+          <h2>{t('topSelling')}</h2>
+          <table width="100%" cellPadding="4" cellSpacing="0" border="1">
+            <thead><tr><th align="left">{t('csvTopItem')}</th><th align="left">{t('csvCategory')}</th><th align="right">{t('csvQty')}</th><th align="right">{t('csvRevenue')}</th></tr></thead>
+            <tbody>
+              {(data.topItems || []).map((i, idx) => (
+                <tr key={`doc-top-${idx}`}><td>{i.title}</td><td>{i.category}</td><td align="right">{i.qty}</td><td align="right">{fmtETB(i.revenue)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h2>{t('waiterPerf')}</h2>
+          <table width="100%" cellPadding="4" cellSpacing="0" border="1">
+            <thead><tr><th align="left">{t('csvWaiter')}</th><th align="right">{t('csvOrders')}</th><th align="right">{t('csvRevenue')}</th><th align="right">{t('csvAvgFulfillment')}</th></tr></thead>
+            <tbody>
+              {(data.waiterPerf || []).map((w, idx) => (
+                <tr key={`doc-w-${idx}`}><td>{w.waiter}</td><td align="right">{w.orders}</td><td align="right">{fmtETB(w.revenue)}</td><td align="right">{fmtDur(w.avgFulfillmentSec)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h2>{t('paymentBreakdown')}</h2>
+          <table width="100%" cellPadding="4" cellSpacing="0" border="1">
+            <thead><tr><th align="left">Method</th><th align="right">Amount</th><th align="right">Share</th></tr></thead>
+            <tbody>
+              {(data.paymentBreakdown || []).map((p, idx) => (
+                <tr key={`doc-pay-${idx}`}><td>{p.method}</td><td align="right">{fmtETB(p.amount)}</td><td align="right">{kpis.revenue > 0 ? `${Math.round((p.amount / kpis.revenue) * 100)}%` : '0%'}</td></tr>
+              ))}
+            </tbody>
+          </table>
+
+          {(data.transferByAccount || []).length > 0 && (
+            <>
+              <h2>Transfer by Account</h2>
+              <table width="100%" cellPadding="4" cellSpacing="0" border="1">
+                <thead><tr><th align="left">Bank</th><th align="left">Owner</th><th align="left">Account</th><th align="right">Transactions</th><th align="right">Revenue</th></tr></thead>
+                <tbody>
+                  {data.transferByAccount.map((a, idx) => (
+                    <tr key={`doc-tr-${idx}`}><td>{a.bankName || 'Unknown'}</td><td>{a.ownerName || '—'}</td><td>{a.accountNumber ? `${a.accountNumber.slice(0, 4)}****${a.accountNumber.slice(-2)}` : '—'}</td><td align="right">{a.count}</td><td align="right">{fmtETB(a.amount)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <h2>{t('kitchenBaristaSpeed')}</h2>
+          <table width="100%" cellPadding="4" cellSpacing="0" border="1">
+            <tbody>
+              <tr><td>Overall Avg</td><td align="right">{fmtDur(data.kitchen.avgFulfillmentSec)}</td></tr>
+              <tr><td>Kitchen Avg</td><td align="right">{fmtDur(data.kitchen.kitchenAvgSec)}</td></tr>
+              <tr><td>Barista Avg</td><td align="right">{fmtDur(data.kitchen.baristaAvgSec)}</td></tr>
+            </tbody>
+          </table>
+          <p>{t('basedOn')} {data.kitchen.measuredOrders} {t('measuredOrdersUnit')} ({t('prepReady')}).</p>
+          <p style={{ textAlign: 'center', marginTop: 12 }}>{reportBrand} · {t('managerReports')}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -985,14 +1024,14 @@ function Section({ title, action, children }) {
   );
 }
 
-const HourlyBars = memo(function HourlyBars({ hourly }) {
+const HourlyBars = memo(function HourlyBars({ hourly, lang }) {
   const max = Math.max(1, ...hourly.map((h) => h.revenue));
   return (
     <div className="space-y-2">
           {hourly.map((h) => (
             <div key={`hr-${h.hour}`} className="flex items-center gap-3">
               <span className="w-28 shrink-0 text-sm font-semibold text-[#1E293B] dark:text-white">
-                {toAMPM(h.label)}
+                {toAMPM(h.label, lang)}
               </span>
           <div className="h-6 flex-1 overflow-hidden rounded-lg bg-[#F4F5F9] dark:bg-[#252631]">
             <div
@@ -1158,7 +1197,8 @@ function shortLabel(label) {
 
 function ethShortLabel(row, lang) {
   try {
-    const ec = toEthiopian(ymdToDate(row.key));
+    const ec = transportKeyToEthiopian(row.key);
+    if (!ec) return shortLabel(row.label || '');
     const arr = lang === 'en' ? ET_MONTHS_EN : lang === 'om' ? ET_MONTHS_OM : ET_MONTHS_AM;
     const monthName = arr[ec.month - 1] || '';
     return `${monthName} ${ec.day}`;
@@ -1417,7 +1457,7 @@ const TrendChart = memo(function TrendChart({ rows, t, lang }) {
             className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-xl bg-white dark:bg-[#1C1D24] px-3.5 py-2.5 border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner backdrop-blur"
           >
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">
-              {(() => { try { const ec = toEthiopian(ymdToDate(activeRow.key)); return `${formatEthiopian(ec, { withYear: true })} (EC)`; } catch { return activeRow.label; } })()}
+              {(() => { try { const start = addisYMDToUTCStart(activeRow.key); if (!start) return activeRow.label; return `${formatEthiopianDate(start, lang === 'en' ? 'en' : 'am')} (EC)`; } catch { return activeRow.label; } })()}
             </p>
               <p className="mt-1 flex items-center gap-1.5 text-sm font-extrabold text-[#FFD600] dark:text-[#FF5500]">
               <span className="h-2 w-2 rounded-full bg-[#FFD600] dark:bg-[#FF5500]" />

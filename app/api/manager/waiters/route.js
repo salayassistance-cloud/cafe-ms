@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 // Returns waiter accounts with id, name, role, isActive, waiterNumber (no pinHash)
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "manager_waiters_list", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -59,7 +59,7 @@ async function getHandler(request) {
 // Delete: Body { staffId } or { username } or { name } — requires MANAGER, sets isActive=false
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "manager_waiters_delete", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -152,6 +152,12 @@ async function postHandler(request) {
 
   staff.isActive = false;
   await staff.save();
+  // AUTH-ARCH-3: disabling revokes the account's server-side sessions.
+  // Best-effort — the disable itself already succeeded.
+  try {
+    const { revokeAllStaffSessions } = await import("@/lib/sessionStore");
+    await revokeAllStaffSessions(conn, staff._id, "DISABLED");
+  } catch {}
 
   const key = staff.role === "CASHIER" ? "cashier" : "waiter";
   return ok({ deleted: true, disabled: true, [key]: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, role: staff.role, isActive: false } }, 200);
@@ -160,7 +166,7 @@ async function postHandler(request) {
 // DELETE /api/manager/waiters — disable/delete waiter (soft-disable) — also handles CASHIER
 async function deleteHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "manager_waiters_delete", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -204,6 +210,12 @@ async function deleteHandler(request) {
   if (staff.isActive === false) return fail("Account already disabled", 409);
   staff.isActive = false;
   await staff.save();
+  // AUTH-ARCH-3: disabling revokes the account's server-side sessions.
+  // Best-effort — the disable itself already succeeded.
+  try {
+    const { revokeAllStaffSessions } = await import("@/lib/sessionStore");
+    await revokeAllStaffSessions(conn, staff._id, "DISABLED");
+  } catch {}
   const key = staff.role === "CASHIER" ? "cashier" : "waiter";
   return ok({ deleted: true, disabled: true, [key]: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, role: staff.role, isActive: false } }, 200);
 }

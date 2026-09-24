@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // GET /api/manager/inventory-alerts — MANAGER only, inventory:read
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:read")) return fail("Forbidden: requires MANAGER", 403);
 
   try {

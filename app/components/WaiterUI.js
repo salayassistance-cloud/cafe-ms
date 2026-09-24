@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { safeFetchJson, sendOrder, updateOrderStatusClient } from '@/lib/clientFetch';
+import { safeFetchJson, sendOrder, updateOrderStatusClient, getSessionErrorKind, tabLogout } from '@/lib/clientFetch';
+import { playChime, notifyBrowser, ensureBrowserNotifyPermission } from '@/lib/notify';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
 import MenuItemImage from '@/app/components/MenuItemImage';
@@ -50,6 +51,26 @@ const LABELS = {
   extSaved: { am: 'የውጭ እቃ ተጨምሯል', en: 'External item added', om: 'Kaba dabalame' },
   required: { am: 'አስፈላጊ ነው', en: 'is required', om: 'bara' },
   add: { am: 'ጨምር', en: 'Add', om: 'Dabali' },
+  edit: { am: 'አርትዕ', en: 'Edit', om: 'Sirreessi' },
+  cancelOrder: { am: 'ትዕዛዝ ሰርዝ', en: 'Cancel Order', om: 'Ajaja Haqi' },
+  tapAgain: { am: 'እርግጠኛ ነዎት? እንደገና ይጫኑ', en: 'Sure? Tap again to confirm', om: 'Irra deebi tuqi' },
+  cancelFailed: { am: 'መሰረዝ አልተሳካም', en: 'Cancel failed', om: 'Haqni hin milkoofne' },
+  save: { am: 'አስቀምጥ', en: 'Save', om: "Olkaa'i" },
+  remove: { am: 'አስወግድ', en: 'Remove', om: 'Kaasi' },
+  addItem: { am: 'እቃ ጨምር', en: 'Add Item', om: 'Meeshaa Dabali' },
+  note: { am: 'ማስታወሻ', en: 'Note', om: 'Yaada' },
+  qty: { am: 'ብዛት', en: 'Qty', om: 'Baayyina' },
+  orderLocked: { am: 'ዝግጅት ተጀምሯል፤ ማርትዕ አይቻልም', en: 'Preparation started — editing locked', om: 'Qophi jalqabe — fooyyessi hin dandaamu' },
+  editFailed: { am: 'ማርትዕ አልተሳካም', en: 'Edit failed', om: 'Fooyyessi hin milkoofne' },
+  editSaved: { am: 'ትዕዛዙ ተስተካክሏል', en: 'Order updated', om: 'Ajajni haaromfame' },
+  alertsOn: { am: 'ማሳወቂያ በርቷል', en: 'Alerts On', om: 'Beeksisni ban' },
+  alertsOff: { am: 'ማሳወቂያ ዝግ ነው', en: 'Alerts Off', om: 'Beeksisni cufame' },
+  notifReady: { am: 'ዝግጁ ነው', en: 'is ready', om: 'qophaawe' },
+  notifCancelled: { am: 'ተሰርዟል', en: 'cancelled', om: 'haqame' },
+  sessionEnded: { am: 'ክፍለ-ጊዜው አብቅቷል', en: 'Session ended', om: 'Yeroon dhumate' },
+  sessionEndedBody: { am: 'እባክዎ እንደገና ይግቡ።', en: 'Please sign in again to continue.', om: 'Maaloo akka itti fufitaniif irra deebiʼi seenaa.' },
+  sessionDisabledBody: { am: 'መለያዎ ንቁ አይደለም። እባክዎ ሥራ አስኪያጁን ያነጋግሩ።', en: 'Your account is inactive. Please contact the manager.', om: 'Herregni kee hin hojjenne. Maaloo abbaa hojii qunnami.' },
+  signInAgain: { am: 'እንደገና ይግቡ', en: 'Sign in again', om: 'Irra deebiʼi seeni' },
 };
 
 const STATUS_BADGE = {
@@ -113,17 +134,8 @@ export default function WaiterUI() {
   const [waiterName, setWaiterName] = useState('Waiter');
   const [waiterId, setWaiterId] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    safeFetchJson('/api/auth/me', { cache: 'no-store' }).then((data) => {
-      if (cancelled) return;
-      if (data?.success && data?.data?.name) {
-        setWaiterName(data.data.name);
-        setWaiterId(data.data.staffId);
-      }
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  // Mount-time identity load lives below (after the AUTH-ARCH-5 session
+  // helpers) so declarations textually precede uses.
 
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
@@ -147,9 +159,6 @@ export default function WaiterUI() {
   const [compName, setCompName] = useState('');
   const [compQty, setCompQty] = useState('1');
   const [compPrice, setCompPrice] = useState('');
-  const [compInvId, setCompInvId] = useState('');
-  const [compStockQty, setCompStockQty] = useState('');
-  const [compStockUnit, setCompStockUnit] = useState('');
   const [compError, setCompError] = useState('');
 
   const [readyToasts, setReadyToasts] = useState([]);
@@ -201,6 +210,48 @@ export default function WaiterUI() {
   const [favorites, setFavorites] = useState(() => new Set());
   const favoritesLoadedRef = useRef(null);
   const FAVORITES_KEY_PREFIX = 'bono_waiter_favorites:';
+
+  // Fully-cancelled orders are never shown to the waiter: an order whose
+  // every line is cancelled (or whose status is CANCELLED) is filtered out
+  // below using only server-side cancellation state — no Remove button, no
+  // dismissal storage, no persistence. Partially cancelled orders (any active
+  // line) keep existing behavior. No backend meaning.
+  const isOrderFullyCancelled = (o) => {
+    const orderItems = o?.items || [];
+    if (orderItems.length === 0) return false;
+    return orderItems.every((it) => it?.cancelled || o.status === 'CANCELLED');
+  };
+  // Visible active orders: fully cancelled orders excluded before badge/notification/render
+  const visibleActiveOrders = (() => {
+    // Inline derivation without useMemo to avoid extra dependency tracking complexity in this large component;
+    // recomputed on every render (activeOrders is small, <200).
+    const filtered = [];
+    for (const o of activeOrders) {
+      if (!isOrderFullyCancelled(o)) filtered.push(o);
+    }
+    return filtered;
+  })();
+
+  // Order editing (pre-preparation only) — draft lives here; the server enforces
+  // the PENDING lock atomically, so stale drafts can never mutate a started order.
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editLines, setEditLines] = useState([]); // [{lineId,name,qty,origQty}]
+  const [editRemoved, setEditRemoved] = useState(() => new Set()); // lineIds
+  const [editAdds, setEditAdds] = useState([]); // [{key,menuId,qty}]
+  const [editAddMenu, setEditAddMenu] = useState('');
+  const [editAddQty, setEditAddQty] = useState('1');
+  const [editNotes, setEditNotes] = useState({}); // lineId -> text
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editSavedMsg, setEditSavedMsg] = useState('');
+
+  // Alerts (sound + browser notification) — same chime convention as KDS.
+  const [alertsOn, setAlertsOn] = useState(true);
+  const alertsOnRef = useRef(true);
+  const notifiedKeysRef = useRef(new Set());
+  useEffect(() => {
+    alertsOnRef.current = alertsOn;
+  }, [alertsOn]);
 
   // Single source of truth — unified MongoDB via /api/menu. Phase 5: menu cache 60s s-maxage, so allow cache.
   // all=true → existing API flag returning the full catalog incl. unavailable
@@ -304,59 +355,120 @@ useEffect(() => {
   waiterNameRef.current = waiterName;
 }, [waiterName]);
 
-// Same-browser multi-tab safety: detect shared-cookie identity replacement
-// When another tab logs in as different waiter, bono_sess cookie is overwritten
-// for all tabs. This effect polls /api/auth/me and clears all waiter-specific
-// state before loading new identity data. No BroadcastChannel package needed.
+// AUTH-ARCH-5 + AUTH-ARCH-12: explicit session-ended state for REAL security
+// events only (SESSION_REVOKED / EXPIRED / INVALID / disabled). While set:
+// authenticated polling stops (no storm), SSE is suspended, stale in-flight
+// successes are discarded via authGenRef, and an overlay requires explicit
+// re-login. There is NO "switched identity" state: under the canonical
+// tab-scoped model another tab's login can never change this tab's identity,
+// so no continue-as / adopt flow exists. No credentials are ever handled
+// here; login itself stays in PinGuard. Server order data is never touched;
+// localStorage UI keys (favorites/dismissals/language/theme) stay.
+const [sessionEnded, setSessionEnded] = useState(null); // null | { kind }
+const sessionEndedRef = useRef(null);
+const authGenRef = useRef(0);
+
+const enterSessionEnded = useCallback((kind) => {
+  authGenRef.current += 1; // invalidate in-flight successes (stale guard)
+  const state = { kind };
+  sessionEndedRef.current = state;
+  setSessionEnded(state);
+  setActiveOrders([]);
+  prevActiveRef.current = new Map();
+  setReadyToasts([]);
+  setPayTarget(null);
+  setPayError('');
+  setOrderError('');
+  setOrdersDrawerOpen(false);
+  ordersDrawerOpenRef.current = false;
+  setCart({});
+  setCartOpen(false);
+  setOrderDone(null);
+  setCartBump(0);
+  setFavorites(new Set());
+  favoritesLoadedRef.current = null;
+  try {
+    if (notifiedKeysRef.current) notifiedKeysRef.current = new Set();
+  } catch {}
+  setWaiterId(null);
+  setWaiterName('Waiter');
+}, []);
+
+// Explicit re-login: tab-scoped logout (revokes ONLY this tab's Session,
+// stops its heartbeat, clears its memory), then navigate to the portal
+// so PinGuard renders the login flow (no credentials handled here).
+const signInAgain = useCallback(async () => {
+  try {
+    await tabLogout();
+  } catch {}
+  authGenRef.current += 1;
+  sessionEndedRef.current = null;
+  setSessionEnded(null);
+  try { router.push('/waiter'); } catch {}
+}, [router]);
+
+// Mount-time identity load. A revoked/expired session enters the re-login
+// state; transient network/503 failures are ignored (polling + SSE continue).
+useEffect(() => {
+  let cancelled = false;
+  safeFetchJson('/api/auth/me', { cache: 'no-store' }).then((data) => {
+    if (cancelled) return;
+    if (data?.success && data?.data?.name) {
+      setWaiterName(data.data.name);
+      setWaiterId(data.data.staffId);
+    }
+  }).catch((e) => {
+    if (cancelled) return;
+    const kind = getSessionErrorKind(e);
+    if (kind) enterSessionEnded(kind);
+  });
+  return () => { cancelled = true; };
+}, [enterSessionEnded]);
+
+// Identity watchdog: re-resolves THIS tab's own session on an interval and
+// on visibility/focus. Under the canonical tab-scoped model the identity
+// cannot be replaced by another tab, so there is no adopt/switch flow: a
+// different staffId here means this tab's own context is gone (cookie-mode
+// drift), which requires re-login — same as any other session end.
 // Favorites are per-waiter localStorage (bono_waiter_favorites:<staffId>), browser-local, not synced.
 useEffect(() => {
   let cancelled = false;
   let intervalId = null;
   async function checkIdentity() {
+    // Session ended: no polling storm — wait for the explicit overlay action.
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     try {
       const data = await safeFetchJson('/api/auth/me', { cache: 'no-store' });
-      if (cancelled) return;
+      // Stale response arriving after revocation must not restore state.
+      if (cancelled || gen !== authGenRef.current) return;
       const newId = data?.data?.staffId || null;
       const newName = data?.data?.name || 'Waiter';
       const oldId = waiterIdRef.current;
       if (oldId && newId && String(oldId) !== String(newId)) {
-        setActiveOrders([]);
-        prevActiveRef.current = new Map();
-        setReadyToasts([]);
-        setPayTarget(null);
-        setPayError('');
-        setOrderError('');
-        setOrdersDrawerOpen(false);
-        ordersDrawerOpenRef.current = false;
-        setCart({});
-        setCartOpen(false);
-        setOrderDone(null);
-        setCartBump(0);
-        setFavorites(new Set());
-        favoritesLoadedRef.current = null;
+        // AUTH-ARCH-12: this tab's own context changed underneath it (only
+        // possible without a tab credential, i.e. cookie-mode drift). Never
+        // adopt the other identity and never prompt to continue as them:
+        // require re-login exactly like any other session end.
+        enterSessionEnded('expired');
+        return;
       }
       if (!newId && oldId) {
-        setActiveOrders([]);
-        prevActiveRef.current = new Map();
-        setReadyToasts([]);
-        setCart({});
-        setFavorites(new Set());
-        favoritesLoadedRef.current = null;
+        enterSessionEnded('expired');
+        return;
       }
       if (data?.success && newId) {
         setWaiterName(newName);
         setWaiterId(newId);
       }
     } catch (e) {
-      if (e && (e.status === 401 || e.status === 503 || /session expired|authentication required|invalid or expired/i.test(e.message || ''))) {
-        if (waiterIdRef.current) {
-          setActiveOrders([]);
-          prevActiveRef.current = new Map();
-          setReadyToasts([]);
-          setCart({});
-          setFavorites(new Set());
-          favoritesLoadedRef.current = null;
-        }
+      if (cancelled || gen !== authGenRef.current) return;
+      const kind = getSessionErrorKind(e);
+      // Transient failures (503/network => kind null) keep state and cadence;
+      // only true session ends clear and stop. Requires a known identity so a
+      // first-load blip never logs out a never-authenticated view.
+      if (kind && waiterIdRef.current) {
+        enterSessionEnded(kind);
       }
     }
   }
@@ -371,7 +483,7 @@ useEffect(() => {
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('focus', onFocus);
   };
-}, []);
+}, [enterSessionEnded]);
 
   // Favorites per-waiter persistence — store only IDs, re-resolved against current menu (deferred to avoid cascading effect)
   useEffect(() => {
@@ -409,6 +521,31 @@ useEffect(() => {
       }
     } catch {}
   }, [favorites, waiterId]);
+
+  // Auto-exit edit mode when the edited order leaves PENDING (preparation started
+  // elsewhere). Deferred like other state syncs; the draft is discarded safely.
+  useEffect(() => {
+    if (!editingOrderId) return;
+    const current = activeOrders.find((o) => String(o._id) === String(editingOrderId));
+    if (current && current.status === 'PENDING') return;
+    queueMicrotask(() => {
+      setEditingOrderId(null);
+      setEditLines([]);
+      setEditRemoved(new Set());
+      setEditAdds([]);
+      setEditNotes({});
+      setEditError('');
+    });
+  }, [activeOrders, editingOrderId]);
+
+  // Waiter alerts — one chime + one background system notification per stable event
+  // key. Poll diffs and SSE share the dedupe set so the same event never sounds twice.
+  const fireWaiterAlert = useCallback((key, title, body) => {
+    if (notifiedKeysRef.current.has(key)) return;
+    notifiedKeysRef.current.add(key);
+    if (alertsOnRef.current) playChime();
+    notifyBrowser({ title, body, tag: key });
+  }, []);
 
 const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     const id = `ready-${orderNumber}`;
@@ -457,21 +594,27 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     }
   }, [setCategories, setItems]);
 
-  // Lazily fetch SERVED orders only when the SERVED drawer is opened, then merge
-  // them into the single display list so the drawer shows SERVED exactly as before.
-  // Server already filters SERVED to current waiter (waiterId == session.staffId),
+  // Lazily fetch SERVED + CANCELLED orders only when the drawer is opened, then merge
+  // them into the single display list so the drawer shows SERVED exactly as before and
+  // fully-cancelled orders stay visible until the waiter dismisses their lines.
+  // Server already filters to current waiter (waiterId == session.staffId),
   // client filters as defense-in-depth to avoid mixing after same-browser identity switch.
   const loadServedOrders = useCallback(async () => {
     try {
-      const served = await safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' });
-      if (!served?.success) return;
+      const [served, cancelled] = await Promise.all([
+        safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' }),
+        safeFetchJson('/api/orders?status=CANCELLED', { cache: 'no-store' }).catch(() => ({ success: false })),
+      ]);
       const currentId = waiterIdRef.current;
       setActiveOrders((prev) => {
         // Filter prev to current waiter only — prevents merging old waiter's orders after shared-cookie switch
         const filteredPrev = currentId ? prev.filter((o) => !o.waiterId || String(o.waiterId) === String(currentId)) : prev;
         const byId = new Map(filteredPrev.map((o) => [o._id, o]));
-        for (const o of (served.data?.orders || [])) {
-          if (!currentId || !o.waiterId || String(o.waiterId) === String(currentId)) byId.set(o._id, o);
+        for (const src of [served, cancelled]) {
+          if (!src?.success) continue;
+          for (const o of (src.data?.orders || [])) {
+            if (!currentId || !o.waiterId || String(o.waiterId) === String(currentId)) byId.set(o._id, o);
+          }
         }
         return Array.from(byId.values());
       });
@@ -481,8 +624,11 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
   }, []);
 
   // Background refresh: ACTIVE (PENDING,PREPARING,READY) + PAYMENT_PENDING (pending verification) are always fetched for waiter;
-  // SERVED is fetched only when drawer open.
+  // SERVED + CANCELLED are fetched only when drawer open (cancelled orders stay visible until lines are dismissed).
   const pollActiveOrders = useCallback(async (opts) => {
+    // Session ended: never fire authenticated refreshes (no retry storm).
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     const includeServed = (opts && opts.includeServed) || ordersDrawerOpenRef.current;
     try {
       const baseRequests = [
@@ -491,11 +637,15 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
       ];
       if (includeServed) {
         baseRequests.push(safeFetchJson('/api/orders?status=SERVED', { cache: 'no-store' }).catch(() => ({ success: false })));
+        baseRequests.push(safeFetchJson('/api/orders?status=CANCELLED', { cache: 'no-store' }).catch(() => ({ success: false })));
       }
       const results = await Promise.all(baseRequests);
+      // Stale success after revocation must not repopulate/clear state.
+      if (gen !== authGenRef.current) return;
       const prep = results[0];
       const pending = results[1];
       const served = includeServed ? results[2] : null;
+      const cancelled = includeServed ? results[3] : null;
       if (!prep?.success) return;
       const byId = new Map();
       for (const o of (prep.data?.orders || [])) byId.set(o._id, o);
@@ -505,36 +655,65 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
       if (includeServed && served?.success) {
         for (const o of (served.data?.orders || [])) byId.set(o._id, o);
       }
+      if (includeServed && cancelled?.success) {
+        for (const o of (cancelled.data?.orders || [])) byId.set(o._id, o);
+      }
       const list = Array.from(byId.values());
       const prev = prevActiveRef.current;
       if (prev.size > 0) {
+        const L = (k) => LABELS[k]?.[langRef.current] || LABELS[k]?.en || '';
         for (const o of list) {
           const was = prev.get(o._id);
           if (was && was.status !== 'READY' && o.status === 'READY') {
             // Server already filters to own orders (waiterId == session.staffId), so any READY here is own
             pushReadyToast(o.orderNumber, o.tableNumber);
+            fireWaiterAlert(
+              `ready:${o._id}`,
+              `Table ${o.tableNumber} · ${o.orderNumber}`,
+              `${o.orderNumber} — ${L('notifReady')}`
+            );
           }
+           // Newly-cancelled lines on own orders (kitchen/barista action).
+            // Requires the prior snapshot to contain the order: historical
+            // CANCELLED orders merging in for the first time must not burst.
+            if (!was) continue;
+            const wasLines = new Map((was?.items || []).map((it) => [it.lineId ? String(it.lineId) : null, it]));
+            for (const it of o.items || []) {
+              if (!it.cancelled || !it.lineId) continue;
+              const before = wasLines.get(String(it.lineId));
+             if (before && before.cancelled) continue;
+             const itemName = getLocalizedSingleString(it.name) || getLocalizedSingleString(it.title) || 'Item';
+             fireWaiterAlert(
+               `cancel:${o._id}|${it.lineId}`,
+               `Table ${o.tableNumber} · ${o.orderNumber}`,
+               `${itemName} — ${L('notifCancelled')}`
+             );
+           }
         }
       }
       prevActiveRef.current = new Map(list.map((o) => [o._id, o]));
       setActiveOrders(list);
     } catch (err) {
-      // Session expiration: 401 must not be hidden as 503 — redirect to login (client navigation, preserves SPA behavior)
-      if (err && (err.status === 401 || /session expired|authentication required|invalid or expired/i.test(err.message || ""))) {
-        setOrderError("Your session has expired. Please sign in again.");
-        setTimeout(() => { try { router.push("/waiter"); } catch {} }, 1200);
-      }
+      // Stale failure after revocation: ignore.
+      if (gen !== authGenRef.current) return;
+      // Explicit session end (revoked/expired/invalid/disabled) enters the
+      // re-login state. Transient failures (503/network) keep current state
+      // and the normal polling cadence — never a retry storm.
+      const kind = getSessionErrorKind(err);
+      if (kind) enterSessionEnded(kind);
     }
-  }, [pushReadyToast, router]);
+  }, [pushReadyToast, fireWaiterAlert, enterSessionEnded]);
 
   const refreshTimer = useRef(null);
   const scheduleOrdersRefresh = useCallback(() => {
+    if (sessionEndedRef.current) return;
     clearTimeout(refreshTimer.current);
     refreshTimer.current = setTimeout(pollActiveOrders, 150);
   }, [pollActiveOrders]);
 
   const handleOrderEvent = useCallback(
     (event) => {
+      if (sessionEndedRef.current) return;
       // Real-time menu sync: manager CRUD publishes "menu-changed" → refetch the
       // authoritative catalog through the SAME SSE connection used for orders.
       if (event && event.type === "menu-changed") {
@@ -547,13 +726,20 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
         // Server sets waiterId = Staff._id of order owner; only toast if matches own session
         if (ownId && event.waiterId && String(event.waiterId) === String(ownId)) {
           pushReadyToast(event.orderNumber, event.tableNumber);
+          const L = (k) => LABELS[k]?.[langRef.current] || LABELS[k]?.en || '';
+          fireWaiterAlert(
+            `ready:${event.orderId || event.orderNumber}`,
+            `Table ${event.tableNumber ?? '—'} · ${event.orderNumber}`,
+            `${event.orderNumber} — ${L('notifReady')}`
+          );
         }
       }
     },
-    [scheduleOrdersRefresh, pushReadyToast, pollMenu]
+    [scheduleOrdersRefresh, pushReadyToast, pollMenu, fireWaiterAlert]
   );
 
-  useOrderEvents(handleOrderEvent);
+  // SSE suspended while the session is ended (no reconnect until re-auth).
+  useOrderEvents(handleOrderEvent, !sessionEnded);
 
   useEffect(() => {
     const initId = setTimeout(pollActiveOrders, 0);
@@ -680,7 +866,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     });
   }
 
-  // Components — Type A NOTE (no price, no inventory) and Type B PRICED_COMPONENT (billable, optional inventory link)
+  // Components — Type A NOTE (no price, no inventory) and Type B PRICED_COMPONENT (billable, no inventory link)
   function addNoteToCart(cartKey) {
     const note = compNote.trim();
     if (!note) {
@@ -725,56 +911,47 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
       setCompError("Unit price must be 0-100000");
       return;
     }
-    // Optional inventory link validation (selling price is not cost)
-    let inventoryItemId = null;
-    let stockQuantity = null;
-    let stockUnit = null;
-    if (compInvId.trim()) {
-      if (!/^[a-fA-F0-9]{24}$/.test(compInvId.trim())) {
-        setCompError("Inventory Item ID must be valid ObjectId if provided");
-        return;
-      }
-      inventoryItemId = compInvId.trim();
-      if (compStockQty.trim()) {
-        const sq = Number(compStockQty);
-        if (!Number.isFinite(sq) || sq <= 0) {
-          setCompError("Stock quantity must be number >0");
-          return;
-        }
-        stockQuantity = Math.round(sq * 1000) / 1000;
-      }
-      if (compStockUnit.trim()) {
-        stockUnit = compStockUnit.trim().slice(0, 20);
-      } else if (stockQuantity != null) {
-        setCompError("Stock unit required when stock quantity provided");
-        return;
-      }
-    } else {
-      if (compStockQty.trim() || compStockUnit.trim()) {
-        setCompError("Inventory Item ID required for stock fields");
-        return;
-      }
-    }
+    // No inventory link collected here — the backend accepts priced components
+    // without inventory fields and handles absence safely.
     addComponentToCart(cartKey, {
       kind: "PRICED_COMPONENT",
       name: name.slice(0, 100),
       quantity: qty,
       unitPrice: Math.round(price * 100) / 100,
-      ...(inventoryItemId ? { inventoryItemId, stockQuantity, stockUnit } : {}),
     });
     setCompName("");
     setCompQty("1");
     setCompPrice("");
-    setCompInvId("");
-    setCompStockQty("");
-    setCompStockUnit("");
     setCompError("");
     setEditingComponent(null);
     setOrderDone(null);
   }
 
+  // Post-submit ownership check (non-blocking): confirms THIS tab's session
+  // still resolves to the same waiter. With a tab credential the identity
+  // cannot drift; without one (cookie mode) a mismatch means this tab's own
+  // context changed, which ends the session like any other session end.
+  // Never delays success and never adopts another identity.
+  const verifySubmitIdentity = useCallback((gen) => {
+    safeFetchJson('/api/auth/me', { cache: 'no-store' }).then((data) => {
+      if (gen !== authGenRef.current || sessionEndedRef.current) return;
+      const meId = data?.data?.staffId || null;
+      const ownId = waiterIdRef.current;
+      if (ownId && meId && String(ownId) !== String(meId)) {
+        enterSessionEnded('expired');
+      }
+    }).catch((e) => {
+      if (gen !== authGenRef.current || sessionEndedRef.current) return;
+      const kind = getSessionErrorKind(e);
+      if (kind) enterSessionEnded(kind);
+    });
+  }, [enterSessionEnded]);
+
   async function submitOrder() {
     if (cartEntries.length === 0 || submitting) return;
+    // Revoked session: never auto-submit — explicit re-login first.
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     setSubmitting(true);
     setOrderError('');
     try {
@@ -802,13 +979,19 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
         })),
       };
       const data = await sendOrder(payload);
+      // Session ended mid-flight: do not present another identity's result.
+      if (gen !== authGenRef.current) return;
       const total = data.data?.order?.totalAmount ?? 0;
       setOrderDone({ total });
       setCart({});
       setCartOpen(false);
+      verifySubmitIdentity(gen);
     } catch (err) {
+      // Stale failure after revocation: ignore.
+      if (gen !== authGenRef.current) return;
+      const kind = getSessionErrorKind(err);
       const s = err && err.status;
-      if (s === 401) setOrderError("Your session has expired. Please sign in again.");
+      if (kind) enterSessionEnded(kind);
       else if (s === 403) setOrderError("Your account does not have permission to perform this action.");
       else if (s === 503 || /service.*unavailable|database/i.test(err?.message || "")) setOrderError("Service temporarily unavailable. Please try again.");
       else setOrderError(t('orderError'));
@@ -826,6 +1009,124 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     } catch {
     }
   }, []);
+
+  // Waiter whole-order cancel (PENDING own orders only). Two-tap inline confirm;
+  // the server enforces ownership + PENDING atomically. Success removes the order
+  // from view immediately; later CANCELLED fetches are excluded by the
+  // fully-cancelled filter. Server history is never deleted.
+  const [cancelOrderBusy, setCancelOrderBusy] = useState(false);
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
+  const cancelOwnOrder = async (orderId) => {
+    if (cancelOrderBusy) return;
+    if (confirmCancelId !== String(orderId)) {
+      setConfirmCancelId(String(orderId));
+      return;
+    }
+    setConfirmCancelId(null);
+    setCancelOrderBusy(true);
+    try {
+      const data = await safeFetchJson(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CANCEL_ORDER' }),
+      });
+      if (!data?.success) throw new Error(data?.error || data?.message || 'Cancel failed');
+      // The cancelled order becomes fully cancelled server-side and is
+      // therefore excluded by the fully-cancelled filter on next fetch;
+      // remove it from view immediately. No dismissal storage needed.
+      setActiveOrders((prev) => prev.filter((o) => String(o._id) !== String(orderId)));
+      scheduleOrdersRefresh();
+    } catch (err) {
+      if (err && (err.status === 409 || err.status === 400)) setOrderError(t('orderLocked'));
+      else setOrderError(t('cancelFailed'));
+      scheduleOrdersRefresh();
+    } finally {
+      setCancelOrderBusy(false);
+    }
+  };
+
+  // Pre-preparation order editing — order-level lock: editable only while the
+  // canonical order status is PENDING. The server re-checks atomically.
+  const openOrderEdit = (order) => {
+    if (!order || order.status !== 'PENDING') return;
+    setEditLines(
+      (order.items || [])
+        .filter((it) => !it.cancelled && it.lineId)
+        .map((it) => ({
+          lineId: String(it.lineId),
+          name: getLocalizedSingleString(it.name) || getLocalizedSingleString(it.title) || 'Item',
+          qty: Number(it.quantity) || 1,
+          origQty: Number(it.quantity) || 1,
+        }))
+    );
+    setEditRemoved(new Set());
+    setEditAdds([]);
+    setEditAddMenu('');
+    setEditAddQty('1');
+    setEditNotes({});
+    setEditError('');
+    setEditSavedMsg('');
+    setEditingOrderId(order._id);
+  };
+  const closeOrderEdit = () => {
+    setEditingOrderId(null);
+    setEditLines([]);
+    setEditRemoved(new Set());
+    setEditAdds([]);
+    setEditNotes({});
+    setEditError('');
+  };
+
+  const saveOrderEdit = async (orderId) => {
+    if (editBusy) return;
+    const changes = [];
+    for (const ln of editLines) {
+      if (editRemoved.has(ln.lineId)) {
+        changes.push({ op: 'remove', lineId: ln.lineId });
+        continue;
+      }
+      const q = Number(ln.qty);
+      if (Number.isInteger(q) && q >= 1 && q <= 99 && q !== ln.origQty) {
+        changes.push({ op: 'setQty', lineId: ln.lineId, quantity: q });
+      }
+      const note = (editNotes[ln.lineId] || '').trim();
+      if (note) changes.push({ op: 'note', lineId: ln.lineId, note: note.slice(0, 500) });
+    }
+    for (const a of editAdds) {
+      const q = Number(a.qty);
+      if (!a.menuId || !Number.isInteger(q) || q < 1 || q > 99) continue;
+      changes.push({ op: 'add', menuItemId: a.menuId, quantity: q });
+    }
+    if (changes.length === 0) {
+      closeOrderEdit();
+      return;
+    }
+    setEditBusy(true);
+    setEditError('');
+    try {
+      const data = await safeFetchJson(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'EDIT_ITEMS', changes }),
+      });
+      if (!data?.success) throw new Error(data?.error || data?.message || 'Edit failed');
+      const updated = data?.data?.order;
+      if (updated) {
+        setActiveOrders((prev) => prev.map((o) => (o._id === orderId ? updated : o)));
+      }
+      setEditSavedMsg(t('editSaved'));
+      setTimeout(() => setEditSavedMsg(''), 2500);
+      closeOrderEdit();
+      scheduleOrdersRefresh();
+    } catch (err) {
+      // Locked orders (409/400 lifecycle conflict) refresh to canonical state; no technical text shown.
+      if (err && (err.status === 409 || err.status === 400)) setEditError(t('orderLocked'));
+      else setEditError(t('editFailed'));
+      scheduleOrdersRefresh();
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   async function confirmPayment(method) {
     if (!payTarget || payBusy) return;
@@ -870,6 +1171,32 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
 
   return (
     <div className="flex flex-1 flex-col bg-[#F4F5F9] dark:bg-[#12131A] text-[#1E293B] dark:text-white pb-4 h-full max-h-full min-h-0 overflow-hidden">
+      {/* AUTH-ARCH-5 + AUTH-ARCH-12: explicit session-ended state for real
+          security events only. Single action: re-login. There is no
+          continue-as / switched-identity flow — another tab's login can never
+          change this tab's identity. No credentials are collected here and
+          nothing is auto-submitted. */}
+      {sessionEnded && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/40 dark:bg-[#12131A]/80 px-4 py-6" role="alertdialog" aria-modal="true" aria-label={t('sessionEnded')}>
+          <div className="w-full max-w-sm rounded-3xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-6 text-center shadow-[0_10px_25px_-5px_rgba(0,0,0,0.15)]">
+            <h2 className="text-lg font-extrabold tracking-tight text-[#1E293B] dark:text-white">
+              {t('sessionEnded')}
+            </h2>
+            <p className="mt-2 text-sm font-medium text-[#64748B] dark:text-[#94A3B8]">
+              {sessionEnded.kind === 'disabled'
+                ? t('sessionDisabledBody')
+                : t('sessionEndedBody')}
+            </p>
+            <button
+              type="button"
+              onClick={signInAgain}
+              className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] text-sm font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner"
+            >
+              {t('signInAgain')}
+            </button>
+          </div>
+        </div>
+      )}
       {/* HEADER — Sunshine Yellow in light, transparent in dark */}
       <header className="sticky top-0 z-40 bg-[#FFDC00] dark:bg-transparent border-b border-[#E2E8F0]/60 dark:border-transparent dark:border-none pt-[env(safe-area-inset-top)] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-none backdrop-blur">
         <div className="px-3 pb-3 pt-3">
@@ -956,8 +1283,9 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                     <button
                       type="button"
                       onClick={async () => {
+                        // Tab-scoped logout: only this tab's Session is revoked.
                         try {
-                          await safeFetchJson('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                          await tabLogout();
                         } catch {}
                         router.push('/waiter');
                       }}
@@ -980,15 +1308,15 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                 ordersDrawerOpenRef.current = next;
                 if (next) loadServedOrders();
               }}
-              aria-label={`${t('activeOrders')} (${activeOrders.length})`}
+              aria-label={`${t('activeOrders')} (${visibleActiveOrders.length})`}
               aria-haspopup="dialog"
               aria-expanded={ordersDrawerOpen}
               className="relative flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] text-xs sm:text-sm font-bold text-[#1E293B] dark:text-white shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner focus:outline-none"
             >
               <span>{t('activeOrders')}</span>
-              {activeOrders.length > 0 && (
+              {visibleActiveOrders.length > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-white dark:bg-white px-1 text-[11px] font-extrabold text-[#1E293B] shadow-sm border border-[#E2E8F0] dark:border-white">
-                  {activeOrders.length}
+                  {visibleActiveOrders.length}
                 </span>
               )}
             </button>
@@ -1403,6 +1731,24 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
           >
             <div className="flex items-center justify-between border-b border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-4 py-4">
               <h2 className="text-base font-bold text-[#1E293B] dark:text-white">{t('activeOrders')}</h2>
+              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = !alertsOn;
+                  setAlertsOn(next);
+                  if (next) {
+                    // User gesture: unlock audio + request system-notification permission (once).
+                    playChime();
+                    await ensureBrowserNotifyPermission().catch(() => {});
+                  }
+                }}
+                aria-label={alertsOn ? t('alertsOff') : t('alertsOn')}
+                title={alertsOn ? t('alertsOff') : t('alertsOn')}
+                className="rounded-full border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-1 text-xs font-bold text-[#64748B] dark:text-[#94A3B8]"
+              >
+                {alertsOn ? t('alertsOn') : t('alertsOff')}
+              </button>
               <button
                 type="button"
                 onClick={() => setOrdersDrawerOpen(false)}
@@ -1411,15 +1757,17 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
               >
                 ✕
               </button>
+              </div>
             </div>
 
             <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
-              {activeOrders.length === 0 ? (
+              {visibleActiveOrders.length === 0 ? (
                 <p className="py-10 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
                   {t('noOrders')}
                 </p>
               ) : (
-                activeOrders.map((o) => (
+                visibleActiveOrders.map((o) => {
+                  return (
                   <div
                     key={o._id}
                     className="rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
@@ -1445,8 +1793,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           const hf = its.some((i) => i.type === 'FOOD');
                           const hd = its.some((i) => i.type === 'DRINK');
                           if (!hf || !hd) return null;
-                          const fk = o.kitchenStatus || o.status;
-                          const bk = o.baristaStatus || o.status;
+                          const fk = o.kitchenStatus || 'PENDING';
+                          const bk = o.baristaStatus || 'PENDING';
                           return (
                             <p className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
                               <span className="rounded-full bg-[#FFD600]/15 px-2 py-0.5 text-[#8A6D00] dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FF8A3D]">
@@ -1469,7 +1817,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                             SERVE
                           </button>
                         )}
-                        {(o.status === 'READY' || o.status === 'SERVED') && (
+                        {o.status === 'SERVED' && (
                           <button
                             type="button"
                             onClick={() => setPayTarget(o)}
@@ -1480,6 +1828,25 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                         )}
                         {o.status === 'PAYMENT_PENDING' && (
                           <span className="rounded-xl bg-[#FEF3C7] border border-[#FDE68A] px-3 py-1 text-xs font-bold text-[#92400E]">Waiting for Cashier</span>
+                        )}
+                        {o.status === 'PENDING' && editingOrderId !== o._id && (
+                          <span className="flex shrink-0 flex-col gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openOrderEdit(o)}
+                              className="rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-1 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E293B] dark:hover:text-white"
+                            >
+                              {t('edit')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => cancelOwnOrder(o._id)}
+                              disabled={cancelOrderBusy}
+                              className="rounded-xl border border-[#FECACA] bg-white dark:bg-[#1C1D24] px-3 py-1 text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-50"
+                            >
+                              {confirmCancelId === String(o._id) ? t('tapAgain') : t('cancelOrder')}
+                            </button>
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1505,7 +1872,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                               <ul className="ml-3 mt-0.5 space-y-0.5">
                                 {comps.map((c, ci) => (
                                   <li key={`${o._id}-${it.lineId || i}-c-${ci}`} className={c.kind === "NOTE" ? "italic text-[#92400E] dark:text-[#FDBA74]" : "font-medium text-[#1E293B] dark:text-white"}>
-                                    {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${c.lineSum ?? Math.round(c.quantity * c.unitPrice * 100) / 100} ETB`}
+                                    {c.kind === "NOTE" ? `• ${c.note}` : `• ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${c.lineSum ?? Math.round(c.quantity * c.unitPrice * 100) / 100} ETB`}
                                   </li>
                                 ))}
                               </ul>
@@ -1514,6 +1881,132 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                         );
                       })}
                     </ul>
+                    {editingOrderId === o._id && (
+                      <div className="mt-2 space-y-2 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-2 text-xs">
+                        {editLines
+                          .filter((ln) => !editRemoved.has(ln.lineId))
+                          .map((ln) => (
+                            <div key={`edit-${ln.lineId}`} className="rounded-lg bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-2 py-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="min-w-0 truncate font-bold text-[#1E293B] dark:text-white">{ln.name}</span>
+                                <span className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    aria-label="decrease quantity"
+                                    onClick={() => setEditLines((prev) => prev.map((x) => (x.lineId === ln.lineId ? { ...x, qty: Math.max(1, (Number(x.qty) || 1) - 1) } : x)))}
+                                    className="flex h-6 w-6 items-center justify-center rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] font-bold text-[#1E293B] dark:text-white"
+                                  >
+                                    −
+                                  </button>
+                                  <span className="w-6 text-center font-bold text-[#1E293B] dark:text-white">{ln.qty}</span>
+                                  <button
+                                    type="button"
+                                    aria-label="increase quantity"
+                                    onClick={() => setEditLines((prev) => prev.map((x) => (x.lineId === ln.lineId ? { ...x, qty: Math.min(99, (Number(x.qty) || 1) + 1) } : x)))}
+                                    className="flex h-6 w-6 items-center justify-center rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] font-bold text-[#1E293B] dark:text-white"
+                                  >
+                                    +
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditRemoved((prev) => new Set(prev).add(ln.lineId))}
+                                    className="rounded-lg px-2 py-1 text-[11px] font-bold text-[#DC2626]"
+                                  >
+                                    {t('remove')}
+                                  </button>
+                                </span>
+                              </div>
+                              <input
+                                type="text"
+                                value={editNotes[ln.lineId] || ''}
+                                onChange={(e) => setEditNotes((prev) => ({ ...prev, [ln.lineId]: e.target.value }))}
+                                placeholder={t('note')}
+                                maxLength={500}
+                                className="mt-1.5 w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-2 py-1.5 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]"
+                              />
+                            </div>
+                          ))}
+                        <div className="flex gap-2">
+                          <select
+                            value={editAddMenu}
+                            onChange={(e) => setEditAddMenu(e.target.value)}
+                            aria-label={t('addItem')}
+                            className="h-9 min-w-0 flex-1 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-2 text-xs font-medium text-[#1E293B] dark:text-white focus:outline-none"
+                          >
+                            <option value="">{t('addItem')}</option>
+                            {items
+                              .filter((m) => m.isAvailable !== false && m.inStock !== false)
+                              .map((m) => (
+                                <option key={m._id || m.id} value={m._id || m.id}>
+                                  {localizedName(m, lang)}
+                                </option>
+                              ))}
+                          </select>
+                          <input
+                            type="number"
+                            min="1"
+                            max="99"
+                            step="1"
+                            value={editAddQty}
+                            onChange={(e) => setEditAddQty(e.target.value)}
+                            aria-label={t('qty')}
+                            className="h-9 w-14 shrink-0 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#12131A] px-2 text-xs text-[#1E293B] dark:text-white focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!editAddMenu) return;
+                              const q = Number(editAddQty);
+                              if (!Number.isInteger(q) || q < 1 || q > 99) return;
+                              setEditAdds((prev) => [...prev, { key: `${Date.now()}-${prev.length}`, menuId: editAddMenu, qty: q }]);
+                              setEditAddMenu('');
+                              setEditAddQty('1');
+                            }}
+                            className="h-9 shrink-0 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] px-3 text-xs font-bold text-[#1E293B] dark:text-white"
+                          >
+                            {t('add')}
+                          </button>
+                        </div>
+                        {editAdds.length > 0 && (
+                          <ul className="space-y-1">
+                            {editAdds.map((a) => (
+                              <li key={a.key} className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-2 py-1.5 text-xs font-bold text-[#1E293B] dark:text-white">
+                                <span className="min-w-0 truncate">
+                                  {(localizedName(items.find((m) => String(m._id || m.id) === String(a.menuId)), lang) || a.menuId)} ×{a.qty}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAdds((prev) => prev.filter((x) => x.key !== a.key))}
+                                  className="shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-bold text-[#DC2626]"
+                                >
+                                  {t('remove')}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {editError ? <p className="text-xs font-semibold text-[#DC2626]">{editError}</p> : null}
+                        {editSavedMsg ? <p className="text-xs font-semibold text-[#15803D] dark:text-[#6EE7B7]">{editSavedMsg}</p> : null}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveOrderEdit(o._id)}
+                            disabled={editBusy}
+                            className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2 text-xs font-bold text-[#1E293B] dark:text-white disabled:opacity-50"
+                          >
+                            {t('save')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeOrderEdit}
+                            disabled={editBusy}
+                            className="flex-1 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] disabled:opacity-50"
+                          >
+                            {t('cancel')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {(() => {
                       const active = (o.items || []).filter((it) => !it.cancelled);
                       const cancelled = (o.items || []).filter((it) => it.cancelled);
@@ -1533,8 +2026,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                       );
                     })()}
                   </div>
-                ))
-              )}
+                  )}
+                ))}
             </div>
 
             <div className="flex gap-2 border-t border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-4 py-4">
@@ -1753,7 +2246,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           {comps.map((c, idx) => (
                             <li key={`${cartKey}-comp-${idx}`} className={`flex items-center justify-between gap-2 rounded-xl px-2 py-1 text-xs ${c.kind === "NOTE" ? "bg-[#FEF3C7] dark:bg-[#7C2D12] text-[#92400E] dark:text-[#FDBA74] border border-[#FDE68A] dark:border-[#7C2D12]" : "bg-[#F4F5F9] dark:bg-[#12131A] border border-[#E2E8F0]/60 dark:border-[#2A2B36] text-[#1E293B] dark:text-white"}`}>
                               <span className="min-w-0 flex-1 truncate">
-                                {c.kind === "NOTE" ? `📝 ${c.note}` : `➕ ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${Math.round(c.quantity * c.unitPrice * 100) / 100} ETB${c.inventoryItemId ? " linked" : ""}`}
+                                {c.kind === "NOTE" ? `• ${c.note}` : `• ${c.name} ×${c.quantity} @ ${c.unitPrice} ETB = ${Math.round(c.quantity * c.unitPrice * 100) / 100} ETB${c.inventoryItemId ? " linked" : ""}`}
                               </span>
                               <button type="button" onClick={() => removeComponentFromCart(cartKey, idx)} className="shrink-0 rounded-lg bg-white dark:bg-[#1C1D24] px-1.5 py-0.5 text-xs font-bold text-[#DC2626] border border-[#FECACA]">✕</button>
                             </li>
@@ -1780,9 +2273,6 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                             setCompName("");
                             setCompQty("1");
                             setCompPrice("");
-                            setCompInvId("");
-                            setCompStockQty("");
-                            setCompStockUnit("");
                             setCompError("");
                           }}
                           className={`flex-1 rounded-xl py-2 text-xs font-bold border ${editingComponent?.cartKey === cartKey && editingComponent?.kind === "PRICED" ? "bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border-[#FFD600] dark:border-[#FF5E00]" : "bg-white dark:bg-[#1C1D24] text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#2A2B36]"}`}
@@ -1803,21 +2293,11 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                       )}
                       {editingComponent?.cartKey === cartKey && editingComponent?.kind === "PRICED" && (
                         <div className="mt-2 space-y-2 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-2">
-                          <input type="text" value={compName} onChange={(e) => setCompName(e.target.value)} placeholder="Component name * e.g. Extra Cheese" maxLength={100} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                          <input type="text" value={compName} onChange={(e) => setCompName(e.target.value)} placeholder="Component name e.g. Extra Cheese" maxLength={100} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                           <div className="grid grid-cols-2 gap-2">
-                            <input type="number" min="1" max="99" step="1" value={compQty} onChange={(e) => setCompQty(e.target.value)} placeholder="Qty *" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                            <input type="number" min="0" step="0.01" value={compPrice} onChange={(e) => setCompPrice(e.target.value)} placeholder="Unit price ETB *" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                            <input type="number" min="1" max="99" step="1" value={compQty} onChange={(e) => setCompQty(e.target.value)} placeholder="Qty" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
+                            <input type="number" min="0" step="0.01" value={compPrice} onChange={(e) => setCompPrice(e.target.value)} placeholder="Unit price ETB" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                           </div>
-                          <details className="rounded-lg border border-dashed border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-2">
-                            <summary className="cursor-pointer text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Inventory link (optional)</summary>
-                            <div className="mt-2 space-y-2">
-                              <input type="text" value={compInvId} onChange={(e) => setCompInvId(e.target.value)} placeholder="Inventory Item ID (ObjectId). Leave empty for no deduction" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                              <div className="grid grid-cols-2 gap-2">
-                                <input type="number" step="0.001" value={compStockQty} onChange={(e) => setCompStockQty(e.target.value)} placeholder="Stock qty per unit" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                                <input type="text" value={compStockUnit} onChange={(e) => setCompStockUnit(e.target.value)} placeholder="Stock unit e.g. kg" maxLength={20} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                              </div>
-                            </div>
-                          </details>
                           {compError && <p className="text-xs text-[#DC2626]">{compError}</p>}
                           <div className="flex gap-2">
                             <button type="button" onClick={() => addPricedToCart(cartKey)} className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2 text-xs font-bold text-[#1E293B] dark:text-white">Add Priced</button>

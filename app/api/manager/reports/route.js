@@ -17,7 +17,7 @@ async function handler(request) {
   // Defense-in-depth: require MANAGER HttpOnly session (layout PinGuard gates pages,
   // but direct API hits must also be blocked — prevents sales data exfiltration).
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   // Rate limit manager APIs
   const rl = checkRateLimit(request, { key: "manager_reports", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {

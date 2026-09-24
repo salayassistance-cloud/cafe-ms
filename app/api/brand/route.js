@@ -39,7 +39,7 @@ async function getHandler(request) {
 // POST / PUT /api/brand — manager-only upsert of the single config.
 async function saveHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "brand_write", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);

@@ -101,7 +101,7 @@ function parseCustomRange(fromStr, toStr) {
 
 async function handler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "manager_waiter_analytics", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);

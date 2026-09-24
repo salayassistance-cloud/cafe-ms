@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchWithTimeout } from "@/lib/clientFetch";
+import { fetchWithTimeout, setTabCredential, startTabHeartbeat, navigateAfterAuth } from "@/lib/clientFetch";
 import { setLocalStaff } from "@/lib/sessionClient";
 import PinKeypad from "@/app/components/PinKeypad";
 import { useLanguage } from "./LanguageProvider";
@@ -31,8 +31,9 @@ export default function PinLoginModal({ open, portal, onClose }) {
     if (busy) return;
     const p = String(pin).trim();
     setError("");
-    // Cashier reuses existing MANAGER authorization (no new CASHIER role per Phase 1 boundaries)
-    const authRole = portal.role === "CASHIER" ? "MANAGER" : portal.role;
+    // AUTH-ARCH-3: CASHIER authenticates as CASHIER (own Staff PIN/session).
+    // The former CASHIER → MANAGER mapping is removed — it must never return.
+    const authRole = portal.role;
     let endpoint, payload;
     if (portal.role === "WAITER") {
       const u = username.trim();
@@ -71,12 +72,22 @@ export default function PinLoginModal({ open, portal, onClose }) {
             window.localStorage.setItem("bono_role", data.staff.role || portal.role);
           } catch {}
         }
+        // AUTH-ARCH-11: bind this tab's memory-only credential and start its
+        // heartbeat. router.push is a soft navigation, so tab memory survives
+        // while the destination layout re-evaluates against the fresh cookie.
         // PERFORMANCE FIX: Removed redundant GET /api/auth/me before router.push.
-        // The auth endpoint already set the HttpOnly bono_sess cookie with Set-Cookie;
+        // The auth endpoint already set the canonical HttpOnly
+        // __Host-bono_session cookie with Set-Cookie;
         // the destination layout (getPortalSession) verifies it server-side. The extra
         // me check added sequential latency (up to 5s) and duplicated the layout's
         // Staff.isActive DB lookup, contributing to the 8s delay.
-        router.push(portal.route);
+        try {
+          if (data.tabCredential) {
+            setTabCredential(data.tabCredential);
+            startTabHeartbeat();
+          }
+        } catch {}
+        navigateAfterAuth(router, portal.route);
       } else {
         const msg = data?.message || data?.error || "";
         if (/disabled|inactive/i.test(msg)) setError(t('waiterInactive'));

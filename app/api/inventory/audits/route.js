@@ -5,6 +5,10 @@ import { can } from "@/lib/policy";
 import { withApi } from "@/lib/withApi";
 import { ok, fail, isDbError } from "@/lib/apiResponse";
 import { validateObjectId, sanitizeString, validateDateString } from "@/lib/validate";
+import {
+  addisYMDToUTCStart,
+  addisYMDToUTCNextStart,
+} from "@/lib/ethiopianCalendar";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +16,7 @@ export const dynamic = "force-dynamic";
 // Read only — MANAGER only, supports item/action/actor filters + date range
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:read")) return fail("Forbidden: requires MANAGER", 403);
 
   const { searchParams } = new URL(request.url);
@@ -48,27 +52,28 @@ async function getHandler(request) {
     query.actorId = aid;
   }
 
+  // Canonical Addis business-day half-open [from 00:00, to next 00:00).
+  // Never server-local setHours.
   let fromDate = null;
-  let toDate = null;
+  let toExclusive = null;
   if (rawFrom) {
     const ds = sanitizeString(rawFrom, { maxLen: 20 });
     if (!ds || !validateDateString(ds)) return fail("Invalid from date (use YYYY-MM-DD)", 400);
-    const d = new Date(ds);
-    d.setHours(0, 0, 0, 0);
-    fromDate = d;
+    fromDate = addisYMDToUTCStart(ds);
+    if (!fromDate) return fail("Invalid from date (use YYYY-MM-DD)", 400);
   }
   if (rawTo) {
     const ds = sanitizeString(rawTo, { maxLen: 20 });
     if (!ds || !validateDateString(ds)) return fail("Invalid to date (use YYYY-MM-DD)", 400);
-    const d = new Date(ds);
-    d.setHours(23, 59, 59, 999);
-    toDate = d;
+    toExclusive = addisYMDToUTCNextStart(ds);
+    if (!toExclusive) return fail("Invalid to date (use YYYY-MM-DD)", 400);
   }
-  if (fromDate && toDate && fromDate > toDate) return fail("from date must be before to date", 400);
-  if (fromDate || toDate) {
+  if (fromDate && toExclusive && fromDate.getTime() >= toExclusive.getTime())
+    return fail("from date must be before to date", 400);
+  if (fromDate || toExclusive) {
     query.createdAt = {};
     if (fromDate) query.createdAt.$gte = fromDate;
-    if (toDate) query.createdAt.$lte = toDate;
+    if (toExclusive) query.createdAt.$lt = toExclusive;
   }
 
   let limit = 100;

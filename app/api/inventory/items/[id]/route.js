@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // Update allowed fields: name, category, unit, minimumStock, cost, status, supplier — MANAGER only
 async function patchHandler(request, { params }) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:mutate")) return fail("Forbidden: requires MANAGER", 403);
 
   const { id } = await params;

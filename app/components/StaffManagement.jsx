@@ -23,15 +23,27 @@ import {
   IconReceipt,
   IconEye,
 } from '@tabler/icons-react';
+import {
+  formatEthiopianDateTime,
+} from '@/lib/ethiopianCalendar';
+
+// Canonical Phase F business display: Ethiopian Calendar + Africa/Addis_Ababa.
+// `new Date(value)` only wraps an existing UTC instant; formatting is
+// Addis-aware, never browser-local. 24h Addis wall time.
+function fmtStaffDateTime(value, lang) {
+  try {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return formatEthiopianDateTime(d, lang === 'en' ? 'en' : 'am');
+  } catch {
+    return '—';
+  }
+}
+
+
 
 const ROLES = ['WAITER', 'CASHIER', 'KITCHEN', 'BARISTA', 'MANAGER'];
-const ROLE_LABEL = {
-  WAITER: 'Waiter',
-  CASHIER: 'Cashier',
-  KITCHEN: 'Kitchen',
-  BARISTA: 'Barista',
-  MANAGER: 'Manager',
-};
 
 function roleBadgeCls(role) {
   const r = String(role).toUpperCase();
@@ -50,7 +62,14 @@ function statusBadge(isActive) {
 }
 
 export default function StaffManagement() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const roleLabel = (r) => ({
+    WAITER: t('staffRoleWaiter'),
+    CASHIER: t('staffRoleCashier'),
+    KITCHEN: t('staffRoleKitchen'),
+    BARISTA: t('staffRoleBarista'),
+    MANAGER: t('staffRoleManager'),
+  }[r] || r);
   const [staff, setStaff] = useState([]);
   const [counts, setCounts] = useState({ total: 0, active: 0, disabled: 0, byRole: {} });
   const [loading, setLoading] = useState(true);
@@ -111,13 +130,13 @@ export default function StaffManagement() {
       }
     } catch (err) {
       const m = err?.message || 'Failed to load staff';
-      if (err?.status === 401) setError('Unauthorized. Please sign in as Manager.');
-      else if (err?.status === 403) setError('Forbidden. Manager access required.');
+      if (err?.status === 401) setError(t('staffErrUnauthorized'));
+      else if (err?.status === 403) setError(t('staffErrForbidden'));
       else setError(m);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchStaff(), 0);
@@ -152,7 +171,7 @@ export default function StaffManagement() {
     }
     const q = buildAnalyticsQuery();
     if (!q) {
-      setAnalyticsError('Select both custom dates');
+      setAnalyticsError(t('staffErrCustomDates'));
       return;
     }
     setAnalyticsLoading(true);
@@ -163,20 +182,20 @@ export default function StaffManagement() {
       setWaiterSummaries(Array.isArray(payload?.summaries) ? payload.summaries : []);
       setAnalyticsMeta(payload?.range || payload?.meta || null);
     } catch (err) {
-      if (err?.status === 401) setAnalyticsError('Unauthorized. Manager required');
-      else if (err?.status === 403) setAnalyticsError('Forbidden. Manager only');
-      else setAnalyticsError(err?.message || 'Failed to load waiter analytics');
+      if (err?.status === 401) setAnalyticsError(t('staffErrUnauthorized'));
+      else if (err?.status === 403) setAnalyticsError(t('staffErrForbidden'));
+      else setAnalyticsError(err?.message || t('staffErrLoadAnalytics'));
       setWaiterSummaries([]);
     } finally {
       setAnalyticsLoading(false);
     }
-  }, [staff, loading, buildAnalyticsQuery]);
+  }, [staff, loading, buildAnalyticsQuery, t]);
 
   const fetchWaiterDetail = useCallback(async (waiterId) => {
     if (!waiterId) return;
     const q = buildAnalyticsQuery();
     if (!q) {
-      setDetailError('Select both custom dates');
+      setDetailError(t('staffErrCustomDates'));
       return;
     }
     setDetailLoading(true);
@@ -186,12 +205,12 @@ export default function StaffManagement() {
       const payload = data?.data || data;
       setDetailData(payload);
     } catch (err) {
-      setDetailError(err?.message || 'Failed to load waiter details');
+      setDetailError(err?.message || t('staffErrLoadDetail'));
       setDetailData(null);
     } finally {
       setDetailLoading(false);
     }
-  }, [buildAnalyticsQuery]);
+  }, [buildAnalyticsQuery, t]);
 
   // Summary fetch on preset/custom change and after staff load (deferred to avoid setState-in-effect)
   useEffect(() => {
@@ -237,27 +256,27 @@ export default function StaffManagement() {
     const confirmPin = String(addForm.confirmPin).trim();
     const role = String(addForm.role).trim().toUpperCase();
     if (!name || name.length < 1 || name.length > 50) {
-      setAddError('Name is required (1-50 chars)');
+      setAddError(t('staffErrName'));
       return;
     }
     if (!username || username.length < 2 || username.length > 30) {
-      setAddError('Username must be 2-30 characters');
+      setAddError(t('staffErrUsername'));
       return;
     }
     if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
-      setAddError('Username may contain only letters, numbers, dot, underscore, dash');
+      setAddError(t('staffErrUsernameChars'));
       return;
     }
     if (!/^\d{4}$/.test(pin)) {
-      setAddError('PIN must be exactly 4 digits');
+      setAddError(t('staffErrPin'));
       return;
     }
     if (pin !== confirmPin) {
-      setAddError('PIN and Confirm PIN do not match');
+      setAddError(t('staffErrPinMatch'));
       return;
     }
     if (!['WAITER', 'CASHIER'].includes(role)) {
-      setAddError('Role must be WAITER or CASHIER');
+      setAddError(t('staffErrRole'));
       return;
     }
     setAddBusy(true);
@@ -267,13 +286,13 @@ export default function StaffManagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, username, pin, confirmPin: confirmPin, role }),
       });
-      if (!res?.success) throw new Error(res?.error || res?.message || 'Failed to create staff');
-      setSuccess(res?.data?.cashier ? `Cashier ${res.data.cashier.username} created` : `Waiter ${res.data.waiter.username} created`);
+      if (!res?.success) throw new Error(res?.error || res?.message || t('staffErrCreate'));
+      setSuccess(res?.data?.cashier ? `${t('staffRoleCashier')} ${res.data.cashier.username} ${t('staffCreatedOk')}` : `${t('staffRoleWaiter')} ${res.data.waiter.username} ${t('staffCreatedOk')}`);
       setShowAdd(false);
       setAddForm({ name: '', username: '', pin: '', confirmPin: '', role: 'WAITER' });
       fetchStaff();
     } catch (err) {
-      setAddError(err?.message || 'Failed to create staff');
+      setAddError(err?.message || t('staffErrCreate'));
     } finally {
       setAddBusy(false);
     }
@@ -292,19 +311,19 @@ export default function StaffManagement() {
     const name = String(editForm.name).trim();
     const username = String(editForm.username).trim();
     if (!name) {
-      setEditError('Name is required');
+      setEditError(t('staffErrNameRequired'));
       return;
     }
     if (!username || username.length < 2 || username.length > 30) {
-      setEditError('Username must be 2-30 characters');
+      setEditError(t('staffErrUsername'));
       return;
     }
     if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
-      setEditError('Username may contain only letters, numbers, dot, underscore, dash');
+      setEditError(t('staffErrUsernameChars'));
       return;
     }
     if (name === editStaff.name && username.toLowerCase() === String(editStaff.username).toLowerCase()) {
-      setEditError('No changes to save');
+      setEditError(t('staffErrNoChanges'));
       return;
     }
     setEditBusy(true);
@@ -314,12 +333,12 @@ export default function StaffManagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffId: editStaff.id, name, username }),
       });
-      if (!data?.success) throw new Error(data?.error || data?.message || 'Failed to update');
-      setSuccess(`Updated ${data.data?.staff?.username || name}`);
+      if (!data?.success) throw new Error(data?.error || data?.message || t('staffErrUpdate'));
+      setSuccess(`${t('staffUpdatedOk')} ${data.data?.staff?.username || name}`);
       setEditStaff(null);
       fetchStaff();
     } catch (err) {
-      setEditError(err?.message || 'Failed to update');
+      setEditError(err?.message || t('staffErrUpdate'));
     } finally {
       setEditBusy(false);
     }
@@ -330,7 +349,7 @@ export default function StaffManagement() {
     const wantActive = !toggleTarget.isActive;
     // For shared roles, backend will reject — we already filter UI but keep guard
     if (!['WAITER', 'CASHIER'].includes(toggleTarget.role)) {
-      setError('Only Waiter/Cashier can be disabled individually');
+      setError(t('staffErrToggleRole'));
       setToggleTarget(null);
       return;
     }
@@ -341,12 +360,12 @@ export default function StaffManagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffId: toggleTarget.id, isActive: wantActive }),
       });
-      if (!data?.success) throw new Error(data?.error || data?.message || 'Failed to update status');
-      setSuccess(wantActive ? `Re-enabled ${toggleTarget.username}` : `Disabled ${toggleTarget.username}. Account cannot log in`);
+      if (!data?.success) throw new Error(data?.error || data?.message || t('staffErrUpdateStatus'));
+      setSuccess(wantActive ? `${t('staffReenabledOk')} ${toggleTarget.username}` : `${t('staffDisabledOk')} ${toggleTarget.username}`);
       setToggleTarget(null);
       fetchStaff();
     } catch (err) {
-      setError(err?.message || 'Failed to update status');
+      setError(err?.message || t('staffErrUpdateStatus'));
       setToggleTarget(null);
     } finally {
       setToggleBusy(false);
@@ -361,15 +380,15 @@ export default function StaffManagement() {
     const np = String(pinForm.newPin).trim();
     const cp = String(pinForm.confirmPin).trim();
     if (cur && !/^\d{4}$/.test(cur)) {
-      setPinError('Current Manager PIN must be 4 digits');
+      setPinError(t('staffErrCurPin'));
       return;
     }
     if (!/^\d{4}$/.test(np)) {
-      setPinError('New PIN must be 4 digits');
+      setPinError(t('staffErrNewPin'));
       return;
     }
     if (np !== cp) {
-      setPinError('New PIN and Confirm do not match');
+      setPinError(t('staffErrPinMatch'));
       return;
     }
     setPinBusy(true);
@@ -381,12 +400,12 @@ export default function StaffManagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!data?.success) throw new Error(data?.message || data?.error || 'Failed to reset PIN');
-      setSuccess(data?.message || `PIN updated for ${pinTarget.name}`);
+      if (!data?.success) throw new Error(data?.message || data?.error || t('staffErrResetPin'));
+      setSuccess(data?.message || `${t('staffPinUpdatedOk')} ${pinTarget.name}`);
       setPinTarget(null);
       setPinForm({ currentManagerPin: '', newPin: '', confirmPin: '' });
     } catch (err) {
-      setPinError(err?.message || 'Failed to reset PIN');
+      setPinError(err?.message || t('staffErrResetPin'));
     } finally {
       setPinBusy(false);
     }
@@ -404,15 +423,15 @@ export default function StaffManagement() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={fetchStaff} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">
+              <button type="button" onClick={fetchStaff} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] shadow-sm">
                 <IconRefresh size={16} className="mr-1.5 h-4 w-4" /> {t('staffRefresh')}
               </button>
               <LanguageToggle includeOromia={false} />
               <Link
                 href="/"
-                aria-label="Home"
-                title="Home"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm"
+                aria-label={t('home')}
+                title={t('home')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] text-[var(--c-muted)] shadow-sm hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
@@ -435,31 +454,31 @@ export default function StaffManagement() {
 
         {/* Overview */}
         <section aria-label="Staff overview" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+          <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffTotalStaff')}</p>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] text-[var(--c-accent)]"><IconUsers size={16} className="h-4 w-4" /></span>
             </div>
             {loading ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[var(--c-text)]">{totalStaff}</p>}
-            <p className="text-xs font-medium text-[var(--c-muted)]">All roles</p>
+            <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffAllRoles')}</p>
           </div>
-          <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+          <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffActive')}</p>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F0FDF4] dark:bg-[rgba(16,185,129,0.12)] text-[#15803D]"><IconUserCheck size={16} className="h-4 w-4" /></span>
             </div>
             {loading ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[#15803D] dark:text-[#6EE7B7]">{activeStaff}</p>}
-            <p className="text-xs font-medium text-[var(--c-muted)]">Can log in</p>
+            <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffCanLogin')}</p>
           </div>
-          <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+          <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffDisabled')}</p>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FEF2F2] dark:bg-[#2A2B36] text-[#DC2626]"><IconUserX size={16} className="h-4 w-4" /></span>
             </div>
             {loading ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[#DC2626]">{disabledStaff}</p>}
-            <p className="text-xs font-medium text-[var(--c-muted)]">Cannot log in</p>
+            <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffCannotLogin')}</p>
           </div>
-          <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+          <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffByRole')}</p>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FFD600]/15 dark:bg-[rgba(255,94,0,0.12)] text-[#8A6D00] dark:text-[#FF8A3D]"><IconShieldCheck size={16} className="h-4 w-4" /></span>
@@ -470,7 +489,7 @@ export default function StaffManagement() {
               <div className="flex flex-wrap gap-1.5">
                 {ROLES.map((r) => (
                   <span key={r} className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-black ${roleBadgeCls(r)}`}>
-                    {ROLE_LABEL[r]}: {counts.byRole?.[r] ?? 0}
+                    {roleLabel(r)}: {counts.byRole?.[r] ?? 0}
                   </span>
                 ))}
               </div>
@@ -479,27 +498,27 @@ export default function StaffManagement() {
         </section>
 
         {/* Waiter Performance — Date Range (Africa/Addis_Ababa, half-open [from, to)) — shared for list & Details */}
-        <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4 sm:p-5 flex flex-col gap-3" aria-label="Waiter performance date range">
+        <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-4 sm:p-5 flex flex-col gap-3" aria-label="Waiter performance date range">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] text-[var(--c-accent)]"><IconCalendar size={16} className="h-4 w-4" /></span>
               <div>
-                <p className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Waiter Performance</p>
+                <p className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('waiterPerf')}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => fetchWaiterSummaries()} disabled={analyticsLoading} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm disabled:opacity-50">
-                <IconRefresh size={14} className="mr-1 h-3.5 w-3.5" />{analyticsLoading ? 'Loading…' : 'Refresh'}
+              <button type="button" onClick={() => fetchWaiterSummaries()} disabled={analyticsLoading} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] shadow-sm disabled:opacity-50">
+                <IconRefresh size={14} className="mr-1 h-3.5 w-3.5" />{analyticsLoading ? t('staffLoading') : t('staffRefresh')}
               </button>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {[
-              { key: 'today', label: 'Today' },
-              { key: 'yesterday', label: 'Yesterday' },
-              { key: 'last7', label: 'Last 7 Days' },
-              { key: 'thisMonth', label: 'This Month' },
-              { key: 'custom', label: 'Custom' },
+              { key: 'today', label: t('today') },
+              { key: 'yesterday', label: t('yesterday') },
+              { key: 'last7', label: t('last7') },
+              { key: 'thisMonth', label: t('thisMonth') },
+              { key: 'custom', label: t('custom') },
             ].map((p) => {
               const active = preset === p.key;
               return (
@@ -508,7 +527,7 @@ export default function StaffManagement() {
                   type="button"
                   onClick={() => setPreset(p.key)}
                   aria-pressed={active}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black border transition-all ${active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#12131A] text-[var(--c-muted)] border-[var(--c-border-soft)] hover:text-[var(--c-text)]'}`}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black border transition-all duration-150 ease-out active:shadow-inner ${active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#12131A] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}
                 >
                   {p.label}
                 </button>
@@ -518,22 +537,22 @@ export default function StaffManagement() {
           {preset === 'custom' && (
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">From (Addis) *</span>
+                <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('from')} (Addis) *</span>
                 <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">To (Addis) *</span>
+                <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('to')} (Addis) *</span>
                 <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
               </label>
-              <p className="col-span-2 text-[11px] font-medium text-[var(--c-muted)]">Range is half-open [from 00:00, to next 00:00) Addis. End is exclusive.</p>
+              <p className="col-span-2 text-[11px] font-medium text-[var(--c-muted)]">{t('staffRangeNote')}</p>
             </div>
           )}
           {analyticsError && <p className="text-xs font-semibold text-[#DC2626]">{analyticsError}</p>}
-          {analyticsLoading && <p className="text-xs font-medium text-[var(--c-muted)]">Loading waiter analytics…</p>}
+          {analyticsLoading && <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffLoadingAnalytics')}</p>}
         </section>
 
         {/* Controls */}
-        <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4 sm:p-5 flex flex-col gap-4">
+        <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-4 sm:p-5 flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-black text-[var(--c-text)]">{t('staffAccounts')}</h2>
             <button
@@ -558,10 +577,10 @@ export default function StaffManagement() {
               <label className="block">
                 <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('staffRole')} *</span>
                 <select value={addForm.role} onChange={(e) => setAddForm({ ...addForm, role: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
-                  <option value="WAITER">Waiter</option>
-                  <option value="CASHIER">Cashier</option>
+                  <option value="WAITER">{roleLabel('WAITER')}</option>
+                  <option value="CASHIER">{roleLabel('CASHIER')}</option>
                 </select>
-                <p className="mt-1 text-[11px] font-medium text-[var(--c-muted)]">Only individual roles (Waiter/Cashier) can be created here. Shared roles use per-role PIN.</p>
+                <p className="mt-1 text-[11px] font-medium text-[var(--c-muted)]">{t('staffIndividualRolesNote')}</p>
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
@@ -584,12 +603,12 @@ export default function StaffManagement() {
           <div className="flex flex-col sm:flex-row gap-3">
             <label className="flex flex-1 items-center gap-2 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--c-accent)]/30">
               <IconSearch size={16} className="h-4 w-4 text-[var(--c-muted)] shrink-0" aria-hidden={true} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('staffSearchPh')} aria-label="Search staff" className="w-full bg-transparent text-sm font-medium text-[var(--c-text)] placeholder:text-[var(--c-muted)] focus:outline-none" />
-              {search && <button type="button" onClick={() => setSearch('')} className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] h-6 w-6 flex items-center justify-center text-[var(--c-muted)] hover:text-[var(--c-text)]" aria-label="Clear search">✕</button>}
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('staffSearchPh')} aria-label={t('staffSearchAria')} className="w-full bg-transparent text-sm font-medium text-[var(--c-text)] placeholder:text-[var(--c-muted)] focus:outline-none" />
+              {search && <button type="button" onClick={() => setSearch('')} className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] h-6 w-6 flex items-center justify-center text-[var(--c-muted)] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]" aria-label={t('staffClearSearch')}>✕</button>}
             </label>
             <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="h-10 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-bold text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
               <option value="all">{t('staffAllRoles')}</option>
-              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-bold text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
               <option value="all">{t('staffAllStatus')}</option><option value="active">{t('staffActive')}</option><option value="disabled">{t('staffDisabled')}</option>
@@ -597,13 +616,13 @@ export default function StaffManagement() {
           </div>
 
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-[var(--c-muted)]">{loading ? 'Loading…' : `${filtered.length} of ${staff.length} accounts`}</p>
-            <span className="hidden sm:inline text-[11px] font-bold text-[var(--c-faint)]">Manager-only PINs never shown</span>
+            <p className="text-xs font-medium text-[var(--c-muted)]">{loading ? t('staffLoading') : `${filtered.length} / ${staff.length} ${t('staffAccountsWord')}`}</p>
+            <span className="hidden sm:inline text-[11px] font-bold text-[var(--c-faint)]">{t('staffPinsNeverShown')}</span>
           </div>
         </section>
 
         {/* List */}
-        <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+        <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
           {loading ? (
             <div className="p-6 space-y-3">
               {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-[var(--c-bg)] border border-[var(--c-border-soft)]" />)}
@@ -617,7 +636,7 @@ export default function StaffManagement() {
             <div className="px-4 sm:px-5 py-12 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] mb-3"><IconUsers size={20} className="h-5 w-5" /></div>
               <p className="text-sm font-black text-[var(--c-text)]">{t('staffNoStaff')}</p>
-              <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">Try adjusting search or filters, or add a new Waiter/Cashier account.</p>
+              <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">{t('staffAdjustHint')}</p>
             </div>
           ) : (
             <>
@@ -630,12 +649,12 @@ export default function StaffManagement() {
                       <th className="px-4 py-3 font-black">{t('staffRole')}</th>
                       <th className="px-4 py-3 font-black">{t('staffStatus')}</th>
                       <th className="px-4 py-3 font-black">{t('username')}</th>
-                      <th className="px-4 py-3 text-right font-black">Actions</th>
+                      <th className="px-4 py-3 text-right font-black">{t('staffActions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--c-border-soft)]">
                     {filtered.map((s) => (
-                      <tr key={s.id} className="hover:bg-[var(--c-bg)]/50 transition-colors">
+                      <tr key={s.id}>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] font-black text-xs">{String(s.name).slice(0, 2).toUpperCase()}</span>
@@ -644,12 +663,12 @@ export default function StaffManagement() {
                               {s.role === 'WAITER' && (
                                 (() => {
                                   const sum = summaryMap.get(String(s.id));
-                                  if (analyticsLoading) return <p className="text-[11px] font-medium text-[var(--c-muted)]">Loading performance…</p>;
-                                  if (analyticsError) return <p className="text-[11px] font-medium text-[#DC2626]">Performance unavailable</p>;
-                                  if (!sum) return <p className="text-[11px] font-medium text-[var(--c-muted)]">No performance data</p>;
+                                  if (analyticsLoading) return <p className="text-[11px] font-medium text-[var(--c-muted)]">{t('staffLoadingPerf')}</p>;
+                                  if (analyticsError) return <p className="text-[11px] font-medium text-[#DC2626]">{t('staffPerfUnavailable')}</p>;
+                                  if (!sum) return <p className="text-[11px] font-medium text-[var(--c-muted)]">{t('staffNoPerfData')}</p>;
                                   return (
-                                    <p className="text-[11px] font-medium text-[var(--c-muted)]" title="Paid orders/revenue by payment date (paidAt), orders created by createdAt, half-open Africa/Addis_Ababa">
-                                      Paid <span className="font-bold text-[var(--c-text)]">{sum.paidOrdersByPayment}</span> <span className="font-bold text-[var(--c-text)]">{sum.paidRevenueByPayment} ETB</span> <span className="font-bold text-[var(--c-text)]" title="Awaiting approved thresholds, showing raw metrics only">Level: Not configured</span>
+                                    <p className="text-[11px] font-medium text-[var(--c-muted)]">
+                                      {t('staffPaid')} <span className="font-bold text-[var(--c-text)]">{sum.paidOrdersByPayment}</span> <span className="font-bold text-[var(--c-text)]">{sum.paidRevenueByPayment} ETB</span> <span className="font-bold text-[var(--c-text)]">{t('staffLevel')}: {t('staffNotConfigured')}</span>
                                     </p>
                                   );
                                 })()
@@ -657,16 +676,16 @@ export default function StaffManagement() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${roleBadgeCls(s.role)}`}>{ROLE_LABEL[s.role] || s.role}</span></td>
+                        <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${roleBadgeCls(s.role)}`}>{roleLabel(s.role)}</span></td>
                         <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${statusBadge(s.isActive)}`}>{s.isActive ? t('staffActive') : t('staffDisabled')}</span></td>
                         <td className="px-4 py-3.5 font-mono text-xs font-semibold text-[var(--c-text)]">{s.username}</td>
                         <td className="px-4 py-3.5">
                           <div className="flex justify-end gap-1.5">
                             {s.role === 'WAITER' && (
-                              <button type="button" onClick={() => setSelectedWaiter(s)} className="inline-flex h-7 items-center justify-center rounded-lg bg-[var(--c-accent)] px-2.5 text-xs font-black text-[#1E293B] dark:text-white shadow-sm hover:opacity-90"><IconEye size={14} className="mr-1 h-3.5 w-3.5" />{t('staffDetails')}</button>
+                              <button type="button" onClick={() => setSelectedWaiter(s)} className="inline-flex h-7 items-center justify-center rounded-lg bg-[var(--c-accent)] px-2.5 text-xs font-black text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner"><IconEye size={14} className="mr-1 h-3.5 w-3.5" />{t('staffDetails')}</button>
                             )}
-                            <button type="button" onClick={() => openEdit(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]"><IconEdit size={14} className="mr-1 h-3.5 w-3.5" />{t('edit')}</button>
-                            <button type="button" onClick={() => setPinTarget(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]"><IconKey size={14} className="mr-1 h-3.5 w-3.5" />{t('staffPin')}</button>
+                            <button type="button" onClick={() => openEdit(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]"><IconEdit size={14} className="mr-1 h-3.5 w-3.5" />{t('edit')}</button>
+                            <button type="button" onClick={() => setPinTarget(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]"><IconKey size={14} className="mr-1 h-3.5 w-3.5" />{t('staffPin')}</button>
                             {['WAITER','CASHIER'].includes(s.role) ? (
                               s.isActive ? (
                                 <button type="button" onClick={() => setToggleTarget(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#FECACA] bg-white px-2.5 text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2]"><IconTrash size={14} className="mr-1 h-3.5 w-3.5" />{t('staffDisable')}</button>
@@ -674,7 +693,7 @@ export default function StaffManagement() {
                                 <button type="button" onClick={() => setToggleTarget(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-2.5 text-xs font-bold text-[#15803D] hover:bg-[#DCFCE7]">{t('staffEnable')}</button>
                               )
                             ) : (
-                              <span className="inline-flex h-7 items-center rounded-lg border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-2.5 text-xs font-bold text-[var(--c-faint)]">Shared PIN</span>
+                              <span className="inline-flex h-7 items-center rounded-lg border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-2.5 text-xs font-bold text-[var(--c-faint)]">{t('staffSharedPin')}</span>
                             )}
                           </div>
                         </td>
@@ -693,28 +712,28 @@ export default function StaffManagement() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-black text-[var(--c-text)]">{s.name}</p>
                           <p className="truncate text-xs font-mono font-medium text-[var(--c-muted)]">{s.username}</p>
-                          {s.role === 'WAITER' && (
-                            (() => {
-                              const sum = summaryMap.get(String(s.id));
-                              if (analyticsLoading) return <p className="text-[11px] font-medium text-[var(--c-muted)]">Loading performance…</p>;
-                              if (analyticsError) return <p className="text-[11px] font-medium text-[#DC2626]">Performance unavailable</p>;
-                              if (!sum) return null;
-                              return <p className="text-[11px] font-medium text-[var(--c-muted)]">Paid {sum.paidOrdersByPayment} {sum.paidRevenueByPayment} ETB <span className="font-bold text-[var(--c-text)]">Level: Not configured</span></p>;
-                            })()
-                          )}
+                              {s.role === 'WAITER' && (
+                                (() => {
+                                  const sum = summaryMap.get(String(s.id));
+                                  if (analyticsLoading) return <p className="text-[11px] font-medium text-[var(--c-muted)]">{t('staffLoadingPerf')}</p>;
+                                  if (analyticsError) return <p className="text-[11px] font-medium text-[#DC2626]">{t('staffPerfUnavailable')}</p>;
+                                  if (!sum) return null;
+                                  return <p className="text-[11px] font-medium text-[var(--c-muted)]">{t('staffPaid')} {sum.paidOrdersByPayment} {sum.paidRevenueByPayment} ETB <span className="font-bold text-[var(--c-text)]">{t('staffLevel')}: {t('staffNotConfigured')}</span></p>;
+                                })()
+                              )}
                         </div>
                       </div>
                       <span className={`shrink-0 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${statusBadge(s.isActive)}`}>{s.isActive ? t('staffActive') : t('staffDisabled')}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${roleBadgeCls(s.role)}`}>{ROLE_LABEL[s.role] || s.role}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${roleBadgeCls(s.role)}`}>{roleLabel(s.role)}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {s.role === 'WAITER' && (
                         <button type="button" onClick={() => setSelectedWaiter(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black text-[#1E293B] dark:text-white shadow-sm"><IconEye size={16} className="mr-1.5 h-4 w-4" />{t('staffDetails')}</button>
                       )}
-                      <button type="button" onClick={() => openEdit(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]"><IconEdit size={16} className="mr-1.5 h-4 w-4" />{t('edit')}</button>
-                      <button type="button" onClick={() => setPinTarget(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]"><IconKey size={16} className="mr-1.5 h-4 w-4" />{t('staffPin')}</button>
+                      <button type="button" onClick={() => openEdit(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]"><IconEdit size={16} className="mr-1.5 h-4 w-4" />{t('edit')}</button>
+                      <button type="button" onClick={() => setPinTarget(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]"><IconKey size={16} className="mr-1.5 h-4 w-4" />{t('staffPin')}</button>
                       {['WAITER','CASHIER'].includes(s.role) && (
                         s.isActive ? (
                           <button type="button" onClick={() => setToggleTarget(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[#FECACA] bg-white px-3 text-xs font-bold text-[#DC2626]">{t('staffDisable')}</button>
@@ -737,10 +756,10 @@ export default function StaffManagement() {
             <div className="flex h-full w-[96%] max-w-3xl flex-col border-l border-[var(--c-border-soft)] bg-[#F4F5F9] dark:bg-[#12131A] shadow-[0_12px_30px_rgba(0,0,0,0.45)] overflow-hidden">
               <div className="flex items-center justify-between border-b border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-4 py-4">
                 <div className="min-w-0">
-                  <h2 className="truncate text-base font-black text-[var(--c-text)]">{selectedWaiter.name} Details</h2>
-                  <p className="truncate text-xs font-medium text-[var(--c-muted)]">{selectedWaiter.username} {selectedWaiter.role} {selectedWaiter.isActive ? t('staffActive') : t('staffDisabled')} Level: <span className="font-bold text-[var(--c-text)]" title="Awaiting approved thresholds">Not configured</span></p>
+                  <h2 className="truncate text-base font-black text-[var(--c-text)]">{selectedWaiter.name} {t('staffDetails')}</h2>
+                  <p className="truncate text-xs font-medium text-[var(--c-muted)]">{selectedWaiter.username} {roleLabel(selectedWaiter.role)} {selectedWaiter.isActive ? t('staffActive') : t('staffDisabled')} {t('staffLevel')}: <span className="font-bold text-[var(--c-text)]">{t('staffNotConfigured')}</span></p>
                 </div>
-                <button type="button" onClick={() => setSelectedWaiter(null)} className="shrink-0 rounded-full border border-[var(--c-border-soft)] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-1 text-sm font-bold text-[var(--c-muted)]">✕ Close</button>
+                <button type="button" onClick={() => setSelectedWaiter(null)} className="shrink-0 rounded-full border border-[var(--c-border-soft)] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-1 text-sm font-bold text-[var(--c-muted)]">✕ {t('staffClose')}</button>
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
                 {detailLoading ? (
@@ -750,62 +769,62 @@ export default function StaffManagement() {
                 ) : detailError ? (
                   <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-6 text-center">
                     <p className="text-sm font-bold text-[#DC2626]">{detailError}</p>
-                    <button type="button" onClick={() => selectedWaiter && fetchWaiterDetail(String(selectedWaiter.id))} className="mt-3 rounded-xl border border-[#FECACA] bg-white px-3 py-1.5 text-xs font-bold text-[#DC2626]">Retry</button>
+                    <button type="button" onClick={() => selectedWaiter && fetchWaiterDetail(String(selectedWaiter.id))} className="mt-3 rounded-xl border border-[#FECACA] bg-white px-3 py-1.5 text-xs font-bold text-[#DC2626]">{t('staffRetry')}</button>
                   </div>
                 ) : !detailData ? (
-                  <p className="py-10 text-center text-sm text-[var(--c-muted)]">No data</p>
+                  <p className="py-10 text-center text-sm text-[var(--c-muted)]">{t('staffNoData')}</p>
                 ) : (
                   <>
                     <div className="rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-2 text-xs font-medium text-[var(--c-muted)]">
-                      <span className="font-bold text-[var(--c-text)]">{detailData.presetLabel}</span> {new Date(detailData.range.from).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' })} → {new Date(detailData.range.to).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' })}
+                      <span className="font-bold text-[var(--c-text)]">{detailData.presetLabel}</span> {fmtStaffDateTime(detailData.range.from, lang)} → {fmtStaffDateTime(detailData.range.to, lang)}
                     </div>
                     {/* Summary KPIs */}
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                       <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Orders Created</p>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffOrdersCreated')}</p>
                         <p className="mt-1 text-xl font-black text-[var(--c-text)]">{detailData.kpis.totalOrdersCreated}</p>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">in period (createdAt)</p>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffInPeriod')}</p>
                       </div>
                       <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Paid Orders</p>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffPaidOrders')}</p>
                         <p className="mt-1 text-xl font-black text-[#15803D] dark:text-[#6EE7B7]">{detailData.kpis.paidOrdersByPayment}</p>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">by payment date {detailData.kpis.paidRevenueByPayment} ETB</p>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffByPaymentDate')} {detailData.kpis.paidRevenueByPayment} ETB</p>
                       </div>
                       <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Sold Qty (paid)</p>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffSoldQty')}</p>
                         <p className="mt-1 text-xl font-black text-[var(--c-text)]">{detailData.kpis.soldQtyPaid}</p>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">excl. cancelled</p>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffExclCancelled')}</p>
                       </div>
                       <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Avg Paid Value</p>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffAvgPaidValue')}</p>
                         <p className="mt-1 text-xl font-black text-[var(--c-text)]">{detailData.kpis.avgPaidValue} ETB</p>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">paid only</p>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffPaidOnly')}</p>
                       </div>
                       <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Pending / Served</p>
-                        <p className="mt-1 text-sm font-black text-[var(--c-text)]">Pending {detailData.kpis.pendingInProgress} Served {detailData.kpis.servedUnpaid} Verify {detailData.kpis.pendingVerificationCount}</p>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffPendingServed')}</p>
+                        <p className="mt-1 text-sm font-black text-[var(--c-text)]">{t('staffPendingWord')} {detailData.kpis.pendingInProgress} {t('staffServedWord')} {detailData.kpis.servedUnpaid} {t('staffVerifyWord')} {detailData.kpis.pendingVerificationCount}</p>
                         <p className="text-xs font-medium text-[var(--c-muted)]">PAYMENT_PENDING {detailData.kpis.pendingVerificationAmount} ETB</p>
                       </div>
                       <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Cancelled / Rejected</p>
-                        <p className="mt-1 text-sm font-black text-[#DC2626]">Cancelled {detailData.kpis.cancelled} Rejected {detailData.kpis.rejectedCount}</p>
-                        <p className="text-xs font-medium text-[var(--c-muted)]">excluded from sold/revenue</p>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffCancelledRejected')}</p>
+                        <p className="mt-1 text-sm font-black text-[#DC2626]">{t('staffCancelledWord')} {detailData.kpis.cancelled} {t('staffRejectedWord')} {detailData.kpis.rejectedCount}</p>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffExcludedNote')}</p>
                       </div>
                     </div>
                     {/* Payment breakdown */}
                     <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-4">
-                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Payment Breakdown (paid only, TELEBIRR→TRANSFER)</h3>
+                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('paymentBreakdown')}</h3>
                       <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                         <div className="rounded-xl bg-[#F0FDF4] dark:bg-[rgba(16,185,129,0.12)] border border-[#BBF7D0] dark:border-[#10B981]/20 p-3">
-                          <p className="text-xs font-bold text-[#15803D] dark:text-[#6EE7B7]">CASH</p>
+                          <p className="text-xs font-bold text-[#15803D] dark:text-[#6EE7B7]">{t('cash')}</p>
                           <p className="mt-1 font-black text-[#15803D] dark:text-[#6EE7B7]">{detailData.paymentBreakdown.cash.count} {detailData.paymentBreakdown.cash.total} ETB</p>
                         </div>
                         <div className="rounded-xl bg-[#FEF3C7]/50 dark:bg-[#7C2D12]/20 border border-[#FDE68A] dark:border-[#7C2D12] p-3">
-                          <p className="text-xs font-bold text-[#92400E] dark:text-[#FDBA74]">TRANSFER</p>
+                          <p className="text-xs font-bold text-[#92400E] dark:text-[#FDBA74]">{t('bankTransfer')}</p>
                           <p className="mt-1 font-black text-[#92400E] dark:text-[#FDBA74]">{detailData.paymentBreakdown.transfer.count} {detailData.paymentBreakdown.transfer.total} ETB</p>
                         </div>
                         <div className="rounded-xl bg-[#F4F5F9] dark:bg-[#12131A] border border-[var(--c-border-soft)] p-3">
-                          <p className="text-xs font-bold text-[var(--c-muted)]">Pending / Rejected</p>
+                          <p className="text-xs font-bold text-[var(--c-muted)]">{t('staffPendingRejected')}</p>
                           <p className="mt-1 font-black text-[var(--c-text)]">Pending {detailData.paymentBreakdown.pending.count} {detailData.paymentBreakdown.pending.total} ETB</p>
                           <p className="text-xs font-medium text-[var(--c-muted)]">Rejected {detailData.paymentBreakdown.rejected.count}</p>
                         </div>
@@ -813,25 +832,25 @@ export default function StaffManagement() {
                     </div>
                     {/* Item performance */}
                     <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-4">
-                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Items Sold</h3>
+                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffItemsSold')}</h3>
                       {detailData.items.length === 0 ? (
-                        <p className="py-6 text-center text-sm text-[var(--c-muted)]">No items sold in this period</p>
+                        <p className="py-6 text-center text-sm text-[var(--c-muted)]">{t('staffNoItemsSold')}</p>
                       ) : (
                         <div className="mt-3 overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
                               <tr>
-                                <th className="px-3 py-2 font-black">Item</th>
-                                <th className="px-3 py-2 font-black">Type</th>
-                                <th className="px-3 py-2 text-right font-black">Qty</th>
-                                <th className="px-3 py-2 text-right font-black">Unit</th>
-                                <th className="px-3 py-2 text-right font-black">Revenue</th>
+                                <th className="px-3 py-2 font-black">{t('item')}</th>
+                                <th className="px-3 py-2 font-black">{t('type')}</th>
+                                <th className="px-3 py-2 text-right font-black">{t('qty')}</th>
+                                <th className="px-3 py-2 text-right font-black">{t('invUnit')}</th>
+                                <th className="px-3 py-2 text-right font-black">{t('staffRevenue')}</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-[var(--c-border-soft)]">
                               {detailData.items.map((it, idx) => (
-                                <tr key={`${it.name}-${idx}`} className="hover:bg-[var(--c-bg)]/50">
-                                  <td className="px-3 py-2 font-bold text-[var(--c-text)]">{it.name}{it.isComponent ? ' Component' : ''}</td>
+                                <tr key={`${it.name}-${idx}`}>
+                                  <td className="px-3 py-2 font-bold text-[var(--c-text)]">{it.name}{it.isComponent ? ` ${t('staffComponent')}` : ''}</td>
                                   <td className="px-3 py-2"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black ${it.type==='COMPONENT' ? 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]' : 'bg-[var(--c-bg)] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>{it.type}</span></td>
                                   <td className="px-3 py-2 text-right font-bold text-[var(--c-text)]">{it.quantity}</td>
                                   <td className="px-3 py-2 text-right font-medium text-[var(--c-muted)]">{it.unitPrice ? `${it.unitPrice} ETB` : '—'}</td>
@@ -846,34 +865,34 @@ export default function StaffManagement() {
                     {/* Order history */}
                     <div className="rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-4">
                       <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Order History {detailData.historyCount} created {detailData.historyLimited ? '(limited to 200)' : ''}</h3>
-                        <span className="text-[11px] font-medium text-[var(--c-muted)]">Max 200 {detailData.history.length} shown</span>
+                        <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('staffOrderHistory')} {detailData.historyCount} {t('staffCreatedWord')} {detailData.historyLimited ? `(${t('staffLimited200')})` : ''}</h3>
+                        <span className="text-[11px] font-medium text-[var(--c-muted)]">{t('staffShownMax')}: {detailData.history.length}</span>
                       </div>
                       {detailData.history.length === 0 ? (
-                        <p className="py-6 text-center text-sm text-[var(--c-muted)]">No orders created in this period</p>
+                        <p className="py-6 text-center text-sm text-[var(--c-muted)]">{t('staffNoOrdersPeriod')}</p>
                       ) : (
                         <div className="mt-3 space-y-2">
                           {detailData.history.map((o) => (
                             <details key={o._id} className="rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] p-3">
                               <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
                                 <div className="min-w-0">
-                                  <p className="truncate font-bold text-[var(--c-text)]">{o.orderNumber} Table {o.tableNumber} {o.status} {o.paymentMethod}{o.paymentMethod==='TRANSFER' && o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName}` : ''}</p>
-                                  <p className="text-xs font-medium text-[var(--c-muted)]">Created {new Date(o.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' })} {o.effectiveAmount} ETB {o.items.filter((it)=>!it.cancelled).length} items</p>
-                                  {o.paidAt && <p className="text-[11px] font-medium text-[#15803D] dark:text-[#6EE7B7]">Paid {new Date(o.paidAt).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' })}</p>}
-                                  {o.paymentRejectedAt && <p className="text-[11px] font-medium text-[#DC2626]">Rejected {new Date(o.paymentRejectedAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'})}{o.paymentRejectionReason ? `: ${o.paymentRejectionReason}` : ''}</p>}
+                                  <p className="truncate font-bold text-[var(--c-text)]">{o.orderNumber} {t('table')} {o.tableNumber} {o.status} {o.paymentMethod}{o.paymentMethod==='TRANSFER' && o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName}` : ''}</p>
+                                  <p className="text-xs font-medium text-[var(--c-muted)]">{t('staffTsCreated')} {fmtStaffDateTime(o.createdAt, lang)} {o.effectiveAmount} ETB {o.items.filter((it)=>!it.cancelled).length} {t('staffItemsWord')}</p>
+                                  {o.paidAt && <p className="text-[11px] font-medium text-[#15803D] dark:text-[#6EE7B7]">{t('staffTsPaid')} {fmtStaffDateTime(o.paidAt, lang)}</p>}
+                                  {o.paymentRejectedAt && <p className="text-[11px] font-medium text-[#DC2626]">{t('staffRejectedWord')} {fmtStaffDateTime(o.paymentRejectedAt, lang)}{o.paymentRejectionReason ? `: ${o.paymentRejectionReason}` : ''}</p>}
                                 </div>
-                                <span className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-2 py-1 text-xs font-bold text-[var(--c-muted)]">Details</span>
+                                <span className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-2 py-1 text-xs font-bold text-[var(--c-muted)]">{t('staffDetails')}</span>
                               </summary>
                               <div className="mt-3 space-y-2 rounded-xl bg-white dark:bg-[#1C1D24] p-3 border border-[var(--c-border-soft)]">
-                                <p className="text-xs font-bold text-[var(--c-muted)]">Timestamps</p>
-                                <p className="text-xs font-medium text-[var(--c-text)]">Created {o.createdAt ? new Date(o.createdAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'}) : '—'} Served {o.servedAt ? new Date(o.servedAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'}) : '—'} Ready {o.readyAt ? new Date(o.readyAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'}) : '—'} Paid {o.paidAt ? new Date(o.paidAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'}) : '—'} Submitted {o.paymentSubmittedAt ? new Date(o.paymentSubmittedAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'}) : '—'} Verified {o.paymentVerifiedAt ? new Date(o.paymentVerifiedAt).toLocaleString('en-GB',{timeZone:'Africa/Addis_Ababa'}) : '—'}</p>
-                                <p className="text-xs font-bold text-[var(--c-muted)]">Payment</p>
+                                <p className="text-xs font-bold text-[var(--c-muted)]">{t('staffTimestamps')}</p>
+                                <p className="text-xs font-medium text-[var(--c-text)]">{t('staffTsCreated')} {fmtStaffDateTime(o.createdAt, lang)} {t('staffTsServed')} {fmtStaffDateTime(o.servedAt, lang)} {t('staffTsReady')} {fmtStaffDateTime(o.readyAt, lang)} {t('staffTsPaid')} {fmtStaffDateTime(o.paidAt, lang)} {t('staffTsSubmitted')} {fmtStaffDateTime(o.paymentSubmittedAt, lang)} {t('staffTsVerified')} {fmtStaffDateTime(o.paymentVerifiedAt, lang)}</p>
+                                <p className="text-xs font-bold text-[var(--c-muted)]">{t('staffPayment')}</p>
                                 <p className="text-xs font-medium text-[var(--c-text)]">{o.paymentMethod}{o.paymentAccountSnapshot ? ` ${o.paymentAccountSnapshot.bankName} ${o.paymentAccountSnapshot.ownerName} ${o.paymentAccountSnapshot.accountNumber}` : ''}</p>
                                 <ul className="space-y-1">
                                   {o.items.map((it, idx) => (
                                     <li key={`${o._id}-${it.lineId || idx}`} className={`rounded-lg px-2 py-1.5 text-xs ${it.cancelled ? 'bg-[#FEF2F2] dark:bg-[#2A2B36] text-[#DC2626] line-through' : 'bg-[var(--c-bg)] dark:bg-[#12131A] text-[var(--c-text)]'}`}>
                                       <div className="flex justify-between gap-2"><span className="font-bold">{it.quantity}× {it.name} ({it.type})</span><span className="font-bold">{it.subTotal} ETB</span></div>
-                                      {it.cancelled && <span className="text-[11px]">Cancelled{it.cancelReason ? `: ${it.cancelReason}` : ''}</span>}
+                                      {it.cancelled && <span className="text-[11px]">{t('staffCancelledWord')}{it.cancelReason ? `: ${it.cancelReason}` : ''}</span>}
                                       {it.components && it.components.length > 0 && (
                                         <ul className="ml-3 mt-1 space-y-0.5">
                                           {it.components.map((c, ci) => (
@@ -884,7 +903,7 @@ export default function StaffManagement() {
                                     </li>
                                   ))}
                                 </ul>
-                                <p className="text-xs font-bold text-[var(--c-text)]">Total {o.totalAmount} ETB Effective {o.effectiveAmount} ETB {o.totalAmount !== o.effectiveAmount ? '(partial cancellation)' : ''}</p>
+                                <p className="text-xs font-bold text-[var(--c-text)]">{t('staffTotal')} {o.totalAmount} ETB {t('staffEffective')} {o.effectiveAmount} ETB {o.totalAmount !== o.effectiveAmount ? t('staffPartialCancel') : ''}</p>
                               </div>
                             </details>
                           ))}
@@ -928,8 +947,8 @@ export default function StaffManagement() {
               <h3 className="text-base font-black text-[var(--c-text)]">{toggleTarget.isActive ? t('staffDisable') : t('staffEnable')}</h3>
               <p className="mt-2 text-sm font-medium text-[var(--c-muted)]">
                 {toggleTarget.isActive
-                  ? `Disable ${toggleTarget.name} (${toggleTarget.username}, ${toggleTarget.role})? Disabled accounts cannot log in. Historical orders remain.`
-                  : `Re-enable ${toggleTarget.name} (${toggleTarget.username})? Account will be able to log in again.`}
+                  ? `${t('staffDisable')}: ${toggleTarget.name} (${toggleTarget.username}, ${roleLabel(toggleTarget.role)})? ${t('staffDisableSuffix')}`
+                  : `${t('staffEnable')}: ${toggleTarget.name} (${toggleTarget.username})? ${t('staffEnableSuffix')}`}
               </p>
               <div className="mt-4 flex gap-2">
                 <button type="button" onClick={handleToggle} disabled={toggleBusy} className={`flex-1 inline-flex h-9 items-center justify-center rounded-xl px-4 text-xs font-black uppercase tracking-wide shadow-sm disabled:opacity-50 ${toggleTarget.isActive ? 'bg-[#DC2626] text-white' : 'bg-[#16A34A] text-white'}`}>
@@ -948,11 +967,11 @@ export default function StaffManagement() {
               <h3 className="text-base font-black text-[var(--c-text)]">{t('staffResetPin')} {pinTarget.name}</h3>
               <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">
                 {['KITCHEN','BARISTA','MANAGER'].includes(pinTarget.role)
-                  ? `Role PIN: updating ${pinTarget.role} will change PIN for all ${pinTarget.role} accounts (shared).`
-                  : `Individual PIN for ${pinTarget.username}. Never shows old PIN.`}
+                  ? `${t('staffRolePinNoteA')} ${roleLabel(pinTarget.role)} ${t('staffRolePinNoteB')}`
+                  : `${t('staffIndividualPinNoteA')} ${pinTarget.username}. ${t('staffIndividualPinNoteB')}`}
               </p>
               <label className="mt-4 block">
-                <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Current Manager PIN (if required)</span>
+                <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('staffCurrentMgrPin')}</span>
                 <input type="password" inputMode="numeric" maxLength={4} value={pinForm.currentManagerPin} onChange={(e) => setPinForm({ ...pinForm, currentManagerPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
               </label>
               <div className="grid grid-cols-2 gap-3 mt-3">
@@ -961,7 +980,7 @@ export default function StaffManagement() {
                   <input type="password" inputMode="numeric" maxLength={4} value={pinForm.newPin} onChange={(e) => setPinForm({ ...pinForm, newPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Confirm *</span>
+                  <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('staffConfirmPin')} *</span>
                   <input type="password" inputMode="numeric" maxLength={4} value={pinForm.confirmPin} onChange={(e) => setPinForm({ ...pinForm, confirmPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                 </label>
               </div>
@@ -974,7 +993,7 @@ export default function StaffManagement() {
           </div>
         )}
 
-        <p className="text-center text-[11px] font-medium text-[var(--c-faint)]">Manager-only Server validates every change PINs never displayed Disabled preserves order history</p>
+        <p className="text-center text-[11px] font-medium text-[var(--c-faint)]">{t('staffPinFooterNote')}</p>
       </main>
     </div>
   );

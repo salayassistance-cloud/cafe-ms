@@ -54,7 +54,7 @@ function isAllowedImageContent(ext, buf) {
 // logoPath and returns the public URL so the logo shows on /menu.
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
 
   const rl = checkRateLimit(request, { key: "brand_upload", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {

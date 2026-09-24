@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/app/components/LanguageProvider";
-import { fetchWithTimeout } from "@/lib/clientFetch";
+import { fetchWithTimeout, setTabCredential, startTabHeartbeat, navigateAfterAuth } from "@/lib/clientFetch";
 import { setLocalStaff } from "@/lib/sessionClient";
 import PinKeypad from "@/app/components/PinKeypad";
 
@@ -15,6 +16,7 @@ const ROLE_LABEL = {
 
 export default function PinGuard({ role, next }) {
   const { t } = useLanguage();
+  const router = useRouter();
 
   const target =
     next ||
@@ -64,13 +66,26 @@ export default function PinGuard({ role, next }) {
             window.localStorage.setItem("bono_role", "WAITER");
           } catch {}
         }
+        // AUTH-ARCH-11: bind this tab's memory-only credential (returned once
+        // by the server) and start its heartbeat, then navigate WITHOUT a
+        // full reload so tab memory survives. The layout re-evaluates against
+        // the freshly set cookie. Other tabs keep their own credentials.
         // PERFORMANCE FIX: Removed redundant GET /api/auth/me before redirect.
-        // The /api/auth/login-staff already sets the HttpOnly bono_sess cookie with
-        // Set-Cookie; the destination layout (getPortalSession) verifies it server-side.
+        // The /api/auth/login-staff already sets the canonical HttpOnly
+        // __Host-bono_session cookie with Set-Cookie; the destination layout (getPortalSession) verifies it server-side.
         // The extra me check added a sequential 200-500ms (+ up to 5s timeout) before
         // navigation and duplicated the layout's Staff.isActive check, contributing
         // to the 8s perceived login delay. Direct navigation is now immediate.
-        window.location.assign(target);
+        try {
+          if (data.tabCredential) {
+            setTabCredential(data.tabCredential);
+            startTabHeartbeat();
+          }
+        } catch {}
+        // Same-route target (PinGuard rendered by the destination layout)
+        // needs router.refresh() so the layout re-authenticates; cross-route
+        // keeps router.push(). Single helper, no reload loops.
+        navigateAfterAuth(router, target);
       } else {
         const msg = data?.message || data?.error || "";
         if (/disabled|inactive/i.test(msg)) {
@@ -117,7 +132,14 @@ export default function PinGuard({ role, next }) {
             window.localStorage.setItem("bono_role", data.staff.role);
           } catch {}
         }
-        window.location.assign(target);
+        // AUTH-ARCH-11: same tab binding as the WAITER path above.
+        try {
+          if (data.tabCredential) {
+            setTabCredential(data.tabCredential);
+            startTabHeartbeat();
+          }
+        } catch {}
+        navigateAfterAuth(router, target);
       } else {
         setError(data?.message || data?.error || "Authentication failed");
         setPin("");

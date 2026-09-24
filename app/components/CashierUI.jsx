@@ -1,18 +1,27 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { safeFetchJson } from '@/lib/clientFetch';
+import { safeFetchJson, getSessionErrorKind, tabLogout } from '@/lib/clientFetch';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
 import { formatPrice } from '@/lib/currency';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import { useLanguage } from '@/app/components/LanguageProvider';
+import {
+  formatEthiopianDate,
+  formatEthiopianDateTime,
+  formatEthiopianClock,
+} from '@/lib/ethiopianCalendar';
 
 // Cashier POS — Phase 1 isolated UI
 // Data sources verified: GET /api/orders (and ?status=SERVED/PAID) + PATCH /api/orders/[id] {status:"PAID",paymentMethod}
-// Auth: MANAGER session (existing policy). No CASHIER role. No DB/API mutation.
+// Auth: STRICT CASHIER-only portal (app/cashier/layout.js enforces LIVE
+// Staff.role === CASHIER; MANAGER portal access removed). Payment-confirm
+// BUSINESS operations remain policy-gated (orders:payment:confirm). Identity
+// is never converted. No DB/API mutation.
 
 const FILTERS = [
   { key: 'ALL', label: 'All' },
@@ -73,21 +82,36 @@ function fmtMoney(n) {
     return `ETB ${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
   }
 }
-function fmtDate(iso) {
+// Canonical business display: Ethiopian Calendar + Africa/Addis_Ababa +
+// Ethiopian clock (12h day + 12h night). `new Date(iso)` only wraps an
+// existing UTC instant; interpretation is Addis-aware, never browser-local.
+function fmtDate(iso, lang) {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
-    return d.toLocaleString('en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    if (Number.isNaN(d.getTime())) return '—';
+    return formatEthiopianDateTime(d, lang === 'en' ? 'en' : 'am');
   } catch {
-    return String(iso).slice(0, 16);
+    return '—';
   }
 }
-function fmtTime(iso) {
+// Date-only Ethiopian business date (no time duplication in combined cells).
+function fmtDay(iso, lang) {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    if (Number.isNaN(d.getTime())) return '';
+    return formatEthiopianDate(d, lang === 'en' ? 'en' : 'am');
+  } catch {
+    return '';
+  }
+}
+function fmtTime(iso, lang) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return formatEthiopianClock(d, lang === 'en' ? 'en' : 'am');
   } catch {
     return '';
   }
@@ -103,6 +127,7 @@ const getServerSnapshot = () => false;
 
 export default function CashierUI() {
   const { lang, t } = useLanguage();
+  const router = useRouter();
   const hasMounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const [orders, setOrders] = useState([]);
@@ -115,17 +140,59 @@ export default function CashierUI() {
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState('');
   const [paySuccess, setPaySuccess] = useState('');
-  // Cashier transfer workflow mirrors Waiter: same PaymentInfo source, active only
-  const [cashierMethod, setCashierMethod] = useState('CASH');
-  const [paymentAccounts, setPaymentAccounts] = useState([]);
-  const [selectedTransferAccount, setSelectedTransferAccount] = useState(null);
-  const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
+
+  // Business brand for the printed ticket header — existing /api/brand
+  // config (read-only here), operational fallback otherwise. Never written
+  // from this component; never part of order/payment logic.
+  const [brandName, setBrandName] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    safeFetchJson('/api/brand', { cache: 'no-store' }).then((raw) => {
+      if (cancelled) return;
+      const n = raw?.data?.brand?.name;
+      if (typeof n === 'string' && n.trim()) setBrandName(n.trim());
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const ticketBrand = (brandName || 'AVENUE HOTEL').toUpperCase();
+
+  // AUTH-ARCH-6: explicit session-ended state (revoked/expired/invalid/
+  // disabled). While set: authenticated polling stops (no storm), SSE is
+  // suspended, stale in-flight results are discarded via authGenRef, and an
+  // overlay requires explicit CASHIER re-login. No credentials handled here;
+  // server order/payment state is never touched.
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const sessionEndedRef = useRef(false);
+  const authGenRef = useRef(0);
+
+  const enterSessionEnded = useCallback(() => {
+    authGenRef.current += 1;
+    sessionEndedRef.current = true;
+    setSessionEnded(true);
+    // No timer clearing needed: scheduleRefresh/fetchOrders early-return on
+    // sessionEndedRef, so any already-scheduled tick is a harmless no-op.
+  }, []);
+
+  const signInAgain = useCallback(async () => {
+    // Tab-scoped logout: only this tab's Session is revoked.
+    try {
+      await tabLogout();
+    } catch {}
+    authGenRef.current += 1;
+    sessionEndedRef.current = false;
+    setSessionEnded(false);
+    try { router.push('/cashier'); } catch {}
+  }, [router]);
+
 
   const refreshTimer = useRef(null);
   const selectedIdRef = useRef(selectedId);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   const fetchOrders = useCallback(async () => {
+    // Session ended: never fire authenticated refreshes (no retry storm).
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     try {
       const results = await Promise.allSettled([
         safeFetchJson('/api/orders', { cache: 'no-store' }),
@@ -161,6 +228,8 @@ export default function CashierUI() {
         const err = lastError || new Error('Failed to load orders');
         throw err;
       }
+      // Stale success after revocation must not repopulate the board.
+      if (gen !== authGenRef.current) return;
 
       const merged = Array.from(byId.values()).sort((a, b) => {
         const da = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -174,34 +243,41 @@ export default function CashierUI() {
         // Keep selection cleared if no data
       }
     } catch (err) {
+      if (gen !== authGenRef.current) return;
+      // Explicit session end enters the re-login state (polling/SSE stop).
+      // Transient failures (503/429/network) keep state and cadence.
+      if (getSessionErrorKind(err)) {
+        enterSessionEnded();
+        return;
+      }
       const s = err?.status;
-      if (s === 401) {
-        setError('Session expired or forbidden. Please re-login as Manager.');
-      } else if (s === 503 || /database|unavailable/i.test(err?.message || '')) {
-        setError('Database temporarily unavailable. Retrying…');
+      if (s === 503 || /database|unavailable/i.test(err?.message || '')) {
+        setError(t('cashierDbUnavailable'));
       } else if (s === 429) {
-        setError('Too many requests. Please slow down.');
+        setError(t('cashierTooMany'));
       } else if (s === 403) {
-        setError('Forbidden. Cashier requires Manager authorization.');
+        setError(err?.data?.error || err?.message || t('cashierForbidden'));
       } else {
-        setError(err?.message || 'Unable to load orders.');
+        setError(err?.message || t('cashierUnableLoad'));
       }
     } finally {
       setInitialLoading(false);
     }
-  }, []);
+  }, [enterSessionEnded, t]);
 
   const scheduleRefresh = useCallback(() => {
+    if (sessionEndedRef.current) return;
     clearTimeout(refreshTimer.current);
     refreshTimer.current = setTimeout(fetchOrders, 150);
   }, [fetchOrders]);
 
   useOrderEvents(useCallback((event) => {
+    if (sessionEndedRef.current) return;
     if (!event || event.type === 'ping') return;
     if (event.type === 'orders-changed' || event.type === 'ORDER_READY' || event.type === 'menu-changed' || !event.type) {
       scheduleRefresh();
     }
-  }, [scheduleRefresh]));
+  }, [scheduleRefresh]), !sessionEnded);
 
   useEffect(() => {
     const t = setTimeout(fetchOrders, 0);
@@ -265,36 +341,6 @@ export default function CashierUI() {
     }
   }, [selected, selectedId]);
 
-  // Cashier method/account is synced in handleSelect/clearSelection (event-handler pattern, no cascading effect)
-
-  // Load same active PaymentInfo accounts as Waiter workflow (no hardcoded values, active only) — async subscription pattern
-  useEffect(() => {
-    if (!selected) return;
-    if (String(selected.status).toUpperCase() !== 'SERVED') return;
-    if (cashierMethod !== 'TRANSFER') return;
-    let cancelled = false;
-    const loadAccounts = async () => {
-      // Subscription callback sets loading; not a direct sync setState in effect body
-      if (!cancelled) setPaymentAccountsLoading(true);
-      try {
-        const data = await safeFetchJson('/api/payment-info', { cache: 'no-store' });
-        if (cancelled) return;
-        const list = data?.data?.paymentInfos || data?.paymentInfos || [];
-        const active = (Array.isArray(list) ? list : []).filter((a) => a.isActive !== false);
-        setPaymentAccounts(active);
-        if (active.length === 1) setSelectedTransferAccount(String(active[0]._id || active[0].id));
-      } catch {
-        if (!cancelled) setPaymentAccounts([]);
-      } finally {
-        if (!cancelled) setPaymentAccountsLoading(false);
-      }
-    };
-    loadAccounts();
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, cashierMethod]);
-
   const counts = useMemo(() => {
     const c = { ALL: orders.length, SERVED: 0, READY: 0, PREPARING: 0, PENDING: 0, PAYMENT_PENDING: 0, PAID: 0, CANCELLED: 0, ARCHIVED: 0 };
     for (const o of orders) {
@@ -310,101 +356,59 @@ export default function CashierUI() {
     setSelectedId(sid);
     setPayError('');
     setPaySuccess('');
-    // Derive cashier method/account from the newly selected order (event-handler pattern, avoids setState-in-effect)
-    const order = orders.find((o) => String(o._id) === sid);
-    if (!order) {
-      setCashierMethod('CASH');
-      setSelectedTransferAccount(null);
-      return;
-    }
-    const m = normalizePayMethod(order.paymentMethod);
-    if (String(order.status).toUpperCase() === 'PAYMENT_PENDING') {
-      setCashierMethod(m === 'TRANSFER' ? 'TRANSFER' : 'CASH');
-      if (order.paymentAccountId) setSelectedTransferAccount(String(order.paymentAccountId));
-      else setSelectedTransferAccount(null);
-    } else {
-      setCashierMethod('CASH');
-      setSelectedTransferAccount(null);
-    }
-  }, [orders]);
+  }, []);
 
-  // Cashier submit for verification (SERVED → PAYMENT_PENDING) — replaces legacy direct Mark Paid bypass.
-  // Only confirmation (PAYMENT_PENDING → PAID) marks paid. Server validates method/account and auth.
-  const handlePay = useCallback(async (method) => {
-    if (!selected || payBusy) return;
-    const m = method === 'TRANSFER' ? 'TRANSFER' : 'CASH';
-    if (String(selected.status).toUpperCase() === 'PAID') {
-      setPayError('Order is already PAID.');
-      return;
-    }
-    if (String(selected.status).toUpperCase() === 'CANCELLED' || String(selected.status).toUpperCase() === 'ARCHIVED') {
-      setPayError('Cancelled or archived orders cannot be paid.');
-      return;
-    }
-    if (m === 'TRANSFER' && !selectedTransferAccount) {
-      setPayError('Please select a transfer account.');
-      return;
-    }
-    setPayBusy(true);
-    setPayError('');
-    setPaySuccess('');
+  // Identity pre-flight for irreversible payment mutations. Resolves THIS tab
+  // through the canonical session engine (/api/auth/me is tab-aware): only a
+  // live CASHIER or MANAGER may proceed. Anything else enters the re-login
+  // state instead of issuing a doomed mutation. Transient failures block with
+  // a retryable message (fail-closed UX, no state change).
+  const verifyCashierIdentity = useCallback(async (gen) => {
     try {
-      const body = { status: 'PAYMENT_PENDING', paymentMethod: m };
-      if (m === 'TRANSFER') body.paymentAccountId = selectedTransferAccount;
-      const data = await safeFetchJson(`/api/orders/${selected._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!data?.success) throw new Error(data?.error || data?.message || 'Payment submit failed');
-      const updated = data?.data?.order || data?.order;
-      if (!updated || !updated._id) throw new Error('Submit succeeded but response was malformed');
-      // Trust backend only — update list with returned order
-      setOrders((prev) => {
-        const idx = prev.findIndex((o) => String(o._id) === String(updated._id));
-        if (idx >= 0) {
-          const nxt = [...prev];
-          nxt[idx] = updated;
-          return nxt.sort((a, b) => {
-            const da = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const db = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return db - da;
-          });
-        }
-        return [updated, ...prev];
-      });
-      setPaySuccess(`Payment submitted for verification. ${updated.orderNumber} is now PAYMENT_PENDING via ${m}. Confirm from the pending queue.`);
-      setNotice(`◷ ${updated.orderNumber} pending verification (${m})`);
-    } catch (err) {
-      const s = err?.status;
-      if (s === 401) setPayError('Session expired. Please re-login.');
-      else if (s === 403) setPayError('Forbidden. Cashier authorization required.');
-      else if (s === 429) setPayError(`Too many requests. Retry after ${err?.retryAfter || 'a moment'}.`);
-      else if (s === 503) setPayError('Database unavailable. Please retry.');
-      else setPayError(err?.message ? `Submit failed: ${err.message}` : 'Submit failed. Please retry.');
-    } finally {
-      setPayBusy(false);
+      const me = await safeFetchJson('/api/auth/me', { cache: 'no-store' });
+      if (gen !== authGenRef.current || sessionEndedRef.current) return false;
+      const role = String(me?.data?.role || '').toUpperCase();
+      if (role !== 'CASHIER' && role !== 'MANAGER') {
+        enterSessionEnded('expired');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      if (gen !== authGenRef.current || sessionEndedRef.current) return false;
+      const kind = getSessionErrorKind(e);
+      if (kind) enterSessionEnded(kind);
+      else setPayError(t('cashierVerifySession'));
+      return false;
     }
-  }, [selected, payBusy, selectedTransferAccount]);
+  }, [enterSessionEnded, t]);
 
-  const handleConfirmPending = useCallback(async () => {
-    if (!selected || payBusy) return;
+  const handleConfirmPending = useCallback(async () => {    if (!selected || payBusy) return;
+    // Session ended: cashier must not confirm with a stale identity.
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     if (String(selected.status).toUpperCase() !== 'PAYMENT_PENDING') {
-      setPayError('Only pending payments can be confirmed.');
+      setPayError(t('cashierOnlyPendingConfirm'));
       return;
     }
     setPayBusy(true);
     setPayError('');
     setPaySuccess('');
     try {
+      // Identity pre-flight: resolve THIS tab through the canonical session
+      // engine before firing the mutation. A tab without a live CASHIER (or
+      // MANAGER) identity — e.g. operating on another tab's cookie — enters
+      // re-login instead of issuing a doomed request.
+      if (!(await verifyCashierIdentity(gen))) return;
       const data = await safeFetchJson(`/api/orders/${selected._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'PAID' }),
       });
-      if (!data?.success) throw new Error(data?.error || data?.message || 'Confirm failed');
+      if (!data?.success) throw new Error(data?.error || data?.message || t('cashierConfirmFailed'));
       const updated = data?.data?.order || data?.order;
-      if (!updated || !updated._id) throw new Error('Confirm succeeded but response was malformed');
+      if (!updated || !updated._id) throw new Error(t('cashierConfirmMalformed'));
+      // Stale success after revocation: apply nothing, show no receipt.
+      if (gen !== authGenRef.current) return;
       setOrders((prev) => {
         const idx = prev.findIndex((o) => String(o._id) === String(updated._id));
         if (idx >= 0) {
@@ -418,42 +422,53 @@ export default function CashierUI() {
         }
         return [updated, ...prev];
       });
-      setPaySuccess(`Payment verified. ${updated.orderNumber} marked PAID.`);
-      setNotice(`✓ ${updated.orderNumber} PAID (verified)`);
+      setPaySuccess(`${t('cashierPaymentVerified')}: ${updated.orderNumber}`);
+      setNotice(`✓ ${updated.orderNumber} — ${t('cashierPaid')}`);
     } catch (err) {
+      if (gen !== authGenRef.current) return;
+      if (getSessionErrorKind(err)) { enterSessionEnded(); return; }
       const s = err?.status;
-      if (s === 401) setPayError('Session expired. Please re-login as Manager.');
-      else if (s === 403) setPayError('Forbidden. Confirm requires Manager (Cashier).');
-      else if (s === 409) setPayError('Payment already confirmed or not pending.');
-      else setPayError(err?.message ? `Confirm failed: ${err.message}` : 'Confirm failed. Please retry.');
+      // Surface the server's precise authorization error instead of masking
+      // every 403 behind one string (the server distinguishes role mismatch,
+      // disabled accounts, and policy denials).
+      if (s === 403) setPayError(err?.data?.error || err?.message || t('cashierConfirmForbidden'));
+      else if (s === 409) setPayError(t('cashierAlreadyConfirmed'));
+      else setPayError(err?.message ? `${t('cashierConfirmFailed')}: ${err.message}` : t('cashierConfirmFailedRetry'));
     } finally {
       setPayBusy(false);
     }
-  }, [selected, payBusy]);
+  }, [selected, payBusy, enterSessionEnded, verifyCashierIdentity, t]);
 
   const handleRejectPending = useCallback(async () => {
     if (!selected || payBusy) return;
+    // Session ended: cashier must not reject with a stale identity.
+    if (sessionEndedRef.current) return;
+    const gen = authGenRef.current;
     if (String(selected.status).toUpperCase() !== 'PAYMENT_PENDING') {
-      setPayError('Only pending payments can be rejected.');
+      setPayError(t('cashierOnlyPendingReject'));
       return;
     }
-    const reason = window.prompt('Reason for rejection (optional, max 500 chars):') || '';
+    const reason = window.prompt(t('cashierRejectReasonPrompt')) || '';
     if (reason && (/<script/i.test(reason) || /javascript:/i.test(reason))) {
-      setPayError('Rejection reason contains invalid characters.');
+      setPayError(t('cashierRejectInvalid'));
       return;
     }
     setPayBusy(true);
     setPayError('');
     setPaySuccess('');
     try {
+      // Same identity pre-flight as confirmation (see above).
+      if (!(await verifyCashierIdentity(gen))) return;
       const data = await safeFetchJson(`/api/orders/${selected._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'REJECT_PAYMENT', reason: reason || undefined }),
       });
-      if (!data?.success) throw new Error(data?.error || data?.message || 'Reject failed');
+      if (!data?.success) throw new Error(data?.error || data?.message || t('cashierRejectFailed'));
       const updated = data?.data?.order || data?.order;
-      if (!updated || !updated._id) throw new Error('Reject succeeded but response was malformed');
+      if (!updated || !updated._id) throw new Error(t('cashierRejectMalformed'));
+      // Stale success after revocation: apply nothing, show no receipt.
+      if (gen !== authGenRef.current) return;
       setOrders((prev) => {
         const idx = prev.findIndex((o) => String(o._id) === String(updated._id));
         if (idx >= 0) {
@@ -467,33 +482,24 @@ export default function CashierUI() {
         }
         return [updated, ...prev];
       });
-      setPaySuccess(`Payment rejected. ${updated.orderNumber} returned to SERVED.`);
-      setNotice(`↩ ${updated.orderNumber} rejected`);
+      setPaySuccess(`${t('cashierPaymentRejected')}: ${updated.orderNumber}`);
+      setNotice(`↩ ${updated.orderNumber} — ${t('cashierRejectedWord')}`);
     } catch (err) {
+      if (gen !== authGenRef.current) return;
+      if (getSessionErrorKind(err)) { enterSessionEnded(); return; }
       const s = err?.status;
-      if (s === 401) setPayError('Session expired. Please re-login as Manager.');
-      else if (s === 403) setPayError('Forbidden. Reject requires Manager.');
-      else setPayError(err?.message ? `Reject failed: ${err.message}` : 'Reject failed. Please retry.');
+      if (s === 403) setPayError(err?.data?.error || err?.message || t('cashierRejectForbidden'));
+      else setPayError(err?.message ? `${t('cashierRejectFailed')}: ${err.message}` : t('cashierRejectFailedRetry'));
     } finally {
       setPayBusy(false);
     }
-  }, [selected, payBusy]);
+  }, [selected, payBusy, enterSessionEnded, verifyCashierIdentity, t]);
 
   const clearSelection = useCallback(() => {
     setSelectedId(null);
     setPayError('');
     setPaySuccess('');
-    setCashierMethod('CASH');
-    setSelectedTransferAccount(null);
   }, []);
-
-  if (!hasMounted) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-[var(--c-bg)]">
-        <div className="text-sm font-bold text-[var(--c-muted)]">Loading Cashier…</div>
-      </div>
-    );
-  }
 
   const selStatus = selected ? String(selected.status).toUpperCase() : null;
   const selIsPaid = selStatus === 'PAID';
@@ -503,17 +509,58 @@ export default function CashierUI() {
   // Reliable receipt only when we have orderNumber, items, totalAmount, createdAt
   const canShowReceipt = !!(selected && selected.orderNumber && Array.isArray(selected.items) && Number.isFinite(Number(selected.totalAmount)));
 
+  // Gate @media print on the dedicated ticket: while a printable ticket is
+  // mounted the browser prints ONLY #bono-thermal-ticket; otherwise printing
+  // behaves normally (never a blank page). No navigation/state changes.
+  const printableTicket = !!(canShowReceipt && selected);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (printableTicket) document.body.classList.add('bono-print-ticket');
+    else document.body.classList.remove('bono-print-ticket');
+    return () => document.body.classList.remove('bono-print-ticket');
+  }, [printableTicket]);
+
+  if (!hasMounted) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-[var(--c-bg)]">
+        <div className="text-sm font-bold text-[var(--c-muted)]">{t('cashierLoading')}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--c-bg)] text-[var(--c-text)]">
+      {/* AUTH-ARCH-6: explicit session-ended state. Blocks actions until
+          CASHIER re-login via the existing PinGuard flow. No credentials
+          handled here. */}
+      {sessionEnded && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-6" role="alertdialog" aria-modal="true" aria-label="Session ended">
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--c-border-soft)] bg-[var(--c-card)] p-6 text-center shadow-lg">
+            <h2 className="text-lg font-black tracking-tight text-[var(--c-text)]">
+              {t('cashierSessionEnded')}
+            </h2>
+            <p className="mt-2 text-sm font-medium text-[var(--c-muted)]">
+              {t('cashierPleaseSignIn')}
+            </p>
+            <button
+              type="button"
+              onClick={signInAgain}
+              className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-[var(--c-accent)] text-sm font-black uppercase tracking-wide text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner"
+            >
+              {t('cashierSignInAgain')}
+            </button>
+          </div>
+        </div>
+      )}
       {/* Compact header — contained curved container matching Menu CRUD / Manager Reports */}
-      <header className="sticky top-4 z-30 mx-3 sm:mx-4 mt-4 rounded-2xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] dark:border-[#2A2B36] px-3 sm:px-4 py-3 shadow-sm backdrop-blur">
+      <header className="relative mx-3 sm:mx-4 mt-4 rounded-2xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] dark:border-[#2A2B36] px-3 sm:px-4 py-3 shadow-sm backdrop-blur">
         <div className="mx-auto max-w-[1600px] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="min-w-0">
               <p className="text-base sm:text-lg font-black tracking-tight leading-none mt-1 text-[var(--c-text)]">{t('cashierTitle')}</p>
             </div>
             <span className="hidden lg:inline-flex ml-2 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-[var(--c-muted)]">
-              {orders.length} tickets
+              {orders.length} {t('cashierTickets')}
             </span>
           </div>
 
@@ -521,9 +568,9 @@ export default function CashierUI() {
             <LanguageToggle />
             <Link
               href="/"
-              aria-label="Back to home"
-              title="Home"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm"
+              aria-label={t('home')}
+              title={t('home')}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] shadow-sm hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
@@ -540,7 +587,7 @@ export default function CashierUI() {
           {error && (
             <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
               <span>{error}</span>
-              <button type="button" onClick={fetchOrders} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626] hover:bg-[#FFF7ED]">Retry</button>
+              <button type="button" onClick={fetchOrders} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626] hover:bg-[#FFF7ED]">{t('uiRetry')}</button>
             </div>
           )}
           {paySuccess && (
@@ -556,7 +603,7 @@ export default function CashierUI() {
       <main className="mx-auto max-w-[1600px] px-3 sm:px-4 py-4 grid gap-4 lg:grid-cols-12 items-start">
         {/* LEFT — Order Queue */}
         <section className="lg:col-span-5 xl:col-span-4 flex flex-col gap-4 min-h-0">
-          <div className="card-elevated rounded-2xl p-3 sm:p-4 bg-[var(--c-card)]">
+            <div className="rounded-2xl p-3 sm:p-4 bg-[var(--c-card)] border border-[var(--c-border-soft)] shadow-[var(--shadow-card)]">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('cashierQueue')}</h2>
               <span className="rounded-full bg-[var(--c-bg)] px-2.5 py-1 text-xs font-bold text-[var(--c-muted)] border border-[var(--c-border-soft)]">
@@ -574,11 +621,11 @@ export default function CashierUI() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('cashierSearchPh')}
-                aria-label="Search by table or order"
+                aria-label={t('cashierSearchAria')}
                 className="w-full bg-transparent text-sm font-medium text-[var(--c-text)] placeholder:text-[var(--c-muted)] focus:outline-none"
               />
-              {search && (
-                <button type="button" onClick={() => setSearch('')} className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] h-6 w-6 flex items-center justify-center text-[var(--c-muted)] hover:text-[var(--c-text)]" aria-label="Clear search">✕</button>
+                {search && (
+                <button type="button" onClick={() => setSearch('')} className="shrink-0 rounded-full bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] h-6 w-6 flex items-center justify-center text-[var(--c-muted)] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]" aria-label={t('cashierClearSearch')}>✕</button>
               )}
             </label>
 
@@ -593,9 +640,9 @@ export default function CashierUI() {
                     type="button"
                     onClick={() => setFilter(f.key)}
                     aria-pressed={active}
-                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold border transition-all ${active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)] hover:text-[var(--c-text)]'}`}
+                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold border transition-all duration-150 ease-out active:shadow-inner ${active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}
                   >
-                    {f.key === 'PENDING' ? t('cashierPending') : f.key === 'PAID' ? t('cashierPaid') : f.label} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-black ${active ? 'bg-black/15 dark:bg-white/15 text-[#1E293B] dark:text-white' : 'bg-[var(--c-bg)] border border-[var(--c-border-soft)]'}`}>{n}</span>
+                    {({ ALL: t('all'), SERVED: t('cashierServed'), READY: t('ready'), PREPARING: t('preparing'), PENDING: t('cashierPending'), PAYMENT_PENDING: t('cashierPayPending'), PAID: t('cashierPaid'), CANCELLED: t('cashierCancelledWord'), ARCHIVED: t('cashierArchived') }[f.key] || f.label)} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-black ${active ? 'bg-black/15 dark:bg-white/15 text-[#1E293B] dark:text-white' : 'bg-[var(--c-bg)] border border-[var(--c-border-soft)]'}`}>{n}</span>
                   </button>
                 );
               })}
@@ -604,13 +651,13 @@ export default function CashierUI() {
             {/* Refresh */}
             <div className="mt-3 flex items-center justify-between">
               <p className="text-[11px] font-medium text-[var(--c-muted)] hidden sm:block">
-                {initialLoading ? 'Loading…' : `${filtered.length} ticket${filtered.length !== 1 ? 's' : ''} tap to bill`}
+                {initialLoading ? t('cashierLoading') : `${filtered.length} ${t('cashierTickets')} · ${t('cashierTapToBill')}`}
               </p>
               <button
                 type="button"
                 onClick={fetchOrders}
                 disabled={initialLoading}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm disabled:opacity-50"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] shadow-sm disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden="true"><path d="M21 12a9 9 0 11-2.64-6.36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 {t('cashierRefresh')}
@@ -619,7 +666,7 @@ export default function CashierUI() {
           </div>
 
           {/* Order list */}
-          <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-2 sm:p-3 flex flex-col min-h-[320px] max-h-[65vh] lg:max-h-[72vh] overflow-hidden">
+          <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-2 sm:p-3 flex flex-col min-h-[320px] max-h-[65vh] lg:max-h-[72vh] overflow-hidden">
             {initialLoading ? (
               <div className="space-y-2 p-2">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -629,12 +676,12 @@ export default function CashierUI() {
             ) : filtered.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center py-16 px-6 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--c-border-soft)] bg-[var(--c-bg)] text-[var(--c-muted)] mb-3">—</div>
-                <p className="text-sm font-bold text-[var(--c-text)]">{error ? 'Unavailable' : search || filter !== 'ALL' ? 'No matching tickets' : t('cashierNoTickets')}</p>
+                <p className="text-sm font-bold text-[var(--c-text)]">{error ? t('cashierUnavailable') : search || filter !== 'ALL' ? t('cashierNoMatching') : t('cashierNoTickets')}</p>
                 <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[28ch]">
-                  {error ? 'Check connection and retry. Orders require Manager session.' : search ? `No results for “${search.trim()}”. Try order # or table number.` : filter !== 'ALL' ? `No ${filter} tickets in this window.` : 'New orders will appear here when waiters send them.'}
+                  {error ? t('cashierConnHint') : search ? `${t('cashierNoResults')} “${search.trim()}”. ${t('cashierTryHint')}` : filter !== 'ALL' ? `${filter} · ${t('cashierNoTickets')}` : t('cashierNewOrdersHint')}
                 </p>
                 {!error && (search || filter !== 'ALL') && (
-                  <button type="button" onClick={() => { setSearch(''); setFilter('ALL'); }} className="mt-3 rounded-xl bg-[var(--c-accent)] px-3 py-1.5 text-xs font-black text-[#1E293B] dark:text-white">Clear filters</button>
+                  <button type="button" onClick={() => { setSearch(''); setFilter('ALL'); }} className="mt-3 rounded-xl bg-[var(--c-accent)] px-3 py-1.5 text-xs font-black text-[#1E293B] dark:text-white">{t('cashierClearFilters')}</button>
                 )}
               </div>
             ) : (
@@ -645,7 +692,7 @@ export default function CashierUI() {
                   const pb = payBadge(o.paymentMethod);
                   const total = Number(o.totalAmount);
                   const itemsPreview = (o.items || []).slice(0, 2).map((it) => itemNameOf(it, lang)).join(', ');
-                  const more = (o.items?.length || 0) > 2 ? ` +${o.items.length - 2} more` : '';
+                    const more = (o.items?.length || 0) > 2 ? ` +${o.items.length - 2} ${t('cashierMore')}` : '';
                   const table = o.tableNumber ?? '—';
                   return (
                     <button
@@ -653,26 +700,26 @@ export default function CashierUI() {
                       type="button"
                       onClick={() => handleSelect(o._id)}
                       aria-pressed={isSelected}
-                      className={`w-full text-left rounded-xl border p-3 transition-all flex flex-col gap-2 ${isSelected ? 'bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] border-[var(--c-accent)]/30 shadow-sm' : 'bg-white dark:bg-[#12131A] border-[var(--c-border-soft)] hover:border-[var(--c-accent)]/30 hover:bg-[var(--c-bg)]'}`}
+                      className={`w-full text-left rounded-xl border p-3 flex flex-col gap-2 ${isSelected ? 'bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] border-[var(--c-accent)]/30 shadow-sm' : 'bg-white dark:bg-[#12131A] border-[var(--c-border-soft)]'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="inline-flex items-center rounded-lg bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-2 py-1 text-xs font-black text-[var(--c-text)]">T{table}</span>
                             <span className="text-xs font-bold text-[var(--c-muted)] truncate max-w-[14ch]" title={o.orderNumber}>{o.orderNumber}</span>
-                            {o.isExternal && <span className="rounded-full bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] px-2 py-0.5 text-[10px] font-black uppercase">External</span>}
+                            {o.isExternal && <span className="rounded-full bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] px-2 py-0.5 text-[10px] font-black uppercase">{t('cashierExternal')}</span>}
                           </div>
-                          <p className="mt-1 text-xs font-semibold text-[var(--c-muted)] truncate">Waiter: {o.waiterName || '—'} {o.waiterNumber != null ? `#${o.waiterNumber}` : ''}</p>
+                          <p className="mt-1 text-xs font-semibold text-[var(--c-muted)] truncate">{t('waiter')}: {o.waiterName || '—'} {o.waiterNumber != null ? `#${o.waiterNumber}` : ''}</p>
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${sb.cls}`}>{sb.label}</span>
                       </div>
 
                       <div className="flex items-end justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium text-[var(--c-muted)]" title={(o.items || []).map((it) => `${itemNameOf(it, lang)} ×${it.quantity}`).join(', ')}>
-                            {itemsPreview}{more || (!itemsPreview ? 'No items' : '')}
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-medium text-[var(--c-faint)]">{fmtDate(o.createdAt)}</p>
+                            <p className="truncate text-xs font-medium text-[var(--c-muted)]" title={(o.items || []).map((it) => `${itemNameOf(it, lang)} ×${it.quantity}`).join(', ')}>
+                              {itemsPreview}{more || (!itemsPreview ? t('cashierNoItems') : '')}
+                            </p>
+                          <p className="mt-0.5 text-[11px] font-medium text-[var(--c-faint)]">{fmtDate(o.createdAt, lang)}</p>
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="text-sm font-black text-[var(--c-text)]">{fmtMoney(total)}</p>
@@ -690,18 +737,18 @@ export default function CashierUI() {
         {/* RIGHT — Selected Bill + Payment + Receipt */}
         <section className="lg:col-span-7 xl:col-span-8 flex flex-col gap-4 min-h-0">
           {!selected ? (
-            <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-6 sm:p-8 flex flex-col items-center justify-center text-center min-h-[420px]">
+            <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-6 sm:p-8 flex flex-col items-center justify-center text-center min-h-[420px]">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] text-[var(--c-muted)] mb-4">
                 <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden="true"><path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M9 5a2 2 0 012-2h2a2 2 0 012 2v1a2 2 0 01-2 2h-2a2 2 0 01-2-2V5z" stroke="currentColor" strokeWidth="2"/><path d="M9 12h6M9 16h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               </div>
-              <h3 className="text-base font-black text-[var(--c-text)]">Select a ticket to bill</h3>
-              <p className="mt-2 max-w-[36ch] text-sm font-medium text-[var(--c-muted)]">Choose a ticket from the queue. You will see the itemized bill, payment state, and a receipt preview.</p>
-              <p className="mt-4 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-2 text-xs font-bold text-[var(--c-muted)]">Tip: search by table number (e.g. 3) or order # (e.g. ORD-1001)</p>
+              <h3 className="text-base font-black text-[var(--c-text)]">{t('cashierSelectTicket')}</h3>
+              <p className="mt-2 max-w-[36ch] text-sm font-medium text-[var(--c-muted)]">{t('cashierSelectTicketDesc')}</p>
+              <p className="mt-4 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-2 text-xs font-bold text-[var(--c-muted)]">{t('cashierSearchTip')}</p>
             </div>
           ) : (
             <>
               {/* Bill Panel */}
-              <div className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -710,28 +757,28 @@ export default function CashierUI() {
                         <span className="text-base font-black text-[var(--c-text)]">{selected.tableNumber ?? '—'}</span>
                       </span>
                       <span className="rounded-xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] shadow-sm truncate max-w-[20ch]" title={selected.orderNumber}>{selected.orderNumber}</span>
-                      {selected.isExternal && <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-black uppercase text-[#92400E]">External</span>}
+                      {selected.isExternal && <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-black uppercase text-[#92400E]">{t('cashierExternal')}</span>}
                       <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${statusBadge(selected.status).cls}`}>{statusBadge(selected.status).label}</span>
                     </div>
                     <p className="mt-2 text-xs font-semibold text-[var(--c-muted)]">
-                      Waiter <span className="font-black text-[var(--c-text)]">{selected.waiterName || '—'}</span>
-                      {selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''} {fmtDate(selected.createdAt)}
+                      {t('waiter')} <span className="font-black text-[var(--c-text)]">{selected.waiterName || '—'}</span>
+                      {selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''} {fmtDate(selected.createdAt, lang)}
                     </p>
                     {selected.updatedAt && selected.updatedAt !== selected.createdAt && (
-                      <p className="text-[11px] font-medium text-[var(--c-faint)]">Updated {fmtDate(selected.updatedAt)}</p>
+                      <p className="text-[11px] font-medium text-[var(--c-faint)]">{t('cashierUpdated')} {fmtDate(selected.updatedAt, lang)}</p>
                     )}
                     {selected.paymentRejectedAt && String(selected.status).toUpperCase() === 'SERVED' && (
-                      <p className="mt-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">Returned to waiter{selected.paymentRejectionReason ? `: ${selected.paymentRejectionReason}` : ''} waiting for resubmission</p>
+                      <p className="mt-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">{t('cashierReturnedToWaiter')}{selected.paymentRejectionReason ? `: ${selected.paymentRejectionReason}` : ''} {t('cashierWaitingResubmit')}</p>
                     )}
                   </div>
-                  <button type="button" onClick={clearSelection} className="shrink-0 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]">Close</button>
+                  <button type="button" onClick={clearSelection} className="shrink-0 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)]">{t('close')}</button>
                 </div>
 
                 {/* Items */}
                 <div className="px-4 sm:px-5 py-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)] mb-3">Items {selected.items?.length ?? 0} line{selected.items?.length === 1 ? '' : 's'}</h4>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)] mb-3">{t('cashierItemsTitle')} ({selected.items?.length ?? 0})</h4>
                   {!Array.isArray(selected.items) || selected.items.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-[var(--c-border-soft)] bg-[var(--c-bg)] px-4 py-6 text-center text-sm font-medium text-[var(--c-muted)]">No items on this ticket</p>
+                    <p className="rounded-xl border border-dashed border-[var(--c-border-soft)] bg-[var(--c-bg)] px-4 py-6 text-center text-sm font-medium text-[var(--c-muted)]">{t('cashierNoItemsOnTicket')}</p>
                   ) : (
                     <div className="space-y-2">
                       {(selected.items || []).map((it, idx) => {
@@ -744,9 +791,9 @@ export default function CashierUI() {
                           <div key={`${selected._id}-it-${it.lineId || idx}`} className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${isCancelled ? 'border-[#FECACA] bg-[#FEF2F2] dark:border-[#7F1D1D] dark:bg-[#1C1D24] opacity-80' : 'border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A]'}`}>
                             <span className={`flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${isCancelled ? 'bg-[#FECACA] text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white' : 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white'}`}>{qty}</span>
                             <div className="min-w-0 flex-1">
-                              <p className={`truncate text-sm font-bold ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`} title={nm}>{nm}{isCancelled ? ' Cancelled' : ''}</p>
-                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} {fmtMoney(price)} each {it.isExternal ? 'Legacy External' : ''}{isCancelled ? ` ${it.cancelledStation || 'Station'}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
-                              {isCancelled && it.cancelledAt && <p className="text-[10px] text-[#991B1B] dark:text-[#FCA5A5]">Cancelled {fmtDate(it.cancelledAt)} {fmtTime(it.cancelledAt)}</p>}
+                              <p className={`truncate text-sm font-bold ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`} title={nm}>{nm}{isCancelled ? ` ${t('cashierCancelledWord')}` : ''}</p>
+                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} {fmtMoney(price)} {t('cashierEach')} {it.isExternal ? t('cashierLegacyExternal') : ''}{isCancelled ? ` ${it.cancelledStation || t('cashierStationWord')}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
+                              {isCancelled && it.cancelledAt && <p className="text-[10px] text-[#991B1B] dark:text-[#FCA5A5]">{t('cashierCancelledWord')} {fmtDate(it.cancelledAt, lang)}</p>}
                               {Array.isArray(it.components) && it.components.length > 0 && (
                                 <ul className="mt-1 space-y-0.5">
                                   {it.components.map((c, ci) => (
@@ -774,14 +821,14 @@ export default function CashierUI() {
                       return (
                         <>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{hasCancelled ? 'Payable (Net)' : t('cashierTotal')}</span>
+                            <span className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{hasCancelled ? t('cashierPayableNet') : t('cashierTotal')}</span>
                             <span className="text-xl sm:text-2xl font-black text-[var(--c-text)]">{fmtMoney(hasCancelled ? net : gross)}</span>
                           </div>
                           {hasCancelled && (
-                            <div className="mt-1 flex items-center justify-between text-xs font-semibold text-[#DC2626] dark:text-[#FCA5A5]">
-                              <span>Gross {fmtMoney(gross)} Cancelled {fmtMoney(cancelled)}</span>
-                              <span className="rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2 py-0.5 text-[10px] font-black">CANCELLED LINES EXCLUDED</span>
-                            </div>
+                              <div className="mt-1 flex items-center justify-between text-xs font-semibold text-[#DC2626] dark:text-[#FCA5A5]">
+                                <span>{t('cashierGross')} {fmtMoney(gross)} {t('cashierCancelledAmt')} {fmtMoney(cancelled)}</span>
+                                <span className="rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2 py-0.5 text-[10px] font-black">{t('cashierCancelledExcluded')}</span>
+                              </div>
                           )}
                         </>
                       );
@@ -789,7 +836,7 @@ export default function CashierUI() {
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--c-muted)]">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black uppercase ${payBadge(selected.paymentMethod).cls}`}>{payLabel(selected.paymentMethod)}</span>
                       {selected.paymentMethod && String(selected.paymentMethod).toUpperCase() !== 'NONE' && (
-                        <span>Method: <strong className="text-[var(--c-text)]">{payLabel(selected.paymentMethod)}</strong></span>
+                        <span>{t('cashierMethod')}: <strong className="text-[var(--c-text)]">{payLabel(selected.paymentMethod)}</strong></span>
                       )}
                       {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-bold text-[var(--c-text)]">
@@ -797,11 +844,11 @@ export default function CashierUI() {
                         </span>
                       )}
                       {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && !selected.paymentAccountSnapshot && selIsPaid && (
-                        <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-bold text-[#92400E]">Legacy transfer account unknown</span>
+                        <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-bold text-[#92400E]">{t('cashierLegacyAccount')}</span>
                       )}
-                      {selIsPaid && selected.paidAt && <span>Paid {fmtDate(selected.paidAt)} {fmtTime(selected.paidAt) && `at ${fmtTime(selected.paidAt)}`}</span>}
-                      {selIsCancelled && <span className="text-[#DC2626]">Voided</span>}
-                      {!selIsPaid && !selIsCancelled && <span className="text-[var(--c-muted)]">Unpaid awaiting settlement</span>}
+                      {selIsPaid && selected.paidAt && <span>{t('cashierPaid')} {fmtDate(selected.paidAt, lang)}</span>}
+                      {selIsCancelled && <span className="text-[#DC2626]">{t('cashierVoided')}</span>}
+                      {!selIsPaid && !selIsCancelled && <span className="text-[var(--c-muted)]">{t('cashierUnpaidAwaiting')}</span>}
                     </div>
                   </div>
 
@@ -809,15 +856,15 @@ export default function CashierUI() {
                   {(selected.preparingAt || selected.readyAt || selected.servedAt || selected.paidAt || selected.completedAt) && (
                     <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {[
-                        ['Preparing', selected.preparingAt],
-                        ['Ready', selected.readyAt],
-                        ['Served', selected.servedAt],
-                        ['Paid', selected.paidAt],
+                        [t('preparing'), selected.preparingAt],
+                        [t('ready'), selected.readyAt],
+                        [t('cashierServed'), selected.servedAt],
+                        [t('cashierPaid'), selected.paidAt],
                       ].map(([lbl, iso]) => (
                         <div key={lbl} className="rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-2.5 py-2">
                           <p className="text-[10px] font-black uppercase tracking-wide text-[var(--c-muted)]">{lbl}</p>
-                          <p className="text-xs font-bold text-[var(--c-text)]">{iso ? fmtTime(iso) : '—'}</p>
-                          <p className="text-[10px] font-medium text-[var(--c-muted)]">{iso ? fmtDate(iso).split(',')[0] : ''}</p>
+                          <p className="text-xs font-bold text-[var(--c-text)]">{iso ? fmtTime(iso, lang) : '—'}</p>
+                          <p className="text-[10px] font-medium text-[var(--c-muted)]">{iso ? fmtDay(iso, lang) : ''}</p>
                         </div>
                       ))}
                     </div>
@@ -826,12 +873,12 @@ export default function CashierUI() {
               </div>
 
               {/* Payment Action Area */}
-              <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-4 sm:p-5">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('cashierPayment')}</h4>
-                  {selIsPaid && <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F0FDF4] border border-[#BBF7D0] px-2.5 py-1 text-xs font-black text-[#15803D]">✓ Settled</span>}
-                  {selIsCancelled && <span className="inline-flex rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2.5 py-1 text-xs font-black text-[#DC2626]">Voided</span>}
-                  {selIsUnpaid && <span className="inline-flex rounded-full bg-white dark:bg-[#12131A] border border-[var(--c-border-soft)] px-2.5 py-1 text-xs font-bold text-[var(--c-muted)]">Awaiting</span>}
+                  {selIsPaid && <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F0FDF4] border border-[#BBF7D0] px-2.5 py-1 text-xs font-black text-[#15803D]">✓ {t('cashierPaid')}</span>}
+                  {selIsCancelled && <span className="inline-flex rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2.5 py-1 text-xs font-black text-[#DC2626]">{t('cashierVoided')}</span>}
+                  {selIsUnpaid && <span className="inline-flex rounded-full bg-white dark:bg-[#12131A] border border-[var(--c-border-soft)] px-2.5 py-1 text-xs font-bold text-[var(--c-muted)]">{t('cashierAwaitingWord')}</span>}
                 </div>
 
                 {payError && (
@@ -840,95 +887,57 @@ export default function CashierUI() {
 
                 {selIsPaid ? (
                   <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] dark:bg-[#1C1D24] dark:border-[#2A2B36] p-4">
-                    <p className="text-sm font-black text-[#15803D] dark:text-[#86EFAC]">This ticket is PAID.</p>
-                    {canShowReceipt && <p className="mt-2 text-xs font-bold text-[var(--c-muted)]">Receipt preview below is printable.</p>}
+                    <p className="text-sm font-black text-[#15803D] dark:text-[#86EFAC]">{t('cashierTicketPaid')}</p>
+                    {canShowReceipt && <p className="mt-2 text-xs font-bold text-[var(--c-muted)]">{t('cashierReceiptPrintable')}</p>}
                   </div>
                 ) : selIsPaymentPending ? (
                   <div className="rounded-xl border border-[#FEF3C7] bg-[#FEF3C7]/50 dark:bg-[#7C2D12]/30 dark:border-[#7C2D12] p-4">
-                    <p className="text-sm font-black text-[#92400E] dark:text-[#FDBA74]">Payment pending verification {payLabel(selected.paymentMethod)} {selected.paymentAccountSnapshot ? `${selected.paymentAccountSnapshot.bankName} ${selected.paymentAccountSnapshot.ownerName} ${selected.paymentAccountSnapshot.accountNumber}` : ""}</p>
-                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">Submitted {selected.paymentSubmittedAt ? fmtDate(selected.paymentSubmittedAt) : ""} {selected.paymentSubmittedAt ? fmtTime(selected.paymentSubmittedAt) : ""}</p>
-                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">{t('cashierAmount')}: <strong>{fmtMoney(selected.totalAmount)}</strong> (net {fmtMoney(selected.netAmount ?? selected.totalAmount)})</p>
+                    <p className="text-sm font-black text-[#92400E] dark:text-[#FDBA74]">{t('cashierPendingVerification')} {payLabel(selected.paymentMethod)} {selected.paymentAccountSnapshot ? `${selected.paymentAccountSnapshot.bankName} ${selected.paymentAccountSnapshot.ownerName} ${selected.paymentAccountSnapshot.accountNumber}` : ""}</p>
+                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">{t('cashierSubmitted')} {selected.paymentSubmittedAt ? fmtDate(selected.paymentSubmittedAt, lang) : ""}</p>
+                    <p className="mt-1 text-xs font-medium text-[#92400E]/80 dark:text-[#FDBA74]/80">{t('cashierAmount')}: <strong>{fmtMoney(selected.totalAmount)}</strong> ({t('cashierNet')} {fmtMoney(selected.netAmount ?? selected.totalAmount)})</p>
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button type="button" onClick={handleConfirmPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl bg-[#16A34A] text-white px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">✓ {t('cashierConfirm')} PAID</button>
-                      <button type="button" onClick={handleRejectPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-white text-[#DC2626] px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">↩ {t('cashierReject')} / Return</button>
+                      <button type="button" onClick={handleConfirmPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl bg-[#16A34A] text-white px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">✓ {t('cashierConfirm')} {t('cashierPaid')}</button>
+                      <button type="button" onClick={handleRejectPending} disabled={payBusy} className="flex items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-white text-[#DC2626] px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">↩ {t('cashierReject')} / {t('cashierReturnWord')}</button>
                     </div>
                   </div>
                 ) : selIsCancelled ? (
                   <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-4">
-                    <p className="text-sm font-bold text-[#DC2626]">This ticket is {String(selected.status).toUpperCase()} and cannot be paid.</p>
-                    <p className="mt-1 text-xs font-medium text-[#DC2626]/80">Create a new order if payment is still required.</p>
+                    <p className="text-sm font-bold text-[#DC2626]">{t('cashierTicketIs')} {String(selected.status).toUpperCase()} {t('cashierCannotBePaid')}</p>
+                    <p className="mt-1 text-xs font-medium text-[#DC2626]/80">{t('cashierCreateNewOrder')}</p>
                   </div>
                 ) : (
-                  <>
-                    <p className="text-sm font-medium text-[var(--c-muted)] mb-3">
-                      Submit <strong className="text-[var(--c-text)]">{selected.orderNumber}</strong> for <strong className="text-[var(--c-text)]">{fmtMoney(selected.totalAmount)}</strong> for verification.
+                  <div className="rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-4">
+                    <p className="text-sm font-bold text-[#1E293B] dark:text-white">
+                      {selected.orderNumber} · {fmtMoney(selected.totalAmount)}
                     </p>
-                    <div className="mb-3 grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => { setCashierMethod('CASH'); setPayError(''); }} aria-pressed={cashierMethod === 'CASH'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border ${cashierMethod === 'CASH' ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Cash</button>
-                      <button type="button" onClick={() => { setCashierMethod('TRANSFER'); setPayError(''); }} aria-pressed={cashierMethod === 'TRANSFER'} className={`rounded-xl py-2.5 text-xs font-black uppercase tracking-wide border ${cashierMethod === 'TRANSFER' ? 'bg-[#1E293B] dark:bg-white text-white dark:text-[#12131A] border-transparent' : 'bg-white dark:bg-[#1C1D24] text-[var(--c-muted)] border-[var(--c-border-soft)]'}`}>Transfer</button>
-                    </div>
-                    {cashierMethod === 'TRANSFER' && (
-                      <div className="mb-3 rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] dark:bg-[#12131A] p-3">
-                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Transfer account active only</p>
-                        {paymentAccountsLoading ? (
-                          <p className="py-2 text-center text-xs font-medium text-[var(--c-muted)]">Loading accounts…</p>
-                        ) : paymentAccounts.length === 0 ? (
-                          <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">No active transfer accounts. Contact manager.</p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {paymentAccounts.map((acc) => {
-                              const accId = String(acc._id || acc.id);
-                              const sel = selectedTransferAccount === accId;
-                              return (
-                                <button key={accId} type="button" onClick={() => setSelectedTransferAccount(accId)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left ${sel ? 'border-[var(--c-accent)] bg-white dark:bg-[#1C1D24]' : 'border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24]'}`}>
-                                  <span className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${sel ? 'border-[var(--c-accent)]' : 'border-[var(--c-border-soft)]'}`}>{sel && <span className="h-2 w-2 rounded-full bg-[var(--c-accent)]" />}</span>
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-xs font-bold text-[var(--c-text)]">{acc.bankName} {acc.ownerName}</span>
-                                    <span className="block truncate text-[11px] font-medium text-[var(--c-muted)]">{acc.accountNumber}</span>
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => handlePay(cashierMethod)}
-                        disabled={payBusy || (cashierMethod === 'TRANSFER' && !selectedTransferAccount)}
-                        aria-disabled={payBusy || (cashierMethod === 'TRANSFER' && !selectedTransferAccount)}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-[var(--c-accent)] text-[#1E293B] dark:text-white px-4 py-3.5 text-sm font-black uppercase tracking-wide shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {payBusy ? 'Processing…' : cashierMethod === 'CASH' ? 'Submit Cash for Verification' : 'Submit Transfer for Verification'}
-                      </button>
-                    </div>
-                  </>
+                    <p className="mt-1 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">
+                      {t('cashierAwaitingWaiter')}
+                    </p>
+                  </div>
                 )}
               </div>
 
               {/* Receipt Preview — only when reliable data */}
-              <div className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                 <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Receipt Preview</h4>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('cashierReceiptPreview')}</h4>
                   <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${canShowReceipt ? 'bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] text-[var(--c-muted)]' : 'bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626]'}`}>
-                    {canShowReceipt ? (selIsPaid ? 'Issuable' : 'Preview') : 'Unavailable'}
+                    {canShowReceipt ? (selIsPaid ? t('cashierIssuable') : t('cashierPreviewWord')) : t('cashierUnavailableWord')}
                   </span>
                 </div>
                 {!canShowReceipt ? (
                   <div className="px-4 sm:px-5 py-8 text-center">
-                    <p className="text-sm font-bold text-[var(--c-muted)]">Receipt unavailable</p>
-                    <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">Receipt requires at least order number, items, and total. This ticket is missing one of those fields and no receipt is fabricated.</p>
+                    <p className="text-sm font-bold text-[var(--c-muted)]">{t('cashierReceiptUnavailable')}</p>
+                    <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">{t('cashierReceiptUnavailableDesc')}</p>
                   </div>
                 ) : (
                   <div className="px-4 sm:px-5 py-5 font-mono text-xs leading-relaxed">
                     <div className="mx-auto max-w-md rounded-xl border border-dashed border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] p-4 shadow-sm">
                       <div className="text-center border-b border-dashed border-[var(--c-border-soft)] pb-3 mb-3">
-                        <p className="font-sans text-sm font-black tracking-tight text-[var(--c-text)]">BONO HOTEL</p>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--c-muted)]">Cashier Receipt Preview</p>
-                        <p className="mt-1 text-[11px] font-bold text-[var(--c-text)]">{selected.orderNumber} Table {selected.tableNumber}</p>
-                        <p className="text-[11px] text-[var(--c-muted)]">{fmtDate(selected.createdAt)} {selected.paidAt ? `Paid ${fmtDate(selected.paidAt)}` : 'Unpaid'}</p>
+                        <p className="font-sans text-sm font-black tracking-tight text-[var(--c-text)]">{ticketBrand}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--c-muted)]">{t('cashierReceiptPreviewTitle')}</p>
+                        <p className="mt-1 text-[11px] font-bold text-[var(--c-text)]">{selected.orderNumber} {t('table')} {selected.tableNumber}</p>
+                        <p className="text-[11px] text-[var(--c-muted)]">{fmtDate(selected.createdAt, lang)} {selected.paidAt ? `${t('cashierPaid')} ${fmtDate(selected.paidAt, lang)}` : t('cashierUnpaidWord')}</p>
                       </div>
                       <div className="space-y-1">
                         {(selected.items || []).map((it, i) => (
@@ -949,36 +958,90 @@ export default function CashierUI() {
                         ))}
                       </div>
                       <div className="mt-3 border-t border-dashed border-[var(--c-border-soft)] pt-3 flex items-center justify-between font-sans font-black text-sm">
-                        <span className="uppercase tracking-wide text-[var(--c-muted)]">Total</span>
+                        <span className="uppercase tracking-wide text-[var(--c-muted)]">{t('cashierTotal')}</span>
                         <span className="text-[var(--c-text)]">{fmtMoney(Number(selected.cancelledAmount) > 0 ? selected.netAmount : selected.totalAmount)}</span>
                       </div>
                       {Number(selected.cancelledAmount) > 0 && (
-                        <p className="mt-1 text-right font-mono text-[10px] text-[#DC2626]">Gross {fmtMoney(selected.totalAmount)} Cancelled {fmtMoney(selected.cancelledAmount)} excluded</p>
+                        <p className="mt-1 text-right font-mono text-[10px] text-[#DC2626]">{t('cashierGross')} {fmtMoney(selected.totalAmount)} {t('cashierCancelledAmt')} {fmtMoney(selected.cancelledAmount)} {t('cashierExcludedWord')}</p>
                       )}
                       <div className="mt-2 flex items-center justify-between text-[11px]">
-                        <span className="font-bold uppercase tracking-wide text-[var(--c-muted)]">Method</span>
+                        <span className="font-bold uppercase tracking-wide text-[var(--c-muted)]">{t('cashierMethod')}</span>
                         <span className={`rounded-full px-2 py-0.5 font-black uppercase text-[10px] ${payBadge(selected.paymentMethod).cls}`}>{payLabel(selected.paymentMethod)}</span>
                       </div>
                       {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
                         <p className="mt-1 text-right font-mono text-[10px] text-[var(--c-muted)]">🏦 {selected.paymentAccountSnapshot.bankName} {selected.paymentAccountSnapshot.ownerName} {selected.paymentAccountSnapshot.accountNumber}</p>
                       )}
                       {selected.waiterName && (
-                        <p className="mt-2 text-center text-[11px] font-medium text-[var(--c-muted)]">Served by {selected.waiterName}{selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''}</p>
+                        <p className="mt-2 text-center text-[11px] font-medium text-[var(--c-muted)]">{t('cashierServedBy')} {selected.waiterName}{selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''}</p>
                       )}
-                      <p className="mt-3 text-center text-[10px] font-medium text-[var(--c-muted)]">Thank you. Amounts from stored order only. No tax/discount simulated.</p>
+                      <p className="mt-3 text-center text-[10px] font-medium text-[var(--c-muted)]">{t('cashierReceiptNote')}</p>
                       <div className="mt-3 flex justify-center">
                         <button
                           type="button"
                           onClick={() => window.print()}
-                          className="rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-1.5 font-sans text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]"
+                          className="rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)] px-3 py-1.5 font-sans text-xs font-bold text-[var(--c-muted)]"
                         >
-                          Print (browser)
+                          {t('cashierPrint')}
                         </button>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* Dedicated thermal ticket — hidden on screen (.bono-print-only),
+                  the ONLY node printed via @media print. Same order object as
+                  the preview above; no values invented, no totals recalculated
+                  differently. Text/vector only, monochrome thermal friendly. */}
+              {printableTicket && (
+                <div id="bono-thermal-ticket" className="bono-print-only" aria-hidden="true">
+                  <div className="bono-ticket-block" style={{ textAlign: 'center' }}>
+                    <p style={{ fontWeight: 700, fontSize: 15 }}>{ticketBrand}</p>
+                    <p style={{ fontWeight: 700 }}>{t('cashierReceiptTitle')}</p>
+                  </div>
+                  <p>--------------------------------</p>
+                  <div className="bono-ticket-block">
+                    <p>{t('order')}: {selected.orderNumber}</p>
+                    <p>{t('table')}: {selected.tableNumber ?? '—'}</p>
+                    <p>{t('cashierDateLabel')}: {fmtDay(selected.createdAt, lang)}</p>
+                    <p>{t('cashierTimeLabel')}: {fmtTime(selected.createdAt, lang)}</p>
+                    {selected.paidAt && <p>{t('cashierPaid')}: {fmtDate(selected.paidAt, lang)}</p>}
+                  </div>
+                  <p>--------------------------------</p>
+                  <div className="bono-ticket-block">
+                    <p>{t('cashierTicketCols')}</p>
+                    <p>--------------------------------</p>
+                    {(selected.items || []).map((it, i) => (
+                      <div key={`pt-${i}`}>
+                        <p>{Number(it.quantity) || 0}x   {itemNameOf(it, lang)}{it.cancelled ? ` (${t('cashierCancelledWord')})` : ''}   {fmtMoney(Number(it.subTotal ?? Number(it.price) * Number(it.quantity)))}</p>
+                        {Array.isArray(it.components) && it.components.map((c, ci) => (
+                          <p key={`pt-${i}-c-${ci}`}>{c.kind === 'NOTE' ? `     * ${c.note}` : `     + ${c.name} x${c.quantity} ${fmtMoney(c.lineSum ?? c.quantity * c.unitPrice)}`}</p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <p>--------------------------------</p>
+                  <div className="bono-ticket-block">
+                    <p style={{ fontWeight: 700 }}>{t('cashierTotal')}  {fmtMoney(Number(selected.cancelledAmount) > 0 ? selected.netAmount : selected.totalAmount)}</p>
+                    {Number(selected.cancelledAmount) > 0 && (
+                      <p>{t('cashierGross')} {fmtMoney(selected.totalAmount)} {t('cashierCancelledAmt')} {fmtMoney(selected.cancelledAmount)} {t('cashierExcludedWord')}</p>
+                    )}
+                    <p>{t('cashierPayment')}: {payLabel(selected.paymentMethod)}</p>
+                    <p>{t('status')}: {String(selected.status || '').toUpperCase() || '—'}</p>
+                    {normalizePayMethod(selected.paymentMethod) === 'TRANSFER' && selected.paymentAccountSnapshot && (
+                      <p>{selected.paymentAccountSnapshot.bankName} {selected.paymentAccountSnapshot.ownerName} {selected.paymentAccountSnapshot.accountNumber}</p>
+                    )}
+                    {selected.waiterName && (
+                      <p>{t('cashierServedBy')}: {selected.waiterName}{selected.waiterNumber != null ? ` #${selected.waiterNumber}` : ''}</p>
+                    )}
+                  </div>
+                  <p>--------------------------------</p>
+                  <div className="bono-ticket-block" style={{ textAlign: 'center' }}>
+                    <p>{t('cashierThanks')}</p>
+                  </div>
+                  <p>--------------------------------</p>
+                </div>
+              )}
             </>
           )}
         </section>

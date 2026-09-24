@@ -15,6 +15,10 @@ import {
   IconChefHat,
   IconStackFilled,
 } from '@tabler/icons-react';
+import {
+  addisYMDToUTCStart,
+  formatEthiopianDate,
+} from '@/lib/ethiopianCalendar';
 
 // Phase F — Recipe System: Menu ↔ Inventory relationship layer
 // No stock deduction, no order hooks, presentation + CRUD only.
@@ -39,6 +43,18 @@ function fmtCost(n) {
   return `ETB ${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 }
 
+// Canonical Phase F: transport YYYY-MM-DD (Addis wall) → Ethiopian business
+// date for display. Never browser-local formatting for business dates.
+function fmtTrendDate(ymd, lang) {
+  try {
+    const start = addisYMDToUTCStart(ymd);
+    if (!start) return String(ymd || '—');
+    return formatEthiopianDate(start, lang === 'en' ? 'en' : 'am');
+  } catch {
+    return String(ymd || '—');
+  }
+}
+
 function getMenuDisplayName(m) {
   if (!m) return '—';
   if (typeof m.name === 'string') return m.name;
@@ -49,7 +65,7 @@ function getMenuDisplayName(m) {
 }
 
 export default function InventoryUI() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [activeTab, setActiveTab] = useState('stock');
 
   // Data
@@ -172,13 +188,13 @@ export default function InventoryUI() {
       setItems(Array.isArray(list) ? list : []);
     } catch (err) {
       const m = err?.message || 'Failed to load inventory';
-      if (err?.status === 401) setItemsError('Unauthorized. Please sign in as Manager.');
-      else if (err?.status === 403) setItemsError('Forbidden. Manager access required.');
+      if (err?.status === 401) setItemsError(t('invErrUnauthorized'));
+      else if (err?.status === 403) setItemsError(t('invErrForbidden'));
       else setItemsError(m);
     } finally {
       setLoadingItems(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchSuppliers = useCallback(async () => {
     setLoadingSuppliers(true);
@@ -189,13 +205,13 @@ export default function InventoryUI() {
       setSuppliers(Array.isArray(list) ? list : []);
     } catch (err) {
       const m = err?.message || 'Failed to load suppliers';
-      if (err?.status === 401) setSuppliersError('Unauthorized. Please sign in as Manager.');
-      else if (err?.status === 403) setSuppliersError('Forbidden. Manager access required.');
+      if (err?.status === 401) setSuppliersError(t('invErrUnauthorized'));
+      else if (err?.status === 403) setSuppliersError(t('invErrForbidden'));
       else setSuppliersError(m);
     } finally {
       setLoadingSuppliers(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchRecipes = useCallback(async () => {
     setLoadingRecipes(true);
@@ -206,13 +222,13 @@ export default function InventoryUI() {
       setRecipes(Array.isArray(list) ? list : []);
     } catch (err) {
       const m = err?.message || 'Failed to load recipes';
-      if (err?.status === 401) setRecipesError('Unauthorized. Please sign in as Manager.');
-      else if (err?.status === 403) setRecipesError('Forbidden. Manager access required.');
+      if (err?.status === 401) setRecipesError(t('invErrUnauthorized'));
+      else if (err?.status === 403) setRecipesError(t('invErrForbidden'));
       else setRecipesError(m);
     } finally {
       setLoadingRecipes(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchMenu = useCallback(async () => {
     setLoadingMenu(true);
@@ -243,13 +259,13 @@ export default function InventoryUI() {
       setDashboard(payload);
     } catch (err) {
       const m = err?.message || 'Failed to load dashboard';
-      if (err?.status === 401) setDashboardError('Unauthorized. Please sign in as Manager.');
-      else if (err?.status === 403) setDashboardError('Forbidden. Manager access required.');
+      if (err?.status === 401) setDashboardError(t('invErrUnauthorized'));
+      else if (err?.status === 403) setDashboardError(t('invErrForbidden'));
       else setDashboardError(m);
     } finally {
       setLoadingDashboard(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchFoodCost = useCallback(async () => {
     setLoadingFoodCost(true);
@@ -260,13 +276,13 @@ export default function InventoryUI() {
       setFoodCostData(payload);
     } catch (err) {
       const m = err?.message || 'Failed to load food cost';
-      if (err?.status === 401) setFoodCostError('Unauthorized. Please sign in as Manager.');
-      else if (err?.status === 403) setFoodCostError('Forbidden. Manager access required.');
+      if (err?.status === 401) setFoodCostError(t('invErrUnauthorized'));
+      else if (err?.status === 403) setFoodCostError(t('invErrForbidden'));
       else setFoodCostError(m);
     } finally {
       setLoadingFoodCost(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // Defer initial data load to avoid cascading render; callbacks set state outside direct effect body (subscription pattern)
@@ -298,7 +314,7 @@ export default function InventoryUI() {
     e.preventDefault();
     setAddError('');
     if (!addForm.name.trim() || !addForm.category.trim() || !addForm.unit.trim()) {
-      setAddError('name, category and unit are required');
+      setAddError(t('invErrItemFields'));
       return;
     }
     setAddBusy(true);
@@ -316,12 +332,12 @@ export default function InventoryUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setSuccessMsg('Item added');
+      setSuccessMsg(t('invItemAdded'));
       setShowAdd(false);
       setAddForm({ name: '', category: '', unit: '', currentStock: '', minimumStock: '', cost: '' });
       fetchItems();
     } catch (err) {
-      setAddError(err?.message || 'Failed to add item');
+      setAddError(err?.message || t('invErrAddItem'));
     } finally {
       setAddBusy(false);
     }
@@ -331,17 +347,17 @@ export default function InventoryUI() {
     e.preventDefault();
     setReceiveError('');
     if (!receiveForm.itemId) {
-      setReceiveError('Select an inventory item');
+      setReceiveError(t('invErrSelectItem'));
       return;
     }
     const qty = Number(receiveForm.quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
-      setReceiveError('quantity must be number > 0');
+      setReceiveError(t('invErrQty'));
       return;
     }
     const uc = Number(receiveForm.unitCost);
     if (!Number.isFinite(uc) || uc < 0) {
-      setReceiveError('unitCost must be number >= 0');
+      setReceiveError(t('invErrUnitCost'));
       return;
     }
     // Idempotency key lifecycle: reuse for transient/ambiguous retry, but never silently reuse for a changed payload
@@ -390,9 +406,9 @@ export default function InventoryUI() {
       });
       // Handle replay vs new: both are success, refresh only after confirmed
       if (data?.data?.replayed) {
-        setSuccessMsg(`Already received. Replayed ${data.data.movement.quantity} ${data.data.movement.unit || ''}`);
+        setSuccessMsg(`${t('invAlreadyReceived')} ${data.data.movement.quantity} ${data.data.movement.unit || ''}`);
       } else {
-        setSuccessMsg(`Received ${qty}. New stock ${data?.data?.newStock ?? ''}`);
+        setSuccessMsg(`${t('invReceivedOk')} ${qty}. ${t('invNewStock')} ${data?.data?.newStock ?? ''}`);
       }
       setShowReceive(false);
       setReceiveForm({ itemId: '', quantity: '', unitCost: '', unit: '', supplier: '', notes: '' });
@@ -405,25 +421,25 @@ export default function InventoryUI() {
       if (status === 409) {
         // Same key + different payload: instruct new key for new receipt, clear draft fingerprint so next submit generates fresh key
         if (/different payload/i.test(msg)) {
-          setReceiveError(`${msg}. Change was detected; a new receipt will use a new Idempotency-Key. Review payload before retrying.`);
+          setReceiveError(`${msg}. ${t('invErrPayloadChanged')}`);
           clearReceiveDraft();
           setReceiveIdempotencyKey('');
         } else {
-          setReceiveError(msg || 'Idempotency-Key already used with different payload. Use a new key for a new receipt');
+          setReceiveError(msg || t('invErrKeyReuse'));
           // Keep key for user to decide, but draft remains for explicit retry of same payload
         }
       } else if (status === 503 || status >= 500) {
         // Includes new 503 "Receipt status unknown — retry with the same Idempotency-Key to confirm."
         // Keep same key (and draft) for retry — survives reload via sessionStorage
-        setReceiveError(`${msg || 'Server error'}. Retry with same Idempotency-Key to avoid duplicate`);
+        setReceiveError(`${msg || t('invErrServer')}. ${t('invErrRetrySameKey')}`);
         saveReceiveDraft(key, currentFp);
       } else if (status === 400) {
         // Validation never wrote to DB — safe to keep key if payload will be retried with same fingerprint (after fixing other fields)
         // But if fingerprint changed on next attempt, handleReceive will auto-generate new key
-        setReceiveError(msg || 'Failed to receive stock');
+        setReceiveError(msg || t('invErrReceive'));
         saveReceiveDraft(key, currentFp);
       } else {
-        setReceiveError(msg || 'Failed to receive stock');
+        setReceiveError(msg || t('invErrReceive'));
         saveReceiveDraft(key, currentFp);
       }
     } finally {
@@ -463,11 +479,11 @@ export default function InventoryUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setSuccessMsg('Item updated');
+      setSuccessMsg(t('invItemUpdated'));
       setEditItem(null);
       fetchItems();
     } catch (err) {
-      setEditError(err?.message || 'Failed to update item');
+      setEditError(err?.message || t('invErrUpdateItem'));
     } finally {
       setEditBusy(false);
     }
@@ -477,7 +493,7 @@ export default function InventoryUI() {
     e.preventDefault();
     setSupError('');
     if (!supForm.name.trim()) {
-      setSupError('name is required');
+      setSupError(t('invErrNameRequired'));
       return;
     }
     setSupBusy(true);
@@ -493,12 +509,12 @@ export default function InventoryUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setSuccessMsg('Supplier added');
+      setSuccessMsg(t('invSupplierAdded'));
       setShowSupAdd(false);
       setSupForm({ name: '', contact: '', address: '', status: 'Active' });
       fetchSuppliers();
     } catch (err) {
-      setSupError(err?.message || 'Failed to add supplier');
+      setSupError(err?.message || t('invErrAddSupplier'));
     } finally {
       setSupBusy(false);
     }
@@ -527,11 +543,11 @@ export default function InventoryUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setSuccessMsg('Supplier updated');
+      setSuccessMsg(t('invSupplierUpdated'));
       setEditSup(null);
       fetchSuppliers();
     } catch (err) {
-      setEditSupError(err?.message || 'Failed to update supplier');
+      setEditSupError(err?.message || t('invErrUpdateSupplier'));
     } finally {
       setEditSupBusy(false);
     }
@@ -542,23 +558,23 @@ export default function InventoryUI() {
     e.preventDefault();
     setRecipeError('');
     if (!recipeForm.menuItemId) {
-      setRecipeError('menuItemId is required');
+      setRecipeError(t('invErrMenuItem'));
       return;
     }
     const cleanIngredients = recipeForm.ingredients
       .filter((r) => r.inventoryItemId && r.quantity && r.unit)
       .map((r) => ({ inventoryItemId: r.inventoryItemId, quantity: Number(r.quantity), unit: String(r.unit).trim() }));
     if (cleanIngredients.length === 0) {
-      setRecipeError('At least one ingredient with quantity and unit is required');
+      setRecipeError(t('invErrIngredients'));
       return;
     }
     for (const ing of cleanIngredients) {
       if (!Number.isFinite(ing.quantity) || ing.quantity <= 0) {
-        setRecipeError('Each ingredient quantity must be > 0');
+        setRecipeError(t('invErrIngQty'));
         return;
       }
       if (!ing.unit) {
-        setRecipeError('Each ingredient unit is required');
+        setRecipeError(t('invErrIngUnit'));
         return;
       }
     }
@@ -569,12 +585,12 @@ export default function InventoryUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ menuItemId: recipeForm.menuItemId, ingredients: cleanIngredients }),
       });
-      setSuccessMsg('Recipe created');
+      setSuccessMsg(t('invRecipeCreated'));
       setShowRecipeAdd(false);
       setRecipeForm({ menuItemId: '', ingredients: [{ inventoryItemId: '', quantity: '', unit: '' }] });
       fetchRecipes();
     } catch (err) {
-      setRecipeError(err?.message || 'Failed to create recipe');
+      setRecipeError(err?.message || t('invErrCreateRecipe'));
     } finally {
       setRecipeBusy(false);
     }
@@ -602,7 +618,7 @@ export default function InventoryUI() {
       .filter((r) => r.inventoryItemId && r.quantity && r.unit)
       .map((r) => ({ inventoryItemId: r.inventoryItemId, quantity: Number(r.quantity), unit: String(r.unit).trim() }));
     if (cleanIngredients.length === 0) {
-      setEditRecipeError('At least one ingredient required');
+      setEditRecipeError(t('invErrOneIngredient'));
       return;
     }
     setEditRecipeBusy(true);
@@ -612,11 +628,11 @@ export default function InventoryUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ menuItemId: editRecipeForm.menuItemId, ingredients: cleanIngredients, isActive: editRecipeForm.isActive }),
       });
-      setSuccessMsg('Recipe updated');
+      setSuccessMsg(t('invRecipeUpdated'));
       setEditRecipe(null);
       fetchRecipes();
     } catch (err) {
-      setEditRecipeError(err?.message || 'Failed to update recipe');
+      setEditRecipeError(err?.message || t('invErrUpdateRecipe'));
     } finally {
       setEditRecipeBusy(false);
     }
@@ -626,10 +642,10 @@ export default function InventoryUI() {
     if (!confirm(`Deactivate recipe for ${r.menuItem?.name || r.menuItemId}?`)) return;
     try {
       await safeFetchJson(`/api/recipes/${r._id || r.id}`, { method: 'DELETE' });
-      setSuccessMsg('Recipe deactivated');
+      setSuccessMsg(t('invRecipeDeactivated'));
       fetchRecipes();
     } catch (err) {
-      setRecipesError(err?.message || 'Failed to deactivate');
+      setRecipesError(err?.message || t('invErrDeactivate'));
     }
   };
 
@@ -673,9 +689,9 @@ export default function InventoryUI() {
               <LanguageToggle includeOromia={false} />
               <Link
                 href="/"
-                aria-label="Home"
-                title="Home"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm"
+                aria-label={t('home')}
+                title={t('home')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] text-[var(--c-muted)] shadow-sm hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
@@ -695,12 +711,12 @@ export default function InventoryUI() {
         {itemsError && activeTab === 'stock' && (
           <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
             <span>{itemsError}</span>
-            <button type="button" onClick={fetchItems} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626] hover:bg-[#FFF7ED]">Retry</button>
+            <button type="button" onClick={fetchItems} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626] hover:bg-[#FFF7ED]">{t('uiRetry')}</button>
           </div>
         )}
 
         {/* Tabs */}
-        <div className="card-elevated rounded-2xl p-2 bg-[var(--c-card)]">
+        <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-2 bg-[var(--c-card)]">
           <nav role="tablist" className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" aria-label="Inventory tabs">
             {TABS.map((tab) => {
               const active = activeTab === tab.key;
@@ -711,11 +727,11 @@ export default function InventoryUI() {
                   role="tab"
                   onClick={() => setActiveTab(tab.key)}
                   aria-selected={active}
-                  className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide border transition-all ${
-                    active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#12131A] text-[var(--c-muted)] border-[var(--c-border-soft)] hover:text-[var(--c-text)]'
+                  className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide border transition-all duration-150 ease-out active:shadow-inner ${
+                    active ? 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white border-transparent shadow-sm' : 'bg-white dark:bg-[#12131A] text-[var(--c-muted)] border-[var(--c-border-soft)]'
                   }`}
                 >
-                  {tab.key === 'stock' ? t('invStock') : tab.key === 'suppliers' ? t('invSuppliers') : tab.key === 'recipes' ? t('invRecipes') : tab.label}
+                  {{ stock: t('invStock'), suppliers: t('invSuppliers'), recipes: t('invRecipes'), reports: t('invReports') }[tab.key] || tab.label}
                 </button>
               );
             })}
@@ -727,51 +743,51 @@ export default function InventoryUI() {
           <>
             {/* Dashboard — real data */}
             <section aria-label="Stock dashboard" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Total Items</p>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invTotalItems')}</p>
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] text-[var(--c-accent)]"><IconArchiveFilled size={16} className="h-4 w-4" /></span>
                 </div>
                 {loadingItems ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[var(--c-text)]">{totalItems}</p>}
-                <p className="text-xs font-medium text-[var(--c-muted)]">{loadingItems ? 'Loading…' : `${totalItems} items in inventory`}</p>
+                <p className="text-xs font-medium text-[var(--c-muted)]">{loadingItems ? t('invLoading') : `${totalItems} ${t('invItemsInInventory')}`}</p>
               </div>
-              <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Low Stock</p>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invLowStock')}</p>
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FEF3C7] dark:bg-[rgba(251,191,36,0.15)] text-[#92400E] dark:text-[#FBBF24]"><IconAlertTriangleFilled size={16} className="h-4 w-4" /></span>
                 </div>
                 {loadingItems ? <div className="h-7 w-12 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[#D97706] dark:text-[#FBBF24]">{lowStockCount}</p>}
-                <p className="text-xs font-medium text-[var(--c-muted)]">{outOfStockCount} out of stock</p>
+                <p className="text-xs font-medium text-[var(--c-muted)]">{outOfStockCount} {t('invOutOfStock')}</p>
               </div>
-              <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Inventory Value</p>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invInventoryValue')}</p>
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--c-accent)]/15 dark:bg-[rgba(255,94,0,0.12)] text-[var(--c-accent)]"><IconCoinFilled size={16} className="h-4 w-4" /></span>
                 </div>
                 {loadingItems ? <div className="h-7 w-24 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-2xl font-black text-[var(--c-text)]">{fmtCost(inventoryValue)}</p>}
-                <p className="text-xs font-medium text-[var(--c-muted)]">sum(stock × cost)</p>
+                <p className="text-xs font-medium text-[var(--c-muted)]">{t('invValueFormula')}</p>
               </div>
-              <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Stock Status</p>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invStockStatus')}</p>
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F4F5F9] dark:bg-[#12131A] border border-[var(--c-border-soft)] text-[var(--c-muted)]"><IconChartBar size={16} className="h-4 w-4" /></span>
                 </div>
-                {loadingItems ? <div className="h-7 w-24 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-sm font-black text-[var(--c-text)]">{outOfStockCount} out {lowStockCount} low {totalItems - lowStockCount - outOfStockCount} ok</p>}
-                <p className="text-xs font-medium text-[var(--c-muted)]">Distribution</p>
+                {loadingItems ? <div className="h-7 w-24 animate-pulse rounded bg-[var(--c-bg)]" /> : <p className="text-sm font-black text-[var(--c-text)]">{outOfStockCount} {t('invOutShort')} {lowStockCount} {t('invLowShort')} {totalItems - lowStockCount - outOfStockCount} {t('invOkWord')}</p>}
+                <p className="text-xs font-medium text-[var(--c-muted)]">{t('invDistribution')}</p>
               </div>
             </section>
 
             {/* Stock Table + Add/Edit */}
-            <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+            <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
                 <div>
-                  <h2 className="text-sm font-black text-[var(--c-text)]">Inventory Stock</h2>
+                  <h2 className="text-sm font-black text-[var(--c-text)]">{t('invStockTitle')}</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingItems ? '…' : `${items.length} items`}</span>
-                  <button type="button" onClick={() => { const willOpen = !showReceive; setShowReceive((v) => !v); if (willOpen) { setReceiveIdempotencyKey(''); setReceiveError(''); clearReceiveDraft(); } else { setReceiveError(''); } }} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">{showReceive ? t('close') : t('invReceive')}</button>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingItems ? '…' : `${items.length} ${t('invItems')}`}</span>
+                  <button type="button" onClick={() => { const willOpen = !showReceive; setShowReceive((v) => !v); if (willOpen) { setReceiveIdempotencyKey(''); setReceiveError(''); clearReceiveDraft(); } else { setReceiveError(''); } }} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] shadow-sm">{showReceive ? t('close') : t('invReceive')}</button>
                   <button type="button" onClick={() => setShowAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showAdd ? t('close') : `+ ${t('invAddItem')}`}</button>
-                  <button type="button" onClick={fetchItems} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">{t('invRefresh')}</button>
+                  <button type="button" onClick={fetchItems} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] shadow-sm">{t('invRefresh')}</button>
                 </div>
               </div>
 
@@ -780,45 +796,45 @@ export default function InventoryUI() {
                 <div className="border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/30 px-4 sm:px-5 py-4">
                   <form onSubmit={handleReceive} className="grid gap-3 sm:grid-cols-3">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Item *</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invItemField')} *</span>
                       <select value={receiveForm.itemId} onChange={(e) => { const v = e.target.value; const it = items.find((x) => String(x._id||x.id)===String(v)); setReceiveForm({ ...receiveForm, itemId: v, unit: it ? it.unit : receiveForm.unit }); }} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
-                        <option value="">Select item</option>
+                        <option value="">{t('invSelectItem')}</option>
                         {items.map((it) => (
                           <option key={it._id||it.id} value={it._id||it.id}>{it.name} {it.unit} (stock {it.currentStock})</option>
                         ))}
                       </select>
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Quantity *</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invQuantity')} *</span>
                       <input type="number" min="0.01" step="0.01" value={receiveForm.quantity} onChange={(e) => setReceiveForm({ ...receiveForm, quantity: e.target.value })} placeholder="5" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Unit Cost (ETB) *</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invUnitCost')} (ETB) *</span>
                       <input type="number" min="0" step="0.01" value={receiveForm.unitCost} onChange={(e) => setReceiveForm({ ...receiveForm, unitCost: e.target.value })} placeholder="10.50" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Unit</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invUnit')}</span>
                       <input value={receiveForm.unit} onChange={(e) => setReceiveForm({ ...receiveForm, unit: e.target.value })} placeholder={items.find((x)=>String(x._id||x.id)===String(receiveForm.itemId))?.unit || "kg"} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Supplier</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invSupplier')}</span>
                       <select value={receiveForm.supplier} onChange={(e) => setReceiveForm({ ...receiveForm, supplier: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
-                        <option value="">No supplier</option>
+                        <option value="">{t('invNoSupplier')}</option>
                         {suppliers.map((s) => (
                           <option key={s._id||s.id} value={s._id||s.id}>{s.name}</option>
                         ))}
                       </select>
                     </label>
                     <label className="block sm:col-span-3">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Notes</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invNotes')}</span>
                       <input value={receiveForm.notes} onChange={(e) => setReceiveForm({ ...receiveForm, notes: e.target.value })} placeholder="Invoice #123, delivery notes" maxLength={500} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <div className="sm:col-span-3 flex items-center gap-2">
-                      <button type="submit" disabled={receiveBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm disabled:opacity-50">{receiveBusy ? 'Receiving…' : 'Submit Receipt'}</button>
-                      <button type="button" onClick={() => { setShowReceive(false); setReceiveError(''); setReceiveIdempotencyKey(''); clearReceiveDraft(); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
+                      <button type="submit" disabled={receiveBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-black uppercase tracking-wide text-white shadow-sm disabled:opacity-50">{receiveBusy ? t('invReceiving') : t('invSubmitReceipt')}</button>
+                      <button type="button" onClick={() => { setShowReceive(false); setReceiveError(''); setReceiveIdempotencyKey(''); clearReceiveDraft(); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">{t('invCancel')}</button>
                       {receiveError && <span className="text-xs font-semibold text-[#DC2626]">{receiveError}</span>}
                     </div>
-                    <p className="sm:col-span-3 text-[11px] font-medium text-[var(--c-muted)]">Idempotency-Key is auto-generated per receipt, reused on retry (survives reload via sessionStorage) and invalidated if item/qty/unit/cost/supplier changes. 503 Unknown → retry with same key. New receipt → new key. Draft cleared on success/Cancel.</p>
+                    <p className="sm:col-span-3 text-[11px] font-medium text-[var(--c-muted)]">{t('invIdempotencyNote')}</p>
                   </form>
                 </div>
               )}
@@ -828,31 +844,31 @@ export default function InventoryUI() {
                 <div className="border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/30 px-4 sm:px-5 py-4">
                   <form onSubmit={handleAddItem} className="grid gap-3 sm:grid-cols-3">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Name *</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('uiName')} *</span>
                       <input value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} placeholder="Coffee Beans" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Category *</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invCategoryField')} *</span>
                       <input value={addForm.category} onChange={(e) => setAddForm({ ...addForm, category: e.target.value })} placeholder="Beverages" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Unit *</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invUnit')} *</span>
                       <input value={addForm.unit} onChange={(e) => setAddForm({ ...addForm, unit: e.target.value })} placeholder="kg" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Current Stock</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invCurrentStock')}</span>
                       <input type="number" min="0" step="1" value={addForm.currentStock} onChange={(e) => setAddForm({ ...addForm, currentStock: e.target.value })} placeholder="12" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Minimum Stock</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invMinStock')}</span>
                       <input type="number" min="0" step="1" value={addForm.minimumStock} onChange={(e) => setAddForm({ ...addForm, minimumStock: e.target.value })} placeholder="5" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Cost (ETB)</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invCost')} (ETB)</span>
                       <input type="number" min="0" step="0.01" value={addForm.cost} onChange={(e) => setAddForm({ ...addForm, cost: e.target.value })} placeholder="850" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <div className="sm:col-span-3 flex items-center gap-2">
-                      <button type="submit" disabled={addBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{addBusy ? 'Saving…' : 'Create Item'}</button>
+                      <button type="submit" disabled={addBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{addBusy ? t('invSaving') : t('invCreateItem')}</button>
                       {addError && <span className="text-xs font-semibold text-[#DC2626]">{addError}</span>}
                     </div>
                   </form>
@@ -869,13 +885,13 @@ export default function InventoryUI() {
               ) : itemsError ? (
                 <div className="px-4 sm:px-5 py-8 text-center">
                   <p className="text-sm font-bold text-[#DC2626]">{itemsError}</p>
-                  <button type="button" onClick={fetchItems} className="mt-3 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)]">Retry</button>
+                  <button type="button" onClick={fetchItems} className="mt-3 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)]">{t('uiRetry')}</button>
                 </div>
               ) : items.length === 0 ? (
                 <div className="px-4 sm:px-5 py-12 text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] mb-3"><IconStackFilled size={20} className="h-5 w-5" /></div>
                   <p className="text-sm font-black text-[var(--c-text)]">{t('invNoItems')}</p>
-                  <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">Add your first item with <strong className="text-[var(--c-text)]">+ Add Item</strong>. Data is persisted via <code className="rounded bg-[var(--c-bg)] border border-[var(--c-border-soft)] px-1">POST /api/inventory/items</code>.</p>
+                  <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[36ch] mx-auto">{t('invEmptyStockA')} <strong className="text-[var(--c-text)]">+ {t('invAddItem')}</strong>.</p>
                 </div>
               ) : (
                 <>
@@ -884,18 +900,18 @@ export default function InventoryUI() {
                       <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
                         <tr>
                           <th className="px-4 py-3 font-black">{t('invItems')}</th>
-                          <th className="px-4 py-3 font-black">Category</th>
+                          <th className="px-4 py-3 font-black">{t('invCategoryField')}</th>
                           <th className="px-4 py-3 font-black">{t('invUnit')}</th>
                           <th className="px-4 py-3 text-right font-black">{t('invCurrentStock')}</th>
-                          <th className="px-4 py-3 text-right font-black">Minimum</th>
+                          <th className="px-4 py-3 text-right font-black">{t('invMinimum')}</th>
                           <th className="px-4 py-3 text-right font-black">{t('invCost')}</th>
                           <th className="px-4 py-3 text-right font-black">{t('status')}</th>
-                          <th className="px-4 py-3 text-right font-black">Actions</th>
+                          <th className="px-4 py-3 text-right font-black">{t('invActions')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--c-border-soft)]">
                         {items.map((row) => (
-                          <tr key={row._id || row.id} className="hover:bg-[var(--c-bg)]/50 transition-colors">
+                          <tr key={row._id || row.id}>
                             <td className="px-4 py-3.5 font-bold text-[var(--c-text)] whitespace-nowrap">
                               <span className="inline-flex items-center gap-2">
                                 <span className="hidden sm:inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)]"><IconStackFilled size={14} className="h-3.5 w-3.5" /></span>
@@ -908,7 +924,7 @@ export default function InventoryUI() {
                             <td className="px-4 py-3.5 text-right font-medium text-[var(--c-muted)]">{Number(row.minimumStock) ?? 0}</td>
                             <td className="px-4 py-3.5 text-right font-bold text-[var(--c-text)]">{fmtCost(row.cost)}</td>
                             <td className="px-4 py-3.5 text-right"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${statusCls(row.status)}`}>{row.status}</span></td>
-                            <td className="px-4 py-3.5 text-right"><button type="button" onClick={() => openEdit(row)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)]">{t('edit')}</button></td>
+                            <td className="px-4 py-3.5 text-right"><button type="button" onClick={() => openEdit(row)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">{t('edit')}</button></td>
                           </tr>
                         ))}
                       </tbody>
@@ -922,9 +938,9 @@ export default function InventoryUI() {
                           <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-black uppercase ${statusCls(row.status)}`}>{row.status}</span>
                         </div>
                         <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-[var(--c-muted)]">
-                          <span>Current: <strong className="text-[var(--c-text)]">{Number(row.currentStock) ?? 0}</strong></span>
-                          <span>Min: <strong className="text-[var(--c-text)]">{Number(row.minimumStock) ?? 0}</strong></span>
-                          <span>Cost: <strong className="text-[var(--c-text)]">{fmtCost(row.cost)}</strong></span>
+                          <span>{t('invCurrentShort')}: <strong className="text-[var(--c-text)]">{Number(row.currentStock) ?? 0}</strong></span>
+                          <span>{t('invMinShort')}: <strong className="text-[var(--c-text)]">{Number(row.minimumStock) ?? 0}</strong></span>
+                          <span>{t('invCost')}: <strong className="text-[var(--c-text)]">{fmtCost(row.cost)}</strong></span>
                           <button type="button" onClick={() => openEdit(row)} className="ml-auto inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">{t('edit')}</button>
                         </div>
                       </div>
@@ -939,92 +955,92 @@ export default function InventoryUI() {
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md">
                 <div className="w-full max-w-lg rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Item {editItem.name}</h3>
-                    <button type="button" onClick={() => setEditItem(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
+                    <h3 className="text-sm font-black text-[var(--c-text)]">{t('invEditItem')} {editItem.name}</h3>
+                    <button type="button" onClick={() => setEditItem(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-bg)] dark:hover:bg-[#252631]">✕</button>
                   </div>
                   <form onSubmit={handleEditItem} className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Name</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('uiName')}</span>
                       <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Category</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invCategoryField')}</span>
                       <input value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Unit</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invUnit')}</span>
                       <input value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Minimum Stock</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invMinStock')}</span>
                       <input type="number" min="0" value={editForm.minimumStock} onChange={(e) => setEditForm({ ...editForm, minimumStock: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Cost</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invCost')}</span>
                       <input type="number" min="0" step="0.01" value={editForm.cost} onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Status</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('status')}</span>
                       <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
-                        <option>In Stock</option>
-                        <option>Low Stock</option>
-                        <option>Out Of Stock</option>
+                        <option value="In Stock">{t('invInStock')}</option>
+                        <option value="Low Stock">{t('invLowStock')}</option>
+                        <option value="Out Of Stock">{t('invOutOfStock')}</option>
                       </select>
                     </label>
                     <div className="sm:col-span-2 flex items-center gap-2">
-                      <button type="submit" disabled={editBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editBusy ? 'Saving…' : 'Save'}</button>
-                      <button type="button" onClick={() => setEditItem(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
+                      <button type="submit" disabled={editBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editBusy ? t('invSaving') : t('invSave')}</button>
+                      <button type="button" onClick={() => setEditItem(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">{t('invCancel')}</button>
                       {editError && <span className="text-xs font-semibold text-[#DC2626]">{editError}</span>}
                     </div>
-                    <p className="sm:col-span-2 text-[11px] font-medium text-[var(--c-muted)]">Note: <code>currentStock</code> cannot be edited directly (use movements in a later phase).</p>
+                    <p className="sm:col-span-2 text-[11px] font-medium text-[var(--c-muted)]">{t('invStockNoteLocked')}</p>
                   </form>
                 </div>
               </div>
             )}
           </>
         ) : activeTab === 'suppliers' ? (
-          <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+          <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
               <div>
-                <h2 className="text-sm font-black text-[var(--c-text)]">Suppliers</h2>
+                <h2 className="text-sm font-black text-[var(--c-text)]">{t('invSuppliers')}</h2>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingSuppliers ? '…' : `${suppliers.length} suppliers`}</span>
-                <button type="button" onClick={() => setShowSupAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showSupAdd ? 'Close' : '+ Add Supplier'}</button>
+                <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingSuppliers ? '…' : `${suppliers.length} ${t('invSuppliersCount')}`}</span>
+                <button type="button" onClick={() => setShowSupAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showSupAdd ? t('close') : `+ ${t('invAddSupplier')}`}</button>
                 <button type="button" onClick={fetchSuppliers} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">{t('invRefresh')}</button>
               </div>
             </div>
             {suppliersError && (
               <div className="mx-4 sm:mx-5 mt-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
                 <span>{suppliersError}</span>
-                <button type="button" onClick={fetchSuppliers} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+                <button type="button" onClick={fetchSuppliers} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">{t('uiRetry')}</button>
               </div>
             )}
             {successMsg && !itemsError && <div className="mx-4 sm:mx-5 mt-4 rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3.5 py-2.5 text-xs font-bold text-[#15803D]">{successMsg}</div>}
             {showSupAdd && (
               <div className="border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/30 px-4 sm:px-5 py-4">
                 <form onSubmit={handleAddSupplier} className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Name *</span>
-                    <input value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} placeholder="Fresh Farms" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Contact</span>
-                    <input value={supForm.contact} onChange={(e) => setSupForm({ ...supForm, contact: e.target.value })} placeholder="+251 9..." className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Address</span>
-                    <input value={supForm.address} onChange={(e) => setSupForm({ ...supForm, address: e.target.value })} placeholder="Addis Ababa" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Status</span>
-                    <select value={supForm.status} onChange={(e) => setSupForm({ ...supForm, status: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
-                      <option>Active</option>
-                      <option>Inactive</option>
-                    </select>
-                  </label>
-                  <div className="sm:col-span-2 flex items-center gap-2">
-                    <button type="submit" disabled={supBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{supBusy ? 'Saving…' : 'Create Supplier'}</button>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('uiName')} *</span>
+                      <input value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} placeholder="Fresh Farms" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invContact')}</span>
+                      <input value={supForm.contact} onChange={(e) => setSupForm({ ...supForm, contact: e.target.value })} placeholder="+251 9..." className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invAddress')}</span>
+                      <input value={supForm.address} onChange={(e) => setSupForm({ ...supForm, address: e.target.value })} placeholder="Addis Ababa" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('status')}</span>
+                      <select value={supForm.status} onChange={(e) => setSupForm({ ...supForm, status: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
+                        <option value="Active">{t('uiActive')}</option>
+                        <option value="Inactive">{t('uiDisabled')}</option>
+                      </select>
+                    </label>
+                    <div className="sm:col-span-2 flex items-center gap-2">
+                      <button type="submit" disabled={supBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{supBusy ? t('invSaving') : t('invCreateSupplier')}</button>
                     {supError && <span className="text-xs font-semibold text-[#DC2626]">{supError}</span>}
                   </div>
                 </form>
@@ -1039,8 +1055,8 @@ export default function InventoryUI() {
             ) : suppliers.length === 0 ? (
               <div className="px-4 sm:px-5 py-12 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] mb-3"><IconClipboardListFilled size={20} className="h-5 w-5" /></div>
-                <p className="text-sm font-black text-[var(--c-text)]">No suppliers yet</p>
-                <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">Add a supplier with <strong className="text-[var(--c-text)]">+ Add Supplier</strong></p>
+                <p className="text-sm font-black text-[var(--c-text)]">{t('invNoSuppliers')}</p>
+                <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{t('invAddSupplierFirst')} <strong className="text-[var(--c-text)]">+ {t('invAddSupplier')}</strong></p>
               </div>
             ) : (
               <div className="divide-y divide-[var(--c-border-soft)]">
@@ -1062,32 +1078,32 @@ export default function InventoryUI() {
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md">
                 <div className="w-full max-w-lg rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Supplier {editSup.name}</h3>
-                    <button type="button" onClick={() => setEditSup(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
+                    <h3 className="text-sm font-black text-[var(--c-text)]">{t('invEditSupplier')} {editSup.name}</h3>
+                    <button type="button" onClick={() => setEditSup(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-bg)] dark:hover:bg-[#252631]">✕</button>
                   </div>
                   <form onSubmit={handleEditSupplier} className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Name</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('uiName')}</span>
                       <input value={editSupForm.name} onChange={(e) => setEditSupForm({ ...editSupForm, name: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Contact</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invContact')}</span>
                       <input value={editSupForm.contact} onChange={(e) => setEditSupForm({ ...editSupForm, contact: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                     </label>
                     <label className="block sm:col-span-2">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Address</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invAddress')}</span>
                       <input value={editSupForm.address} onChange={(e) => setEditSupForm({ ...editSupForm, address: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Status</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('status')}</span>
                       <select value={editSupForm.status} onChange={(e) => setEditSupForm({ ...editSupForm, status: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
-                        <option>Active</option>
-                        <option>Inactive</option>
+                        <option value="Active">{t('uiActive')}</option>
+                        <option value="Inactive">{t('uiDisabled')}</option>
                       </select>
                     </label>
                     <div className="sm:col-span-2 flex items-center gap-2">
-                      <button type="submit" disabled={editSupBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editSupBusy ? 'Saving…' : 'Save'}</button>
-                      <button type="button" onClick={() => setEditSup(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
+                      <button type="submit" disabled={editSupBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editSupBusy ? t('invSaving') : t('invSave')}</button>
+                      <button type="button" onClick={() => setEditSup(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">{t('invCancel')}</button>
                       {editSupError && <span className="text-xs font-semibold text-[#DC2626]">{editSupError}</span>}
                     </div>
                   </form>
@@ -1096,14 +1112,14 @@ export default function InventoryUI() {
             )}
           </section>
         ) : activeTab === 'recipes' ? (
-          <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+          <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50 px-4 sm:px-5 py-4">
               <div>
-                <h2 className="text-sm font-black text-[var(--c-text)]">Recipes Menu ↔ Inventory</h2>
+                <h2 className="text-sm font-black text-[var(--c-text)]">{t('invRecipesMenuTitle')}</h2>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingRecipes ? '…' : `${recipes.length} recipes`}</span>
-                <button type="button" onClick={() => setShowRecipeAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showRecipeAdd ? 'Close' : '+ Add Recipe'}</button>
+                <span className="inline-flex rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 py-1 text-[11px] font-bold text-[var(--c-muted)]">{loadingRecipes ? '…' : `${recipes.length} ${t('invRecipesCount')}`}</span>
+                <button type="button" onClick={() => setShowRecipeAdd((v) => !v)} className="inline-flex h-8 items-center justify-center rounded-xl bg-[var(--c-accent)] px-3 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm">{showRecipeAdd ? t('close') : `+ ${t('invAddRecipe')}`}</button>
                 <button type="button" onClick={fetchRecipes} className="hidden sm:inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]">{t('invRefresh')}</button>
               </div>
             </div>
@@ -1111,7 +1127,7 @@ export default function InventoryUI() {
             {recipesError && (
               <div className="mx-4 sm:mx-5 mt-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
                 <span>{recipesError}</span>
-                <button type="button" onClick={fetchRecipes} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+                <button type="button" onClick={fetchRecipes} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">{t('uiRetry')}</button>
               </div>
             )}
 
@@ -1119,12 +1135,12 @@ export default function InventoryUI() {
               <div className="border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/30 px-4 sm:px-5 py-4">
                 <form onSubmit={handleAddRecipe} className="space-y-3">
                   <label className="block">
-                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Menu Item *</span>
+                    <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invMenuItem')} *</span>
                     {loadingMenu ? (
                       <div className="h-9 animate-pulse rounded-xl bg-[var(--c-bg)] border border-[var(--c-border-soft)]" />
                     ) : (
                       <select value={recipeForm.menuItemId} onChange={(e) => setRecipeForm({ ...recipeForm, menuItemId: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
-                        <option value="">Select menu item</option>
+                        <option value="">{t('invSelectMenuItem')}</option>
                         {menuItems.map((m) => (
                           <option key={m._id || m.id} value={m._id || m.id}>{getMenuDisplayName(m)} {m.price != null ? fmtCost(m.price) : ''}</option>
                         ))}
@@ -1133,26 +1149,26 @@ export default function InventoryUI() {
                   </label>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Ingredients</span>
-                      <button type="button" onClick={() => addRecipeRow(false)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">+ Add row</button>
+                      <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">{t('invIngredients')}</span>
+                      <button type="button" onClick={() => addRecipeRow(false)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">+ {t('invAddRow')}</button>
                     </div>
                     {recipeForm.ingredients.map((row, idx) => (
                       <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_110px_90px_40px] items-end">
                         <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Inventory Item</span>
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">{t('invInventoryItem')}</span>
                           <select value={row.inventoryItemId} onChange={(e) => updateRecipeIngredient(idx, 'inventoryItemId', e.target.value, false)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2 text-sm font-medium text-[var(--c-text)]">
-                            <option value="">Select item</option>
+                            <option value="">{t('invSelectItem')}</option>
                             {items.map((it) => (
                               <option key={it._id || it.id} value={it._id || it.id}>{it.name} ({it.unit})</option>
                             ))}
                           </select>
                         </label>
                         <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Quantity</span>
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">{t('invQuantity')}</span>
                           <input type="number" min="0" step="0.01" value={row.quantity} onChange={(e) => updateRecipeIngredient(idx, 'quantity', e.target.value, false)} placeholder="0.5" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                         </label>
                         <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Unit</span>
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">{t('invUnit')}</span>
                           <input value={row.unit} onChange={(e) => updateRecipeIngredient(idx, 'unit', e.target.value, false)} placeholder="kg" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                         </label>
                         <button type="button" onClick={() => removeRecipeRow(idx, false)} className="h-9 w-full sm:w-10 inline-flex items-center justify-center rounded-xl border border-[#FECACA] bg-white text-[#DC2626] text-xs font-bold">✕</button>
@@ -1160,7 +1176,7 @@ export default function InventoryUI() {
                     ))}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="submit" disabled={recipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{recipeBusy ? 'Saving…' : 'Create Recipe'}</button>
+                    <button type="submit" disabled={recipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{recipeBusy ? t('invSaving') : t('invCreateRecipe')}</button>
                     {recipeError && <span className="text-xs font-semibold text-[#DC2626]">{recipeError}</span>}
                   </div>
                 </form>
@@ -1176,8 +1192,8 @@ export default function InventoryUI() {
             ) : recipes.length === 0 ? (
               <div className="px-4 sm:px-5 py-12 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-bg)] border border-[var(--c-border-soft)] text-[var(--c-muted)] mb-3"><IconChefHat size={20} className="h-5 w-5" /></div>
-                <p className="text-sm font-black text-[var(--c-text)]">No recipes yet</p>
-                <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[40ch] mx-auto">Connect a menu item with inventory ingredients. Example: <em>Cappuccino</em> → Coffee Beans, Milk, Sugar. No stock will be deducted.</p>
+                <p className="text-sm font-black text-[var(--c-text)]">{t('invNoRecipes')}</p>
+                <p className="mt-1 text-xs font-medium text-[var(--c-muted)] max-w-[40ch] mx-auto">{t('invRecipesGuide')} <em>Cappuccino</em> → Coffee Beans, Milk, Sugar. {t('invRecipesNoDeduct')}</p>
               </div>
             ) : (
               <div className="divide-y divide-[var(--c-border-soft)]">
@@ -1192,15 +1208,15 @@ export default function InventoryUI() {
                               {ing.inventoryItem?.name || String(ing.inventoryItemId).slice(-4)} {ing.quantity} {ing.unit}
                             </span>
                           ))}
-                          {(!r.ingredients || r.ingredients.length === 0) && <span className="text-xs text-[var(--c-muted)]">No ingredients</span>}
+                          {(!r.ingredients || r.ingredients.length === 0) && <span className="text-xs text-[var(--c-muted)]">{t('invNoIngredients')}</span>}
                         </p>
-                        <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{r.ingredients?.length || 0} ingredients {r.isActive === false ? 'Inactive' : 'Active'}</p>
+                        <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">{r.ingredients?.length || 0} {t('invIngredientsCount')} {r.isActive === false ? t('uiDisabled') : t('uiActive')}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${r.isActive === false ? 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]' : 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]'}`}>{r.isActive === false ? 'Inactive' : 'Active'}</span>
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black uppercase ${r.isActive === false ? 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]' : 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]'}`}>{r.isActive === false ? t('uiDisabled') : t('uiActive')}</span>
                         <button type="button" onClick={() => openEditRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">{t('edit')}</button>
                         {r.isActive !== false && (
-                          <button type="button" onClick={() => handleDeactivateRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#FECACA] bg-white px-2.5 text-xs font-bold text-[#DC2626]">Deactivate</button>
+                          <button type="button" onClick={() => handleDeactivateRecipe(r)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#FECACA] bg-white px-2.5 text-xs font-bold text-[#DC2626]">{t('invDeactivate')}</button>
                         )}
                       </div>
                     </div>
@@ -1214,14 +1230,14 @@ export default function InventoryUI() {
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 px-4 py-6 backdrop-blur-md overflow-y-auto">
                 <div className="w-full max-w-xl rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-6 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)] my-auto">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Edit Recipe {editRecipe.menuItem?.name || editRecipe.menuItemId}</h3>
-                    <button type="button" onClick={() => setEditRecipe(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:bg-[var(--c-bg)]">✕</button>
+                    <h3 className="text-sm font-black text-[var(--c-text)]">{t('invEditRecipe')} {editRecipe.menuItem?.name || editRecipe.menuItemId}</h3>
+                    <button type="button" onClick={() => setEditRecipe(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--c-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-bg)] dark:hover:bg-[#252631]">✕</button>
                   </div>
                   <form onSubmit={handleEditRecipe} className="space-y-3">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">Menu Item</span>
+                      <span className="mb-1 block text-xs font-bold text-[var(--c-muted)]">{t('invMenuItem')}</span>
                       <select value={editRecipeForm.menuItemId} onChange={(e) => setEditRecipeForm({ ...editRecipeForm, menuItemId: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]">
-                        <option value="">Select menu item</option>
+                        <option value="">{t('invSelectMenuItem')}</option>
                         {menuItems.map((m) => (
                           <option key={m._id || m.id} value={m._id || m.id}>{getMenuDisplayName(m)}</option>
                         ))}
@@ -1229,26 +1245,26 @@ export default function InventoryUI() {
                     </label>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">Ingredients</span>
-                        <button type="button" onClick={() => addRecipeRow(true)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">+ Add row</button>
+                        <span className="text-xs font-black uppercase tracking-wide text-[var(--c-muted)]">{t('invIngredients')}</span>
+                        <button type="button" onClick={() => addRecipeRow(true)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]">+ {t('invAddRow')}</button>
                       </div>
                       {editRecipeForm.ingredients.map((row, idx) => (
                         <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_110px_90px_40px] items-end">
                           <label className="block">
-                            <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Inventory Item</span>
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">{t('invInventoryItem')}</span>
                             <select value={row.inventoryItemId} onChange={(e) => updateRecipeIngredient(idx, 'inventoryItemId', e.target.value, true)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2 text-sm font-medium text-[var(--c-text)]">
-                              <option value="">Select item</option>
+                        <option value="">{t('invSelectItem')}</option>
                               {items.map((it) => (
                                 <option key={it._id || it.id} value={it._id || it.id}>{it.name} ({it.unit})</option>
                               ))}
                             </select>
                           </label>
                           <label className="block">
-                            <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Quantity</span>
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">{t('invQuantity')}</span>
                             <input type="number" min="0" step="0.01" value={row.quantity} onChange={(e) => updateRecipeIngredient(idx, 'quantity', e.target.value, true)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                           </label>
                           <label className="block">
-                            <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">Unit</span>
+                          <span className="mb-1 block text-[11px] font-bold text-[var(--c-muted)]">{t('invUnit')}</span>
                             <input value={row.unit} onChange={(e) => updateRecipeIngredient(idx, 'unit', e.target.value, true)} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)]" />
                           </label>
                           <button type="button" onClick={() => removeRecipeRow(idx, true)} className="h-9 w-full sm:w-10 inline-flex items-center justify-center rounded-xl border border-[#FECACA] bg-white text-[#DC2626] text-xs font-bold">✕</button>
@@ -1257,11 +1273,11 @@ export default function InventoryUI() {
                     </div>
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={editRecipeForm.isActive} onChange={(e) => setEditRecipeForm({ ...editRecipeForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-[var(--c-border-soft)]" />
-                      <span className="text-xs font-bold text-[var(--c-muted)]">Active</span>
+                      <span className="text-xs font-bold text-[var(--c-muted)]">{t('uiActive')}</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <button type="submit" disabled={editRecipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editRecipeBusy ? 'Saving…' : 'Save'}</button>
-                      <button type="button" onClick={() => setEditRecipe(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">Cancel</button>
+                      <button type="submit" disabled={editRecipeBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{editRecipeBusy ? t('invSaving') : t('invSave')}</button>
+                      <button type="button" onClick={() => setEditRecipe(null)} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">{t('invCancel')}</button>
                       {editRecipeError && <span className="text-xs font-semibold text-[#DC2626]">{editRecipeError}</span>}
                     </div>
                   </form>
@@ -1273,8 +1289,8 @@ export default function InventoryUI() {
         ) : (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-black text-[var(--c-text)]">Inventory Intelligence</h2>
-              <button type="button" onClick={fetchDashboard} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] hover:text-[var(--c-text)] shadow-sm">{t('invRefresh')}</button>
+              <h2 className="text-sm font-black text-[var(--c-text)]">{t('invIntelligence')}</h2>
+              <button type="button" onClick={fetchDashboard} className="inline-flex h-8 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] shadow-sm">{t('invRefresh')}</button>
             </div>
             {loadingDashboard ? (
               <div className="grid gap-4">
@@ -1288,54 +1304,54 @@ export default function InventoryUI() {
             ) : dashboardError ? (
               <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
                 <span>{dashboardError}</span>
-                <button type="button" onClick={fetchDashboard} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+                <button type="button" onClick={fetchDashboard} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">{t('uiRetry')}</button>
               </div>
             ) : !dashboard ? (
-              <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-8 text-center">
-                <p className="text-sm font-bold text-[var(--c-muted)]">No dashboard data</p>
+              <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-8 text-center">
+                <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoDashboard')}</p>
               </div>
             ) : (
               <>
                 <section aria-label="Inventory overview" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
-                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Total Items</p>
+                  <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invTotalItems')}</p>
                     <p className="text-2xl font-black text-[var(--c-text)]">{dashboard.overview?.totalItems ?? 0}</p>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">Distinct SKUs</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">{t('invDistinctSkus')}</p>
                   </div>
-                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
-                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Inventory Value</p>
+                  <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invInventoryValue')}</p>
                     <p className="text-2xl font-black text-[var(--c-text)]">{fmtCost(dashboard.overview?.inventoryValue)}</p>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">stock × cost</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">{t('invValueFormula')}</p>
                   </div>
-                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
-                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Low Stock</p>
+                  <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invLowStock')}</p>
                     <p className="text-2xl font-black text-[#D97706] dark:text-[#FBBF24]">{dashboard.overview?.lowStockCount ?? 0}</p>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">0 &lt; stock ≤ min</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">{t('invLowFormula')}</p>
                   </div>
-                  <div className="card-elevated rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
-                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">Out of Stock</p>
+                  <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl p-4 bg-[var(--c-card)] flex flex-col gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invOutOfStock')}</p>
                     <p className="text-2xl font-black text-[#DC2626]">{dashboard.overview?.outOfStockCount ?? 0}</p>
-                    <p className="text-xs font-medium text-[var(--c-muted)]">stock ≤ 0</p>
+                    <p className="text-xs font-medium text-[var(--c-muted)]">{t('invOutFormula')}</p>
                   </div>
                 </section>
-                <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost (historical)</h3>
+                <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-4">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invFoodCostHist')}</h3>
                   <p className="mt-2 text-2xl font-black text-[var(--c-text)]">{fmtCost(dashboard.foodCost?.foodCost)}</p>
                 </section>
-                <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                   <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Consumption</h3>
+                      <h3 className="text-sm font-black text-[var(--c-text)]">{t('invConsumption')}</h3>
                   </div>
                   {(!dashboard.consumption || dashboard.consumption.length === 0) ? (
                     <div className="px-4 sm:px-5 py-8 text-center">
-                      <p className="text-sm font-bold text-[var(--c-muted)]">No consumption recorded</p>
-                      <p className="text-xs font-medium text-[var(--c-muted)]">SaleDeduction movements will appear after paid orders.</p>
+                        <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoConsumption')}</p>
+                        <p className="text-xs font-medium text-[var(--c-muted)]">{t('invSaleDeductionNote')}</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-                          <tr><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Quantity Used</th><th className="px-4 py-3 font-black">Unit</th></tr>
+                            <tr><th className="px-4 py-3 font-black">{t('invIngredient')}</th><th className="px-4 py-3 text-right font-black">{t('invQuantityUsed')}</th><th className="px-4 py-3 font-black">{t('invUnit')}</th></tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--c-border-soft)]">
                           {dashboard.consumption.map((row) => (
@@ -1346,23 +1362,23 @@ export default function InventoryUI() {
                     </div>
                   )}
                 </section>
-                <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                   <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Waste</h3>
+                      <h3 className="text-sm font-black text-[var(--c-text)]">{t('invWaste')}</h3>
                   </div>
                   <div className="px-4 sm:px-5 py-3 flex flex-wrap gap-4 text-xs font-bold text-[var(--c-muted)]">
-                    <span>Total quantity: <strong className="text-[var(--c-text)]">{dashboard.waste?.totalWasteQuantity ?? 0}</strong></span>
-                    <span>Total cost: <strong className="text-[var(--c-text)]">{fmtCost(dashboard.waste?.totalWasteCost)}</strong></span>
+                      <span>{t('invTotalQty')}: <strong className="text-[var(--c-text)]">{dashboard.waste?.totalWasteQuantity ?? 0}</strong></span>
+                      <span>{t('invTotalCost')}: <strong className="text-[var(--c-text)]">{fmtCost(dashboard.waste?.totalWasteCost)}</strong></span>
                   </div>
                   {(!dashboard.waste?.items || dashboard.waste.items.length === 0) ? (
                     <div className="px-4 sm:px-5 py-6 text-center">
-                      <p className="text-sm font-bold text-[var(--c-muted)]">No waste recorded</p>
+                        <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoWaste')}</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-                          <tr><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Qty</th><th className="px-4 py-3 text-right font-black">Cost</th></tr>
+                            <tr><th className="px-4 py-3 font-black">{t('invIngredient')}</th><th className="px-4 py-3 text-right font-black">{t('qty')}</th><th className="px-4 py-3 text-right font-black">{t('invCost')}</th></tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--c-border-soft)]">
                           {dashboard.waste.items.map((row) => (
@@ -1373,19 +1389,19 @@ export default function InventoryUI() {
                     </div>
                   )}
                 </section>
-                <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                   <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
-                    <h3 className="text-sm font-black text-[var(--c-text)]">Top Ingredients (Top 10)</h3>
+                      <h3 className="text-sm font-black text-[var(--c-text)]">{t('invTopIngredients')}</h3>
                   </div>
                   {(!dashboard.topIngredients || dashboard.topIngredients.length === 0) ? (
                     <div className="px-4 sm:px-5 py-8 text-center">
-                      <p className="text-sm font-bold text-[var(--c-muted)]">No consumption yet</p>
+                        <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoConsumptionYet')}</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-                          <tr><th className="px-4 py-3 font-black">#</th><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Quantity Used</th></tr>
+                            <tr><th className="px-4 py-3 font-black">#</th><th className="px-4 py-3 font-black">{t('invIngredient')}</th><th className="px-4 py-3 text-right font-black">{t('invQuantityUsed')}</th></tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--c-border-soft)]">
                           {dashboard.topIngredients.map((row, idx) => (
@@ -1399,7 +1415,7 @@ export default function InventoryUI() {
 
                 {/* Food Cost Analytics (H6.1) */}
                 <div className="pt-2">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost Intelligence</h3>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invFoodCostIntel')}</h3>
                 </div>
                 {loadingFoodCost ? (
                   <div className="grid gap-4">
@@ -1409,55 +1425,55 @@ export default function InventoryUI() {
                 ) : foodCostError ? (
                   <div role="alert" className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] flex items-center justify-between gap-3">
                     <span>{foodCostError}</span>
-                    <button type="button" onClick={fetchFoodCost} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">Retry</button>
+                    <button type="button" onClick={fetchFoodCost} className="shrink-0 rounded-lg bg-white border border-[#FECACA] px-2.5 py-1 text-xs font-bold text-[#DC2626]">{t('uiRetry')}</button>
                   </div>
                 ) : !foodCostData ? (
-                  <div className="card-elevated rounded-2xl bg-[var(--c-card)] p-8 text-center">
-                    <p className="text-sm font-bold text-[var(--c-muted)]">No food cost data</p>
+                  <div className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-8 text-center">
+                    <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoFoodCostData')}</p>
                   </div>
                 ) : (
                   <>
-                    <section className="card-elevated rounded-2xl bg-[var(--c-card)] p-4">
-                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">Food Cost Summary</h3>
+                    <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] p-4">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{t('invFoodCostSummary')}</h3>
                       <p className="mt-2 text-2xl font-black text-[var(--c-text)]">{fmtCost(foodCostData.summary?.foodCost)}</p>
                     </section>
-                    <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                    <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                       <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
-                        <h3 className="text-sm font-black text-[var(--c-text)]">Daily Food Cost Trend</h3>
+                        <h3 className="text-sm font-black text-[var(--c-text)]">{t('invDailyTrend')}</h3>
                       </div>
                       {(!foodCostData.trend || foodCostData.trend.length === 0) ? (
                         <div className="px-4 sm:px-5 py-8 text-center">
-                          <p className="text-sm font-bold text-[var(--c-muted)]">No trend data</p>
-                          <p className="text-xs font-medium text-[var(--c-muted)]">SaleDeduction with totalCost will appear here.</p>
+                          <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoTrendData')}</p>
+                          <p className="text-xs font-medium text-[var(--c-muted)]">{t('invSaleDeductionHere')}</p>
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-                              <tr><th className="px-4 py-3 font-black">Date</th><th className="px-4 py-3 text-right font-black">Food Cost</th></tr>
+                              <tr><th className="px-4 py-3 font-black">{t('invDate')}</th><th className="px-4 py-3 text-right font-black">{t('invFoodCost')}</th></tr>
                             </thead>
                             <tbody className="divide-y divide-[var(--c-border-soft)]">
                               {foodCostData.trend.map((row) => (
-                                <tr key={row.date}><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{row.date}</td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{fmtCost(row.foodCost)}</td></tr>
+                                <tr key={row.date}><td className="px-4 py-2.5 font-bold text-[var(--c-text)]">{fmtTrendDate(row.date, lang)}</td><td className="px-4 py-2.5 text-right font-black text-[var(--c-text)]">{fmtCost(row.foodCost)}</td></tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
                       )}
                     </section>
-                    <section className="card-elevated rounded-2xl bg-[var(--c-card)] overflow-hidden">
+                    <section className="border border-[var(--c-border-soft)] shadow-[var(--shadow-card)] rounded-2xl bg-[var(--c-card)] overflow-hidden">
                       <div className="px-4 sm:px-5 py-4 border-b border-[var(--c-border-soft)] bg-[var(--c-bg)]/50">
-                        <h3 className="text-sm font-black text-[var(--c-text)]">Top Cost Ingredients</h3>
+                        <h3 className="text-sm font-black text-[var(--c-text)]">{t('invTopCostIngredients')}</h3>
                       </div>
                       {(!foodCostData.topIngredients || foodCostData.topIngredients.length === 0) ? (
                         <div className="px-4 sm:px-5 py-8 text-center">
-                          <p className="text-sm font-bold text-[var(--c-muted)]">No cost data</p>
+                          <p className="text-sm font-bold text-[var(--c-muted)]">{t('invNoCostData')}</p>
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-                              <tr><th className="px-4 py-3 font-black">#</th><th className="px-4 py-3 font-black">Ingredient</th><th className="px-4 py-3 text-right font-black">Quantity</th><th className="px-4 py-3 text-right font-black">Cost</th></tr>
+                              <tr><th className="px-4 py-3 font-black">#</th><th className="px-4 py-3 font-black">{t('invIngredient')}</th><th className="px-4 py-3 text-right font-black">{t('invQuantity')}</th><th className="px-4 py-3 text-right font-black">{t('invCost')}</th></tr>
                             </thead>
                             <tbody className="divide-y divide-[var(--c-border-soft)]">
                               {foodCostData.topIngredients.map((row, idx) => (

@@ -54,6 +54,13 @@ async function handler(request) {
   if (!result.ok) {
     return NextResponse.json({ success: false, message: result.error }, { status: 400 });
   }
+  // AUTH-ARCH-3: PIN change invalidates the staff member's server-side sessions
+  // (including the changer's own — re-login required). Best-effort: the PIN
+  // change itself already succeeded and must still be reported as success.
+  try {
+    const { revokeAllStaffSessions } = await import("@/lib/sessionStore");
+    await revokeAllStaffSessions(conn, sessionStaffId, "PIN_CHANGED");
+  } catch {}
   return NextResponse.json({ success: true, message: "PIN updated successfully" }, { status: 200 });
 }
 

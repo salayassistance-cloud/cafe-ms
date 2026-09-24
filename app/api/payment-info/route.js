@@ -45,7 +45,7 @@ async function getHandler(request) {
 // POST /api/payment-info  { bankName, ownerName, accountNumber, isActive }
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "payment_info_write", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -81,7 +81,7 @@ async function postHandler(request) {
 // PUT /api/payment-info?id=...  { bankName, ownerName, accountNumber, isActive }
 async function putHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "payment_info_write", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);
@@ -119,7 +119,7 @@ async function putHandler(request) {
 // DELETE /api/payment-info?id=...
 async function deleteHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "payment_info_write", ...RATE_LIMITS.MANAGER });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);

@@ -3,7 +3,6 @@ import { ok, fail, isDbError } from "@/lib/apiResponse";
 import { connectToDatabase } from "@/lib/mongodb";
 import { getOrderModel } from "@/lib/models/Order";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
-import { requireAuth } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 

@@ -7,6 +7,7 @@ import { useState, useEffect, useTransition, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createCategory, updateCategory, deleteCategory, createMenuItem, updateMenuItem, deleteMenuItem } from './actions';
+import { appendTabCredential } from '@/lib/clientFetch';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import { useLanguage } from '@/app/components/LanguageProvider';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
@@ -175,6 +176,9 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
       fd.set('nameOm', nameOm);
       fd.set('targetStation', activeTab);
       if (editingCategoryId) fd.set('id', editingCategoryId);
+      // AUTH-ARCH-11: carry this tab's credential for Server Action auth
+      // (Server Actions receive no Request headers; cookie is the fallback).
+      appendTabCredential(fd);
       const res = editingCategoryId
         ? await updateCategory(null, fd)
         : await createCategory(null, fd);
@@ -243,6 +247,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     startTransition(async () => {
       const fd = new FormData();
       fd.set('id', id);
+      appendTabCredential(fd);
       const res = await deleteCategory(fd);
       if (!res.success) alert(res.error);
       else {
@@ -285,6 +290,8 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     if (form.isNonFasting) fd.set('isNonFasting', 'true');
     if (imageFile) fd.set('image', imageFile);
     if (editingItem?.imageUrl) fd.set('existingImageUrl', editingItem.imageUrl);
+    // AUTH-ARCH-11: carry this tab's credential for Server Action auth.
+    appendTabCredential(fd);
 
     startTransition(async () => {
       let res;
@@ -396,7 +403,12 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
   async function handleDelete(item) {
     if (!confirm(t('confirmDeleteItem'))) return;
     startTransition(async () => {
-      const res = await deleteMenuItem(String(item._id));
+      // AUTH-ARCH-11: deleteMenuItem accepts FormData so the tab credential
+      // travels with the request (Server Actions get no Request headers).
+      const fd = new FormData();
+      fd.set('id', String(item._id));
+      appendTabCredential(fd);
+      const res = await deleteMenuItem(fd);
       if (!res.success) alert(res.error);
       else {
         setItems(prev => prev.filter(i => String(i._id) !== String(item._id)));

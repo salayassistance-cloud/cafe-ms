@@ -104,38 +104,35 @@ Database (via lib/mongodb + get*Model)
 
 ## 4. Authentication Architecture — ONE Mechanism
 
-### CURRENT
-- **Terminal shared PINs:** `system_auth` (`waiterPin`/`kitchenPin`/`baristaPin`/`managerPin` scrypt) via `lib/authService.verifyRolePin` (snapshot cache, derivedKeyCache, auto-upgrade plaintext).
-- **Persons:** `staffs` (`pinHash` scrypt) via `lib/staffService.verifyStaffPin` (case-insensitive fallback).
-- **Session:** `lib/sessionCrypto` HMAC-SHA256 `bono_sess` HttpOnly `sameSite lax, secure prod, 7d`; `lib/authServer.getPortalSession(role)` for layouts; `lib/security.requireAuth` for APIs (cookie or `Bearer`).
-- **Convenience:** `lib/sessionClient` `localStorage` (`bono_device_id` etc.) — not trusted.
-- **Legacy:** `lib/models/User` plaintext per-role PIN — zero callers.
+### CURRENT (canonical, AUTH-ARCH-8F)
+- **Staff only:** `staffs` (`pinHash` scrypt) via `lib/staffService.verifyStaffPin`. WAITER uses username + personal PIN (`POST /api/auth/login-staff`); KITCHEN/BARISTA/CASHIER/MANAGER use per-Staff PIN (`POST /api/auth/verify-pin`). No shared role PINs; `lib/authService.js` removed.
+- **Session:** opaque `__Host-bono_session` (HttpOnly, SameSite=Strict, Path=/, Secure in production, no Domain) → `sessions` collection → live `Staff` (`isActive` + role) via `lib/serverAuth` (single resolver for `requireAuth`, `getPortalSession`, Server Actions). Tab transport `X-Bono-Tab-Session` (256-bit, memory-only, SHA-256 hash stored). `roleSnapshot` is audit metadata only; never authorizes.
+- **Retired:** `SystemAuth` as authority, `bono_sess` HMAC issuance/verification (`lib/sessionCrypto.js` retained for tests/scripts only, zero production importers), `Bearer`, `getAuthorizedSession`, automatic default-Staff bootstrap.
+- **Convenience:** `lib/sessionClient` `localStorage` (staff display fields only) — never trusted for auth.
 
-### TARGET
+### TARGET (achieved)
 ```
-Credential verify (staffService OR authService)
+Staff verify (staffService.verifyStaffPin)
         ↓
-createSessionToken({ role, staffId?, waiterNumber? })
+createSession (Session row) + attachTabCredential
         ↓
-Set-Cookie bono_sess (HttpOnly, Secure prod)
+Set-Cookie __Host-bono_session (HttpOnly, SameSite=Strict, Path=/, Secure prod)
++ tabCredential returned once (memory-only)
         ↓
-Server-side verify (authServer per layout, requireAuth per API)
+serverAuth per layout (cookie) / per API (tab-first, then cookie)
+→ live Staff (isActive + role)
         ↓
 policy.can() per permission
 ```
-- Persons (`login-staff`) is canonical for individuals; `verify-pin`/`verify-waiter` remains for terminal kiosks until full staff migration.
-- `User` model deprecated; do not remove until `users` collection count 0 verified.
-- `AUTH_SECRET` **required in prod** — `sessionCrypto` now throws if missing in `NODE_ENV=production`.
 
 ### WHY
-- Browser not trusted; HttpOnly prevents forgery/XSS theft; HMAC prevents tampering; scrypt prevents DB dump → plaintext.
+- Browser not trusted; HttpOnly opaque session ID prevents theft/forgery (no client-readable payload to tamper with); scrypt prevents DB dump → plaintext; live Staff lookup keeps role/disable decisions current.
 
 ### RISK
-- Changing `AUTH_SECRET` invalidates all sessions (forced re-login).
+- Rotating/deleting live `sessions` rows forces re-login.
 
-### MIGRATION METHOD
-- Phase 2 hardened `sessionCrypto` to throw in prod if missing.
-- Keep both `verifyRolePin` and `verifyStaffPin` until staff coverage 100%.
+### MIGRATION METHOD (completed)
+- Staff-only verification; shared role PINs and `verifyRolePin` removed with `lib/authService.js` (ARCH-8F).
 
 ### TEST REQUIRED
 - `POST /api/auth/login-staff` with correct PIN → `Set-Cookie` HttpOnly, `GET /api/staff` with cookie → 200, without → 401.
@@ -149,7 +146,8 @@ policy.can() per permission
 - Scattered strings: `requireAuth(request,["MANAGER"])`, layout `getPortalSession("MANAGER")`, Server Actions no check.
 
 ### TARGET
-- Central: `lib/policy.js` — `ROLES`, `GROUPS`, `MATRIX` (`resource:action → allowedRoles`), `can()`, `canTransition()`, `authorize()`, `getAuthorizedSession()`.
+- Central: `lib/policy.js` — `ROLES`, `GROUPS`, `MATRIX` (`resource:action → allowedRoles`), `can()`, `canTransition()`, `authorize()`.
+- **AUTH-ARCH-6 update (CURRENT):** `getAuthorizedSession()` removed (was a second engine, zero callers); canonical callers use `requireAuth()` / `getLiveSessionFromCookies()` from `lib/serverAuth`. `orders:transition:PAID` and payment confirm are `CASHIER/MANAGER` (CASHIER is first-class; no CASHIER→MANAGER mapping).
 - Matrix excerpt:
   - `menu:read`, `brand:read`, `paymentInfo:read`, `events:subscribe`, `waiter:active` → `null` (public).
   - `menu:mutate`, `brand:mutate`, `paymentInfo:mutate`, `reports:read`, `analytics:read`, `settings:*` → `MANAGER`.

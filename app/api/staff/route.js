@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // Returns list of staff (id, name, role). Protected: requires an authenticated session.
 async function handler(request) {
   const auth = await requireAuth(request);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   const rl = checkRateLimit(request, { key: "staff_list", ...RATE_LIMITS.GENERAL });
   if (!rl.ok) {
     const res = fail("Too many requests. Please slow down.", 429);

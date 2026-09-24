@@ -9,7 +9,6 @@ import {
   IconCashRegister,
   IconArchiveFilled,
   IconUsers,
-  IconShieldCheck,
   IconFileTypeCsv,
   IconFileTypePdf,
   IconChevronLeft,
@@ -25,7 +24,6 @@ const RAW_ENTRIES = [
   { id: 'cashier', label: 'Cashier', href: '/cashier', icon: IconCashRegister, type: 'link' },
   { id: 'inventory', label: 'Inventory', href: '/manager/inventory', icon: IconArchiveFilled, type: 'link' },
   { id: 'staff', label: 'Staff Management', href: '/manager/staff', icon: IconUsers, type: 'link' },
-  { id: 'security', label: 'PIN & Security', href: '/manager/security', icon: IconShieldCheck, type: 'link' },
   { id: 'exportCsv', label: 'Export CSV', icon: IconFileTypeCsv, type: 'action', action: 'exportCsv' },
   { id: 'exportPdf', label: 'Export PDF', icon: IconFileTypePdf, type: 'action', action: 'exportPdf' },
 ];

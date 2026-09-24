@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // POST /api/inventory/receive { itemId, quantity, unitCost, unit?, notes?, supplier? } — MANAGER only
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:mutate")) return fail("Forbidden: requires MANAGER", 403);
 
   const len = request.headers.get("content-length");

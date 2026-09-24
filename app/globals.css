@@ -295,3 +295,105 @@ html.dark .voyage-inset {
 }
 
 /* Light-mode legacy literal remap removed — components now use CSS vars + dark: classes directly */
+
+/* ============================================================
+   BONO PRINT SYSTEM — screen preview vs physical document output
+   - `.bono-print-only` containers are hidden on screen.
+   - `body.bono-print-ticket` (cashier) or `body.bono-print-report`
+     (manager reports) gates `@media print` so unrelated pages keep
+     normal browser printing and never render a blank page.
+   - Only the dedicated ticket/document prints: dashboard, nav,
+     buttons, backgrounds and overlays are hidden via visibility.
+   ============================================================ */
+.bono-print-only {
+  display: none !important;
+}
+
+@media print {
+  /* Thermal ticket: narrow monochrome receipt */
+  body.bono-print-ticket {
+    background: #fff !important;
+  }
+  body.bono-print-ticket * {
+    visibility: hidden;
+  }
+  body.bono-print-ticket #bono-thermal-ticket,
+  body.bono-print-ticket #bono-thermal-ticket * {
+    visibility: visible;
+  }
+  body.bono-print-ticket #bono-thermal-ticket {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 72mm;
+    margin: 0 auto;
+    padding: 0 2mm;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: ui-monospace, "Courier New", Courier, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  body.bono-print-ticket #bono-thermal-ticket * {
+    background: transparent !important;
+    color: #000 !important;
+    border-color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.bono-print-ticket #bono-thermal-ticket .bono-ticket-block {
+    page-break-inside: avoid;
+  }
+
+  /* Manager report: flat A4 business document */
+  body.bono-print-report {
+    background: #fff !important;
+  }
+  body.bono-print-report * {
+    visibility: hidden;
+  }
+  body.bono-print-report #bono-report-doc,
+  body.bono-print-report #bono-report-doc * {
+    visibility: visible;
+  }
+  body.bono-print-report #bono-report-doc {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    line-height: 1.5;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 4mm;
+  }
+  body.bono-print-report #bono-report-doc * {
+    background: transparent !important;
+    color: #000 !important;
+    border-color: #999 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.bono-print-report #bono-report-doc thead {
+    display: table-header-group;
+  }
+  body.bono-print-report #bono-report-doc tr {
+    page-break-inside: avoid;
+  }
+  body.bono-print-report #bono-report-doc h2 {
+    page-break-after: avoid;
+  }
+
+  @page {
+    size: auto;
+    margin: 8mm 5mm;
+  }
+}

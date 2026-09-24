@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // List inventory items — MANAGER only, supports category/status filters
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:read")) return fail("Forbidden: requires MANAGER", 403);
 
   const { searchParams } = new URL(request.url);
@@ -55,7 +55,7 @@ async function getHandler(request) {
 // Create inventory item — MANAGER only, requires name, category, unit
 async function postHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
-  if (!auth.ok) return fail(auth.error, auth.status);
+  if (!auth.ok) return fail(auth.error, auth.status, auth.code);
   if (!can(auth.payload.role, "inventory:mutate")) return fail("Forbidden: requires MANAGER", 403);
 
   const len = request.headers.get("content-length");

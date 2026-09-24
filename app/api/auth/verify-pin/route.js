@@ -1,12 +1,6 @@
 import { connectToDatabase } from "@/lib/mongodb";
-import { verifyRolePin, ROLES } from "@/lib/authService";
-import {
-  createSessionToken,
-  SESSION_COOKIE,
-  SESSION_COOKIE_OPTS,
-} from "@/lib/sessionCrypto";
-import { cookies } from "next/headers";
 import { withApi } from "@/lib/withApi";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validatePin, validateRole } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
@@ -23,11 +17,12 @@ const staffDerivedCache = new Map();
 // POST /api/auth/verify-pin
 // Kitchen / Barista / Manager sign-in — CANONICAL Staff-based.
 // Verifies PIN against Staff.pinHash for the given role (individual credential),
-// then issues a signed HttpOnly session cookie with staffId.
-// Legacy SystemAuth role PINs (system_auth) are kept only as fallback for
-// migration compatibility and are explicitly marked as legacy. WAITER must use
-// /api/auth/verify-waiter with waiterNumber (individual login); shared waiterPin
-// is deprecated and will return 400.
+// then issues the canonical server-side session (opaque __Host-bono_session
+// cookie + tab credential, no bono_sess on normal Staff login).
+// Legacy SystemAuth role PINs (system_auth) are kept only as a bootstrap
+// fallback (no Staff for role) for migration compatibility and are explicitly
+// marked as legacy. WAITER must use /api/auth/login-staff (username + PIN);
+// shared waiterPin is deprecated and will return 400.
 // Brute-force protected via rate limiting + strict input validation.
 async function handler(request) {
   const rl = checkRateLimit(request, { key: "auth_verify_pin", ...RATE_LIMITS.AUTH });
@@ -84,11 +79,9 @@ async function handler(request) {
     return NextResponse.json({ success: false, message: "Database temporarily unavailable" }, { status: 503 });
   }
 
-  // Canonical: Staff-based verification (individual credential)
-  try {
-    const { ensureDefaultStaff } = await import("@/lib/staffService");
-    await ensureDefaultStaff(conn);
-  } catch {}
+  // Canonical: Staff-based verification (individual credential).
+  // AUTH-ARCH-8B: no automatic bootstrap. A missing Staff row fails below;
+  // provisioning belongs exclusively to authorized Staff Management.
 
   let staffPayload = null;
   let candidates = [];
@@ -98,7 +91,7 @@ async function handler(request) {
     const Staff = getStaffModel(conn);
     candidates = await Staff.find({ role }).lean();
 
-    // ---- Hot-path derived-key cache (mirrors lib/authService derivedKeyCache) ----
+    // ---- Hot-path derived-key cache (scrypt memoization per stored hash) ----
     // scrypt (~70-90ms per call) dominates the per-request cost when a role has
     // several staff (e.g. WAITER has many). Memoize the verification result per
     // `${storedHash}:${pin}` so a terminal's repeat sign-in is a constant-time
@@ -128,29 +121,44 @@ async function handler(request) {
   } catch {}
 
   if (staffPayload) {
-    const token = createSessionToken(staffPayload);
     const store = await cookies();
-    store.set(SESSION_COOKIE, token, SESSION_COOKIE_OPTS);
-    return NextResponse.json({ success: true, role, staff: { id: staffPayload.staffId, name: staffPayload.name, role } }, { status: 200 });
+    // AUTH-ARCH-8D: canonical server-side session ONLY for KITCHEN, BARISTA,
+    // MANAGER and CASHIER Staff logins - no bono_sess issuance. Each role
+    // keeps its validated Staff identity; substitution is forbidden.
+    // A Session persistence failure fails the login (503): there is no
+    // legacy net anymore for normal Staff authentication.
+    let created = null;
+    let tabCredential = null;
+    try {
+      const { createSession, attachTabCredential } = await import("@/lib/sessionStore");
+      const { NEW_SESSION_COOKIE, NEW_SESSION_COOKIE_OPTS, getRequestMeta } = await import("@/lib/serverSessionCookies");
+      const meta = getRequestMeta(request);
+      // Tab isolation: every login mints an independent Session row and never
+      // revokes the presented cookie session — the browser-wide cookie may
+      // belong to ANOTHER tab's live station session, and revoking it logged
+      // other tabs out with SESSION_REVOKED. Stale rows expire via TTL.
+      created = await createSession(conn, {
+        staffId: staffPayload.staffId,
+        role,
+        userAgent: meta.userAgent,
+        ip: meta.ip,
+      });
+      store.set(NEW_SESSION_COOKIE, created.sessionId, NEW_SESSION_COOKIE_OPTS);
+      try {
+        tabCredential = await attachTabCredential(conn, created.sessionId);
+      } catch {}
+    } catch {}
+    if (!created) {
+      return NextResponse.json({ success: false, message: "Database temporarily unavailable" }, { status: 503 });
+    }
+    return NextResponse.json({ success: true, role, staff: { id: staffPayload.staffId, name: staffPayload.name, role }, ...(tabCredential ? { tabCredential } : {}) }, { status: 200 });
   }
 
-  // Legacy fallback: SystemAuth role PIN — ONLY if no Staff exists for this role (bootstrap)
-  // Otherwise Staff is canonical and SystemAuth must NOT be used (prevents old PIN via fallback after Staff PIN change)
-  // PERFORMANCE FIX: Reuse `candidates` length instead of extra countDocuments round trip.
-  const hasStaffForRole = candidates.length > 0;
-  if (!hasStaffForRole) {
-    const { verifyRolePin } = await import("@/lib/authService");
-    const validLegacy = await verifyRolePin(conn, role, pin);
-    if (validLegacy) {
-      // No staff for role exists (bootstrap) — candidates is empty so no fallbackStaff to fetch.
-      // Earlier code did an extra Staff.findOne({role}) here; since candidates is empty we know it's null.
-      const legacyPayload = { role };
-      const token = createSessionToken(legacyPayload);
-      const store = await cookies();
-      store.set(SESSION_COOKIE, token, SESSION_COOKIE_OPTS);
-      return NextResponse.json({ success: true, role, staff: undefined, legacy: true }, { status: 200 });
-    }
-  }
+  // AUTH-ARCH-8F: no Staff record for this role means authentication fails.
+  // The former SystemAuth bootstrap fallback (shared role PIN, legacy-only
+  // session) is retired: Staff is the sole credential authority and missing
+  // accounts are never auto-created. Provisioning belongs to authorized
+  // Staff Management.
 
   return NextResponse.json({ success: false, message: "Invalid PIN" }, { status: 401 });
 }

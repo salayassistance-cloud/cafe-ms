@@ -22,7 +22,9 @@ function ok(n,c,e=""){ if(c){console.log(`✅ ${n}`);pass++;} else {console.log(
 
 async function makeGetRequest(url, token) {
   const headers = {};
-  if (token) headers["authorization"] = `Bearer ${token}`;
+  // ARCH-6: Bearer transport removed from the canonical resolver (no
+  // legitimate caller remained). Cookie transport, like test-h73-route.mjs.
+  if (token) headers["cookie"] = `bono_sess=${token}`;
   const req = new Request(url, { method: "GET", headers });
   const res = await GET(req);
   const json = await res.json().catch(()=>null);
