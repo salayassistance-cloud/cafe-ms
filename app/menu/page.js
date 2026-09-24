@@ -931,7 +931,6 @@ export default function MenuPage() {
                 <p className="py-8 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">{tx('noPayment')}</p>
               ) : (
                 paymentInfos.map((p) => {
-                  const copyAll = `${p.bankName} — ${p.ownerName} — ${p.accountNumber}`;
                   return (
                     <div
                       key={p._id}
@@ -943,7 +942,7 @@ export default function MenuPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(copyAll, `all-${p._id}`)}
+                          onClick={() => copyToClipboard(p.accountNumber, `all-${p._id}`)}
                           className="flex items-center gap-1 rounded-full bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-1.5 text-xs font-bold text-[#1E293B] dark:text-white transition-all duration-150 ease-out     active:shadow-inner"
                         >
                           {copiedId === `all-${p._id}` ? tx('copied') : tx('copy')}
