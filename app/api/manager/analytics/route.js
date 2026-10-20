@@ -5,8 +5,12 @@ import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit"
 import { sanitizeString, validateDateString } from "@/lib/validate";
 import { requireAuth } from "@/lib/security";
 import { getReport, resolveReportRange } from "@/lib/reportService";
+import { getOrderModel } from "@/lib/models/Order";
+import { buildCompletedItemsDetail, COMPLETED_ITEMS_DETAIL_LIMIT } from "@/lib/completedItemsReport";
 
 export const dynamic = "force-dynamic";
+
+const COMPLETED_ITEMS_DETAIL_ORDER_LIMIT = 250;
 
 // GET /api/manager/analytics
 // Aggregates interval sales, category velocity, and average KDS preparation
@@ -55,6 +59,24 @@ async function handler(request) {
     return fail("Database connection error. Please retry shortly.", 503);
   }
   const report = await getReport(conn, { from, to, prevFrom, interval });
+  // Keep the aggregate report untouched. This is a bounded, read-only
+  // projection of the same current created-at window used by buildReport.
+  const Order = getOrderModel(conn);
+  const detailOrders = await Order.find({ createdAt: { $gte: from, $lt: to } })
+    .select("orderNumber tableNumber waiterName paymentMethod status items readyAt servedAt paidAt completedAt paymentVerifiedAt createdAt")
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(COMPLETED_ITEMS_DETAIL_ORDER_LIMIT + 1)
+    .lean();
+  const detail = buildCompletedItemsDetail(
+    detailOrders.slice(0, COMPLETED_ITEMS_DETAIL_ORDER_LIMIT),
+    { limit: COMPLETED_ITEMS_DETAIL_LIMIT }
+  );
+  report.completedItemsDetail = detail.rows;
+  report.completedItemsDetailMeta = {
+    returned: detail.rows.length,
+    limit: COMPLETED_ITEMS_DETAIL_LIMIT,
+    truncated: detail.truncated || detailOrders.length > COMPLETED_ITEMS_DETAIL_ORDER_LIMIT,
+  };
   return ok(report, 200);
 }
 

@@ -46,6 +46,29 @@ function fmtDur(sec) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+function eventLabel(kind, t) {
+  const labels = {
+    PAID_AT: 'paidAt',
+    PAYMENT_VERIFIED_AT: 'paymentVerifiedAt',
+    COMPLETED_AT: 'completedAt',
+    SERVED_AT: 'servedAt',
+    READY_AT: 'readyAt',
+  };
+  return labels[kind] ? t(labels[kind]) : '';
+}
+
+function paymentMethodLabel(method, t) {
+  if (method === 'CASH') return t('cash');
+  if (method === 'TRANSFER' || method === 'TELEBIRR') return t('bankTransfer');
+  return t('cashierUnavailable');
+}
+
+function paymentRevenueLabel(payment, t) {
+  if (payment?.method === 'CASH') return t('cash');
+  if (payment?.method === 'TRANSFER') return payment.bankName || t('bankTransfer');
+  return t('unknownPaymentMethod');
+}
+
 // Display-only localization of Ethiopian-clock period words.
 // English mode maps ቀን/ማታ → AM/PM (established Reports convention);
 // Amharic mode keeps the backend ቀን/ማታ labels untouched.
@@ -170,6 +193,18 @@ function rangeActive(factory, from, to) {
   return from === f && to === t;
 }
 
+function activeRangeLabel(from, to, lang, t) {
+  const preset = QUICK_RANGES.find((range) => rangeActive(range.make, from, to));
+  const fromStart = addisYMDToUTCStart(from);
+  const toStart = addisYMDToUTCStart(to);
+  const locale = lang === 'en' ? 'en' : 'am';
+  const dates = fromStart && toStart
+    ? `${formatEthiopianDate(fromStart, locale)} — ${formatEthiopianDate(toStart, locale)}`
+    : `${from} — ${to}`;
+
+  return `${preset ? t(preset.labelKey) : t('custom')} · ${dates}`;
+}
+
 const PILL_ACTIVE =
   'bg-[#FFD600] dark:bg-[#FF5500] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner';
 const PILL_INACTIVE =
@@ -213,6 +248,8 @@ export default function ManagerReports() {
         slowItems: d.slowItems || [],
         waiterPerf: d.waiterPerf || [],
         paymentBreakdown: d.paymentBreakdown || [],
+        completedItemsDetail: d.completedItemsDetail || [],
+        completedItemsDetailMeta: d.completedItemsDetailMeta || {},
         kitchen: d.kitchen || {},
       });
     } catch (err) {
@@ -346,6 +383,7 @@ export default function ManagerReports() {
     data?.topItems.filter(
       (i) => itemFilter === 'ALL' || i.category === itemFilter
     ) || [];
+  const selectedRangeLabel = activeRangeLabel(from, to, lang, t);
 
   return (
     <div className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col lg:flex-row">
@@ -417,6 +455,14 @@ export default function ManagerReports() {
               }}
             />
           </div>
+
+          <p
+            aria-live="polite"
+            className="w-full text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] sm:w-auto"
+          >
+            <span className="mr-1 uppercase tracking-wide">{t('activeRange')}:</span>
+            {selectedRangeLabel}
+          </p>
         </div>
 
         {/* Row 2: Analysis View Tabs */}
@@ -440,15 +486,18 @@ export default function ManagerReports() {
       <main className="mt-4 space-y-6">
         {loading && <ReportsSkeleton />}
         {error && (
-          <div className="rounded-2xl bg-white dark:bg-[#1C1D24] p-6 text-center text-sm font-bold text-[#FFD600] dark:text-[#FF5500] border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner">
-            {error}
+          <div className="rounded-2xl bg-white dark:bg-[#1C1D24] p-6 text-center text-sm font-bold text-[#FFD600] dark:text-[#FF5500] border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out active:shadow-inner">
+            <p>{error}</p>
+            <button type="button" onClick={() => fetchReports()} className={`mt-3 h-9 rounded-full px-4 text-xs ${PILL_INACTIVE}`}>
+              {t('retry')}
+            </button>
           </div>
         )}
 
         {data && !loading && (
           <>
             {/* KPI CARDS — revenue distinguishable: base vs components, notes have 0 revenue */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <KpiCard
                 index={0}
                 label={t('totalRevenue')}
@@ -459,29 +508,80 @@ export default function ManagerReports() {
               />
               <KpiCard
                 index={1}
+                label={t('foodRevenue')}
+                value={fmtETB(kpis.foodRevenue)}
+                sub={kpis.unattributedItemRevenue ? `${t('unattributedRevenue')} ${fmtETB(kpis.unattributedItemRevenue)}` : t('paid')}
+              />
+              <KpiCard
+                index={2}
+                label={t('drinkRevenue')}
+                value={fmtETB(kpis.drinkRevenue)}
+                sub={t('paid')}
+              />
+              <KpiCard
+                index={3}
                 label={t('completedOrders')}
                 value={kpis.completedOrders.toLocaleString()}
                 sub={`${kpis.cancelledOrders} ${t('cancelled')} ${kpis.activeOrders} ${t('active')}`}
               />
               <KpiCard
-                index={2}
+                index={4}
                 label={t('completedItems')}
                 value={(kpis.completedItems ?? 0).toLocaleString()}
                 sub={`${kpis.cancelledItems ?? 0} ${t('cancelledItems')}`}
               />
               <KpiCard
-                index={3}
+                index={5}
                 label={t('avgFulfillment')}
                 value={fmtDur(kpis.avgFulfillmentSec)}
                 sub={t('prepReady')}
               />
               <KpiCard
-                index={4}
+                index={6}
                 label={t('peakHour')}
                 value={toAMPM(kpis.peakHourLabel, lang)}
                 sub={fmtETB(kpis.peakHourRevenue)}
               />
             </section>
+
+            <Section title={t('completedItems')}>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                  {(kpis.completedItems ?? 0).toLocaleString()} {t('completedItems')}
+                </p>
+                {data.completedItemsDetailMeta?.truncated ? (
+                  <p className="text-xs font-semibold text-[#FFD600] dark:text-[#FF5500]">
+                    {t('completedItemsLimited').replace('{limit}', data.completedItemsDetailMeta.limit)}
+                  </p>
+                ) : null}
+              </div>
+              {data.completedItemsDetail.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                  {t('noCompletedItems')}
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-[#E2E8F0] dark:border-[#2A2B36]">
+                  <table className="min-w-[960px] w-full text-sm">
+                    <thead className="bg-[#F4F5F9] dark:bg-[#252631] text-left text-xs uppercase text-[#64748B] dark:text-[#94A3B8]">
+                      <tr>
+                        <th className="px-3 py-2">{t('item')}</th><th className="px-3 py-2">{t('type')}</th><th className="px-3 py-2 text-right">{t('qty')}</th><th className="px-3 py-2 text-right">{t('unitPrice')}</th><th className="px-3 py-2">{t('extras')}</th><th className="px-3 py-2">{t('reportWaiter')}</th><th className="px-3 py-2">{t('reportPaymentMethod')}</th><th className="px-3 py-2">{t('orderTable')}</th><th className="px-3 py-2">{t('eventTime')}</th><th className="px-3 py-2">{t('status')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.completedItemsDetail.map((item) => (
+                        <tr key={item.rowKey} className="border-t border-[#E2E8F0] align-top dark:border-[#2A2B36]">
+                          <td className="px-3 py-3 font-semibold text-[#1E293B] dark:text-white">{item.name || '—'}</td><td className="px-3 py-3 text-[#64748B] dark:text-[#94A3B8]">{item.type || '—'}</td><td className="px-3 py-3 text-right text-[#1E293B] dark:text-white">{item.quantity ?? '—'}</td><td className="px-3 py-3 text-right text-[#1E293B] dark:text-white">{item.unitPrice == null ? '—' : fmtETB(item.unitPrice)}</td>
+                          <td className="px-3 py-3 text-xs text-[#64748B] dark:text-[#94A3B8]">{item.components.length === 0 ? '—' : item.components.map((component, index) => <div key={component.componentId || `${item.rowKey}-component-${index}`} className="mb-1 last:mb-0">{component.kind === 'PRICED_COMPONENT' ? `${component.name || '—'}${component.quantity != null ? ` × ${component.quantity}` : ''}${component.unitPrice != null ? ` · ${fmtETB(component.unitPrice)}` : ''}${component.lineSum != null ? ` (${fmtETB(component.lineSum)})` : ''}` : component.note || component.name || '—'}</div>)}</td>
+                          <td className="px-3 py-3 text-xs text-[#64748B] dark:text-[#94A3B8]">{item.waiterName || t('cashierUnavailable')}</td><td className="px-3 py-3 text-xs text-[#64748B] dark:text-[#94A3B8]">{paymentMethodLabel(item.paymentMethod, t)}</td>
+                          <td className="px-3 py-3 text-xs text-[#64748B] dark:text-[#94A3B8]"><span className="block font-mono">{item.orderNumber || item.orderId || '—'}</span><span>{t('table')} {item.tableNumber ?? '—'}</span></td>
+                          <td className="px-3 py-3 text-xs text-[#64748B] dark:text-[#94A3B8]">{item.eventAt ? <><span className="block">{eventLabel(item.eventKind, t)}</span>{formatOrderDateTime(item.eventAt, lang)}</> : '—'}</td><td className="px-3 py-3 text-xs font-bold text-[#1E293B] dark:text-white">{item.fulfillmentStatus}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
 
 
             {/* HOURLY */}
@@ -724,15 +824,11 @@ export default function ManagerReports() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {(data.paymentBreakdown || []).map((p) => (
                   <div
-                    key={`pay-${p.method}`}
+                    key={`pay-${p.key || p.method}`}
                     className="rounded-2xl bg-[#F4F5F9] dark:bg-[#252631] p-4"
                   >
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
-                      {String(p.method || '').toUpperCase() === 'TRANSFER' || String(p.method || '').toUpperCase() === 'TELEBIRR'
-                        ? t('bankTransfer')
-                        : p.method === 'CASH'
-                          ? t('cash')
-                          : p.method}
+                      {paymentRevenueLabel(p, t)}
                     </p>
                     <p className="mt-2 text-2xl font-extrabold text-[#1E293B] dark:text-white">
                       {fmtETB(p.amount)}
@@ -917,7 +1013,7 @@ export default function ManagerReports() {
             <thead><tr><th align="left">Method</th><th align="right">Amount</th><th align="right">Share</th></tr></thead>
             <tbody>
               {(data.paymentBreakdown || []).map((p, idx) => (
-                <tr key={`doc-pay-${idx}`}><td>{p.method}</td><td align="right">{fmtETB(p.amount)}</td><td align="right">{kpis.revenue > 0 ? `${Math.round((p.amount / kpis.revenue) * 100)}%` : '0%'}</td></tr>
+                <tr key={`doc-pay-${p.key || idx}`}><td>{paymentRevenueLabel(p, t)}</td><td align="right">{fmtETB(p.amount)}</td><td align="right">{kpis.revenue > 0 ? `${Math.round((p.amount / kpis.revenue) * 100)}%` : '0%'}</td></tr>
               ))}
             </tbody>
           </table>
