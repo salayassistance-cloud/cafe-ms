@@ -148,6 +148,177 @@ function formatOrderDateTime(value, lang) {
   }
 }
 
+const ITEM_PERF_COPY = {
+  en: {
+    title: 'Menu Item Performance',
+    units: 'Completed units',
+    unitsShort: 'units',
+    orders: 'Distinct orders',
+    paidRevenue: 'Paid revenue',
+    orderTimes: 'Order times',
+    base: 'Item base',
+    extras: 'Extras',
+    noTime: 'No recorded event time',
+    notPaid: 'Not paid',
+    scopeNote: 'Grouped from completed item lines in the selected range; revenue counts paid orders only.',
+    noItems: 'No menu items in this range.',
+    showTimes: 'Show order times',
+    hideTimes: 'Hide order times',
+  },
+  am: {
+    title: 'የምናሌ እቃዎች አፈጻጸም',
+    units: 'የተጠናቀቁ ብዛት',
+    unitsShort: 'ብዛት',
+    orders: 'የተለያዩ ትዕዛዞች',
+    paidRevenue: 'የተከፈለ ገቢ',
+    orderTimes: 'የትዕዛዝ ሰዓቶች',
+    base: 'መሠረት',
+    extras: 'ተጨማሪዎች',
+    noTime: 'የተመዘገበ ሰዓት የለም',
+    notPaid: 'ያልተከፈለ',
+    scopeNote: 'ከተጠናቀቁ የምናሌ መስመሮች የተሰበሰበ፤ ገቢ የተከፈሉ ትዕዛዞችን ብቻ ይቆጥራል።',
+    noItems: 'በዚህ ክልል ውስጥ የምናሌ እቃ አልተገኘም።',
+    showTimes: 'የትዕዛዝ ሰዓቶችን አሳይ',
+    hideTimes: 'የትዕዛዝ ሰዓቶችን ደብቅ',
+  },
+  om: {
+    title: 'Raawwii Meeshaalee Menuu',
+    units: "Baay'ina xumurame",
+    unitsShort: "unitoota",
+    orders: 'Ajajoota adda addaa',
+    paidRevenue: 'Galii kaffalame',
+    orderTimes: 'Yeroo ajajaa',
+    base: "Bu'uura meeshaa",
+    extras: 'Dabalata',
+    noTime: "Yeroon galmaa'e hin jiru",
+    notPaid: 'Hin kaffalamne',
+    scopeNote: 'Sarara meeshaalee xumuraman irraa walitti qabame; galii ajajoota kaffalaman qofa lakkaa\'a.',
+    noItems: 'Daangaa kana keessatti meeshaan menuu hin jiru.',
+    showTimes: 'Yeroo ajajaa agarsiisi',
+    hideTimes: 'Yeroo ajajaa dhoksi',
+  },
+};
+
+function itemPerfCopy(lang) {
+  return ITEM_PERF_COPY[lang] || ITEM_PERF_COPY.en;
+}
+
+function safeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function menuLineAmount(row) {
+  const base = safeNumber(row?.itemSubtotal);
+  const components = Array.isArray(row?.components) ? row.components : [];
+  const extras = components.reduce((sum, component) => {
+    if (component?.kind !== 'PRICED_COMPONENT') return sum;
+    if (component?.lineSum != null) {
+      const storedLineSum = Number(component.lineSum);
+      if (Number.isFinite(storedLineSum)) return sum + storedLineSum;
+    }
+    return sum + safeNumber(component?.quantity) * safeNumber(component?.unitPrice);
+  }, 0);
+  return { base, extras, total: base + extras };
+}
+
+function buildMenuItemPerformance(rows) {
+  const items = new Map();
+  const seenLines = new Set();
+
+  for (let index = 0; index < (Array.isArray(rows) ? rows.length : 0); index += 1) {
+    const row = rows[index];
+    if (!row || row.cancelled === true) continue;
+    const name = typeof row.name === 'string' ? row.name.trim() : '';
+    if (!name) continue;
+    const category = row.type || 'OTHER';
+    const itemKey = `${category}:${name}`;
+    const orderKey = row.orderNumber
+      ? `number:${row.orderNumber}`
+      : row.orderId
+        ? `id:${row.orderId}`
+        : `row:${row.rowKey || index}`;
+
+    if (row.orderId || row.orderNumber) {
+      const lineKey = `${orderKey}:${row.lineId || row.rowKey || index}`;
+      if (seenLines.has(lineKey)) continue;
+      seenLines.add(lineKey);
+    }
+
+    const quantity = safeNumber(row.quantity);
+    const paid = row.fulfillmentStatus === 'PAID';
+    const amount = menuLineAmount(row);
+
+    let item = items.get(itemKey);
+    if (!item) {
+      item = {
+        key: itemKey,
+        name,
+        category,
+        units: 0,
+        orderCount: 0,
+        revenue: 0,
+        baseRevenue: 0,
+        extrasRevenue: 0,
+        orders: new Map(),
+      };
+      items.set(itemKey, item);
+    }
+
+    item.units += quantity;
+    if (paid) {
+      item.revenue += amount.total;
+      item.baseRevenue += amount.base;
+      item.extrasRevenue += amount.extras;
+    }
+
+    let order = item.orders.get(orderKey);
+    if (!order) {
+      order = {
+        key: orderKey,
+        orderNumber: row.orderNumber || row.orderId || '—',
+        eventAt: row.eventAt || null,
+        eventKind: row.eventKind || null,
+        units: 0,
+        revenue: 0,
+        isPaid: false,
+      };
+      item.orders.set(orderKey, order);
+      item.orderCount += 1;
+    }
+    order.units += quantity;
+    if (paid) {
+      order.isPaid = true;
+      order.revenue += amount.total;
+    }
+    if (!order.eventAt && row.eventAt) {
+      order.eventAt = row.eventAt;
+      order.eventKind = row.eventKind || null;
+    }
+  }
+
+  return Array.from(items.values())
+    .map((item) => ({
+      ...item,
+      revenue: Math.round(item.revenue * 100) / 100,
+      baseRevenue: Math.round(item.baseRevenue * 100) / 100,
+      extrasRevenue: Math.round(item.extrasRevenue * 100) / 100,
+      orders: Array.from(item.orders.values())
+        .map((order) => ({ ...order, revenue: Math.round(order.revenue * 100) / 100 }))
+        .sort((a, b) => {
+          const aTime = a.eventAt ? new Date(a.eventAt).getTime() : NaN;
+          const bTime = b.eventAt ? new Date(b.eventAt).getTime() : NaN;
+          const aValid = Number.isFinite(aTime);
+          const bValid = Number.isFinite(bTime);
+          if (aValid && bValid && aTime !== bTime) return bTime - aTime;
+          if (aValid && !bValid) return -1;
+          if (!aValid && bValid) return 1;
+          return String(a.orderNumber).localeCompare(String(b.orderNumber));
+        }),
+    }))
+    .sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));
+}
+
 // All presets resolve to Gregorian YYYY-MM-DD bounds (the API contract) but are
 // computed on the Ethiopian calendar so "this week / this month" align to EC
 // periods. The backend filters on Gregorian UTC timestamps unchanged.
@@ -220,6 +391,7 @@ export default function ManagerReports() {
   const [from, setFrom] = useState(init.from);
   const [to, setTo] = useState(init.to);
   const [itemFilter, setItemFilter] = useState('ALL');
+  const [expandedMenuItem, setExpandedMenuItem] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -383,6 +555,8 @@ export default function ManagerReports() {
     data?.topItems.filter(
       (i) => itemFilter === 'ALL' || i.category === itemFilter
     ) || [];
+  const itemPerf = itemPerfCopy(lang);
+  const menuItemPerformance = buildMenuItemPerformance(data?.completedItemsDetail);
   const selectedRangeLabel = activeRangeLabel(from, to, lang, t);
 
   return (
@@ -583,6 +757,137 @@ export default function ManagerReports() {
               )}
             </Section>
 
+            <Section title={itemPerf.title}>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                  {itemPerf.scopeNote}
+                </p>
+                {data.completedItemsDetailMeta?.truncated ? (
+                  <p className="text-xs font-semibold text-[#FFD600] dark:text-[#FF5500]">
+                    {t('completedItemsLimited').replace('{limit}', data.completedItemsDetailMeta.limit)}
+                  </p>
+                ) : null}
+              </div>
+              {menuItemPerformance.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                  {itemPerf.noItems}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {menuItemPerformance.map((item, index) => {
+                    const expanded = expandedMenuItem === item.key;
+                    const panelId = `menu-item-perf-${index}`;
+                    return (
+                      <li key={item.key} className="rounded-xl bg-[#F4F5F9] dark:bg-[#252631]">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMenuItem(expanded ? null : item.key)}
+                          aria-expanded={expanded}
+                          aria-controls={panelId}
+                          className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[#EEF0F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD600] dark:hover:bg-[#2A2B36] dark:focus-visible:ring-[#FF5500]"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-bold text-[#1E293B] dark:text-white">
+                              {item.name}
+                            </span>
+                            <span
+                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                item.category === 'FOOD'
+                                  ? 'bg-[var(--hms-glow-a)] text-[#FFD600] dark:text-[#FF5500]'
+                                  : 'bg-[var(--hms-badge-bg)] text-[#1E293B] dark:text-white'
+                              }`}
+                            >
+                              {item.category}
+                            </span>
+                          </span>
+                          <span className="flex flex-wrap items-center gap-4 text-right sm:gap-6">
+                            <span className="min-w-[68px]">
+                              <span className="block text-sm font-extrabold text-[#1E293B] dark:text-white">
+                                {item.units.toLocaleString()}
+                              </span>
+                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                                {itemPerf.units}
+                              </span>
+                            </span>
+                            <span className="min-w-[68px]">
+                              <span className="block text-sm font-extrabold text-[#1E293B] dark:text-white">
+                                {item.orderCount.toLocaleString()}
+                              </span>
+                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                                {itemPerf.orders}
+                              </span>
+                            </span>
+                            <span className="min-w-[92px]">
+                              <span className="block text-sm font-extrabold text-[#FFD600] dark:text-[#FF5500]">
+                                {fmtETB(item.revenue)}
+                              </span>
+                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                                {itemPerf.paidRevenue}
+                              </span>
+                            </span>
+                            <span
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1E293B] dark:bg-[#1C1D24] dark:text-white"
+                              aria-hidden="true"
+                            >
+                              <svg
+                                className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2.5}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </span>
+                            <span className="sr-only">
+                              {expanded ? itemPerf.hideTimes : itemPerf.showTimes}
+                            </span>
+                          </span>
+                        </button>
+                        <div
+                          id={panelId}
+                          hidden={!expanded}
+                          className="border-t border-[#E2E8F0] px-3 pb-3 pt-2 dark:border-[#2A2B36]"
+                        >
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">
+                              {itemPerf.orderTimes}
+                            </p>
+                            <p className="text-[10px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                              {itemPerf.base} {fmtETB(item.baseRevenue)} · {itemPerf.extras}{' '}
+                              {fmtETB(item.extrasRevenue)}
+                            </p>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {item.orders.map((order) => (
+                              <li
+                                key={`${item.key}-${order.key}`}
+                                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-white px-2.5 py-2 text-xs dark:bg-[#1C1D24]"
+                              >
+                                <span className="font-mono font-semibold text-[#1E293B] dark:text-white">
+                                  {order.orderNumber}
+                                </span>
+                                <span className="text-[#64748B] dark:text-[#94A3B8]">
+                                  {order.eventAt
+                                    ? `${eventLabel(order.eventKind, t)} · ${formatOrderDateTime(order.eventAt, lang)}`
+                                    : itemPerf.noTime}
+                                </span>
+                                <span className="font-semibold text-[#1E293B] dark:text-white">
+                                  {order.units.toLocaleString()} {itemPerf.unitsShort}{' '}
+                                  {order.isPaid
+                                    ? `· ${fmtETB(order.revenue)}`
+                                    : `· ${itemPerf.notPaid}`}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Section>
 
             {/* HOURLY */}
             {interval === 'hourly' && (
