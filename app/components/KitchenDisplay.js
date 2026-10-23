@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { safeFetchJson, updateOrderStatusClient, getSessionErrorKind, tabLogout } from '@/lib/clientFetch';
-import { stationForView, stationStatusOf, stationActionOf, applyStationUpdate } from '@/lib/stationStatus';
+import { stationForView, stationStatusOf, stationActionOf, applyStationUpdate, filterOrdersByStationStatus } from '@/lib/stationStatus';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
 import LanguageToggle from '@/app/components/LanguageToggle';
@@ -121,6 +121,7 @@ export default function KitchenDisplay({
   const [muted, setMuted] = useState(false);
   const [newIds, setNewIds] = useState(() => new Set());
   const [confirmingId, setConfirmingId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('ALL');
   // Single source of in-flight station-action truth.
   // Key: String(orderId) — value: { station: 'KITCHEN'|'BARISTA', action: 'START_PREP'|'MARK_READY'|'ARCHIVE', targetStatus }.
   // Station is fixed per mount (view), so orderId implies the station, but the
@@ -507,6 +508,11 @@ export default function KitchenDisplay({
   const visibleOrders = orders.filter((o) =>
     view === 'ALL' ? true : o.items.some((it) => it.type === view && !it.cancelled)
   );
+  // Status cards filter the visible tickets only. Counts stay derived from the
+  // full visibleOrders set so selecting a card never changes its own number.
+  // 'ALL' is the initial selection and is treated as "no status filter".
+  const summaryStation = stationForView(view);
+  const filteredOrders = filterOrdersByStationStatus(visibleOrders, summaryStation, statusFilter);
   // Also keep orders with only cancelled items of this station for history (faded) — but active view excludes fully cancelled
   const offline = connError;
 
@@ -533,7 +539,7 @@ export default function KitchenDisplay({
             </span>
             <div className="min-w-0 flex-1">
               <p className={`truncate font-semibold ${isCancelled ? 'text-[#991B1B] dark:text-[#FCA5A5] line-through' : 'text-[#1E293B] dark:text-white'}`}>
-                {getLocalizedSingleString(it.name)}
+                {getLocalizedSingleString(it.name, lang)}
               </p>
               <p className="text-xs uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
                 {it.type}{isCancelled && it.cancelReason ? ` · ${it.cancelReason}` : ""}
@@ -791,35 +797,45 @@ export default function KitchenDisplay({
         </div>
       )}
 
-      {/* Status summary — read-only, derived from already-fetched visibleOrders.
-          Station-scoped like the ticket buttons: overall order.status is never
-          consulted, so one station's progress cannot inflate the other's counts. */}
+      {/* Status summary — clickable filter cards. Counts stay read-only and are
+          derived from the full visibleOrders set, station-scoped like the ticket
+          buttons: overall order.status is never consulted, so one station's
+          progress cannot inflate the other's counts. */}
       {(() => {
-        const summaryStation = stationForView(view);
-        const counts = (() => {
-          let newOrders = 0, inProgress = 0, ready = 0;
-          for (const o of visibleOrders) {
-            const st = summaryStation ? stationStatusOf(o, summaryStation) : (o.status || 'PENDING');
-            if (st === 'PENDING') newOrders++;
-            else if (st === 'PREPARING') inProgress++;
-            else if (st === 'READY') ready++;
-          }
-          return { newOrders, inProgress, ready };
-        })();
+        let newOrders = 0, inProgress = 0, ready = 0;
+        for (const o of visibleOrders) {
+          const st = summaryStation ? stationStatusOf(o, summaryStation) : (o.status || 'PENDING');
+          if (st === 'PENDING') newOrders++;
+          else if (st === 'PREPARING') inProgress++;
+          else if (st === 'READY') ready++;
+        }
+        const cards = [
+          { status: 'ALL', label: t('allOrders'), count: visibleOrders.length },
+          { status: 'PENDING', label: t('newOrders'), count: newOrders },
+          { status: 'PREPARING', label: t('inProgress'), count: inProgress },
+          { status: 'READY', label: t('ready'), count: ready },
+        ];
         return (
-          <section aria-label="Order status summary" className="mx-4 mt-3 grid grid-cols-3 gap-3">
-            <div className="rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-center shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{t('newOrders')}</p>
-              <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{counts.newOrders}</p>
-            </div>
-            <div className="rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-center shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{t('inProgress')}</p>
-              <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{counts.inProgress}</p>
-            </div>
-            <div className="rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-3 text-center shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{t('ready')}</p>
-              <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{counts.ready}</p>
-            </div>
+          <section aria-label="Order status summary" className="mx-4 mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {cards.map((card) => {
+              const active = statusFilter === card.status;
+              return (
+                <button
+                  key={`status-${card.status}`}
+                  type="button"
+                  onClick={() => setStatusFilter((current) => (current === card.status ? 'ALL' : card.status))}
+                  aria-pressed={active}
+                  className={`rounded-2xl border p-3 text-center shadow-sm transition-all duration-150 ease-out active:shadow-inner focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD600] dark:focus-visible:ring-[#FF5E00] ${
+                    active
+                      ? 'border-[#FFD600] dark:border-[#FF5E00] bg-[#FFD600]/10 dark:bg-[rgba(255,94,0,0.12)] ring-2 ring-[#FFD600] dark:ring-[#FF5E00]'
+                      : 'border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24]'
+                  }`}
+                >
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">{card.label}</p>
+                  <p className="mt-1 text-2xl font-black text-[#1E293B] dark:text-white">{card.count}</p>
+                </button>
+              );
+            })}
           </section>
         );
       })()}
@@ -827,7 +843,7 @@ export default function KitchenDisplay({
       <main className="p-4">
         {initialLoading ? (
           <BoardSkeleton />
-        ) : visibleOrders.length === 0 ? (
+        ) : filteredOrders.length === 0 ? (
           (() => {
             const empty = emptyStateFor(station, t);
             return (
@@ -838,15 +854,25 @@ export default function KitchenDisplay({
                 <span className="mt-3 block font-bold text-[#1E293B] dark:text-white">
                   {empty.title}
                 </span>
-                <span className="mt-1 block text-xs text-[#64748B] dark:text-[#94A3B8]">
-                  {empty.sub}
-                </span>
+                {visibleOrders.length === 0 ? (
+                  <span className="mt-1 block text-xs text-[#64748B] dark:text-[#94A3B8]">
+                    {empty.sub}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('ALL')}
+                    className="mt-3 rounded-full border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-4 py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8] shadow-sm transition-all duration-150 ease-out active:shadow-inner focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD600] dark:focus-visible:ring-[#FF5E00]"
+                  >
+                    {t('allOrders')}
+                  </button>
+                )}
               </div>
             );
           })()
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
-            {visibleOrders.map((o, i) => renderTicket(o, i))}
+            {filteredOrders.map((o, i) => renderTicket(o, i))}
           </div>
         )}
       </main>

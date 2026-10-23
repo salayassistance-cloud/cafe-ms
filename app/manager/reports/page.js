@@ -1126,22 +1126,22 @@ export default function ManagerReports() {
 
             {/* TRANSFER BY ACCOUNT — uses persisted snapshot, not fresh lookup */}
             {data.transferByAccount && data.transferByAccount.length > 0 && (
-              <Section title="Transfer by Account">
+              <Section title={t('transferByAccount')}>
                 <div className="overflow-hidden rounded-2xl">
                   <table className="w-full text-sm">
                     <thead className="bg-[#F4F5F9] dark:bg-[#252631] text-left text-xs uppercase text-[#64748B] dark:text-[#94A3B8]">
                       <tr>
-                        <th className="px-3 py-2">Bank</th>
-                        <th className="px-3 py-2">Owner</th>
-                        <th className="px-3 py-2">Account</th>
-                        <th className="px-3 py-2 text-right">Transactions</th>
-                        <th className="px-3 py-2 text-right">Revenue</th>
+                        <th className="px-3 py-2">{t('transferBank')}</th>
+                        <th className="px-3 py-2">{t('transferOwner')}</th>
+                        <th className="px-3 py-2">{t('transferAccount')}</th>
+                        <th className="px-3 py-2 text-right">{t('transferTransactions')}</th>
+                        <th className="px-3 py-2 text-right">{t('revenue')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.transferByAccount.map((a) => (
                         <tr key={`tr-${a.paymentAccountId || a.accountNumber || a.bankName}`} className="">
-                          <td className="px-3 py-2 font-semibold text-[#1E293B] dark:text-white">{a.bankName || "Unknown"}</td>
+                          <td className="px-3 py-2 font-semibold text-[#1E293B] dark:text-white">{a.bankName || t('transferUnknown')}</td>
                           <td className="px-3 py-2 text-[#1E293B] dark:text-white">{a.ownerName || "—"}</td>
                           <td className="px-3 py-2 font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">{a.accountNumber ? `${a.accountNumber.slice(0,4)}****${a.accountNumber.slice(-2)}` : "—"}</td>
                           <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">{a.count}</td>
@@ -1241,12 +1241,12 @@ export default function ManagerReports() {
 
           {(data.transferByAccount || []).length > 0 && (
             <>
-              <h2>Transfer by Account</h2>
+              <h2>{t('transferByAccount')}</h2>
               <table width="100%" cellPadding="4" cellSpacing="0" border="1">
-                <thead><tr><th align="left">Bank</th><th align="left">Owner</th><th align="left">Account</th><th align="right">Transactions</th><th align="right">Revenue</th></tr></thead>
+                <thead><tr><th align="left">{t('transferBank')}</th><th align="left">{t('transferOwner')}</th><th align="left">{t('transferAccount')}</th><th align="right">{t('transferTransactions')}</th><th align="right">{t('revenue')}</th></tr></thead>
                 <tbody>
                   {data.transferByAccount.map((a, idx) => (
-                    <tr key={`doc-tr-${idx}`}><td>{a.bankName || 'Unknown'}</td><td>{a.ownerName || '—'}</td><td>{a.accountNumber ? `${a.accountNumber.slice(0, 4)}****${a.accountNumber.slice(-2)}` : '—'}</td><td align="right">{a.count}</td><td align="right">{fmtETB(a.amount)}</td></tr>
+                    <tr key={`doc-tr-${idx}`}><td>{a.bankName || t('transferUnknown')}</td><td>{a.ownerName || '—'}</td><td>{a.accountNumber ? `${a.accountNumber.slice(0, 4)}****${a.accountNumber.slice(-2)}` : '—'}</td><td align="right">{a.count}</td><td align="right">{fmtETB(a.amount)}</td></tr>
                   ))}
                 </tbody>
               </table>

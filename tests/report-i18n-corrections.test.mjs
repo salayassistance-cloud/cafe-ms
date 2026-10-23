@@ -30,14 +30,27 @@ describe('REPORT-I18N - label correction', () => {
     assert.ok(translations.am.reportExtraLabel && translations.am.reportExtraLabel !== 'Extra');
   });
 
-  test('B. Cancelled Items renders below Kitchen & Barista Preparation Speed', () => {
+  test('B. Menu performance uses FOOD/DRINK columns and completed/cancelled stack vertically', () => {
     const s = src('app/manager/reports/page.js');
-    const kitchenIdx = s.indexOf('KITCHEN SPEED');
-    const cancelledIdx = s.indexOf('CANCELLED ITEMS');
-    assert.ok(kitchenIdx !== -1 && cancelledIdx !== -1, 'both sections present');
-    assert.ok(kitchenIdx < cancelledIdx, 'Kitchen Speed appears before Cancelled Items');
+    const menuIdx = s.indexOf('<Section title={itemPerf.title}>');
+    const menuGridIdx = s.indexOf('<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">');
+    const foodIdx = s.indexOf('items={foodMenuPerformance}');
+    const drinkIdx = s.indexOf('items={drinkMenuPerformance}');
+    const completedIdx = s.indexOf("<Section title={t('completedItems')}>");
+    const cancelledIdx = s.indexOf("<Section title={t('cancelledItems')}>");
+    assert.ok(
+      menuIdx !== -1 && menuGridIdx !== -1 && foodIdx !== -1 && drinkIdx !== -1 && completedIdx !== -1 && cancelledIdx !== -1,
+      'all sections present'
+    );
+    assert.ok(menuIdx < menuGridIdx && menuGridIdx < foodIdx && foodIdx < drinkIdx, 'Menu Item Performance uses FOOD then DRINK columns');
+    assert.ok(drinkIdx < completedIdx, 'Menu Item Performance appears before Completed Items');
+    assert.ok(completedIdx < cancelledIdx, 'Completed Items appears before Cancelled Items');
+    assert.ok(
+      !s.slice(completedIdx, cancelledIdx).includes('lg:grid-cols-2'),
+      'Completed and Cancelled Items are not side by side'
+    );
     assert.equal(
-      (s.match(/CANCELLED ITEMS/g) || []).length, 1,
+      (s.match(/title=\{t\('cancelledItems'\)\}/g) || []).length, 1,
       'Cancelled Items container exists exactly once (moved, not duplicated)'
     );
   });

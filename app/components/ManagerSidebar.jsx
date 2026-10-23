@@ -28,7 +28,7 @@ const RAW_ENTRIES = [
   { id: 'exportPdf', label: 'Export PDF', icon: IconFileTypePdf, type: 'action', action: 'exportPdf' },
 ];
 
-export default function ManagerSidebar({ onExportCsv, onExportPdf }) {
+export default function ManagerSidebar({ onExportCsv, onExportPdf, hideCashier = false }) {
   const pathname = usePathname();
   const router = useRouter();
   const [order, setOrder] = useState(() => RAW_ENTRIES.map((e) => e.id));
@@ -38,7 +38,10 @@ export default function ManagerSidebar({ onExportCsv, onExportPdf }) {
   const [dragOverId, setDragOverId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
 
-  const entries = order.map((id) => RAW_ENTRIES.find((e) => e.id === id)).filter(Boolean);
+  const entries = order
+    .filter((id) => !(hideCashier && id === 'cashier'))
+    .map((id) => RAW_ENTRIES.find((e) => e.id === id))
+    .filter(Boolean);
 
   const handleDragStart = (e, id) => {
     dragIdRef.current = id;

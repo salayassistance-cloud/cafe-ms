@@ -682,7 +682,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
               if (!it.cancelled || !it.lineId) continue;
               const before = wasLines.get(String(it.lineId));
              if (before && before.cancelled) continue;
-             const itemName = getLocalizedSingleString(it.name) || getLocalizedSingleString(it.title) || 'Item';
+              const itemName = getLocalizedSingleString(it.name, langRef.current) || getLocalizedSingleString(it.title, langRef.current) || 'Item';
              fireWaiterAlert(
                `cancel:${o._id}|${it.lineId}`,
                `Table ${o.tableNumber} · ${o.orderNumber}`,
@@ -776,8 +776,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     visibleItems.sort((a, b) => (a.price || 0) - (b.price || 0));
   } else if (sortMode === 'alpha') {
     visibleItems.sort((a, b) =>
-      getLocalizedSingleString(a.title).localeCompare(
-        getLocalizedSingleString(b.title),
+      getLocalizedSingleString(a.title, lang).localeCompare(
+        getLocalizedSingleString(b.title, lang),
         undefined,
         { sensitivity: 'base' }
       )
@@ -1054,7 +1054,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
         .filter((it) => !it.cancelled && it.lineId)
         .map((it) => ({
           lineId: String(it.lineId),
-          name: getLocalizedSingleString(it.name) || getLocalizedSingleString(it.title) || 'Item',
+          name: getLocalizedSingleString(it.name, lang) || getLocalizedSingleString(it.title, lang) || 'Item',
           qty: Number(it.quantity) || 1,
           origQty: Number(it.quantity) || 1,
         }))
@@ -1863,8 +1863,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           <li key={`${o._id}-${it.lineId || i}`} className={isCancelled ? "line-through text-[#DC2626] dark:text-[#FCA5A5]" : "text-[#64748B] dark:text-[#94A3B8]"}>
                             <div>
                               {`${it.quantity || 1}x ${
-                                getLocalizedSingleString(it.name) ||
-                                getLocalizedSingleString(it.title) ||
+                                getLocalizedSingleString(it.name, lang) ||
+                                getLocalizedSingleString(it.title, lang) ||
                                 'Item'
                               }`}{isCancelled ? ` Cancelled${it.cancelReason ? `: ${it.cancelReason}` : ""}` : ""}
                             </div>
