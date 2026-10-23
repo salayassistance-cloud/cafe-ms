@@ -557,11 +557,13 @@ export default function ManagerReports() {
     ) || [];
   const itemPerf = itemPerfCopy(lang);
   const menuItemPerformance = buildMenuItemPerformance(data?.completedItemsDetail);
+  const foodMenuPerformance = menuItemPerformance.filter((item) => item.category === 'FOOD');
+  const drinkMenuPerformance = menuItemPerformance.filter((item) => item.category !== 'FOOD');
   const selectedRangeLabel = activeRangeLabel(from, to, lang, t);
 
   return (
     <div className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col lg:flex-row">
-      <ManagerSidebar onExportCsv={exportCSV} onExportPdf={exportPDF} />
+      <ManagerSidebar onExportCsv={exportCSV} onExportPdf={exportPDF} hideCashier />
       <div className="flex-1 min-w-0 p-4 text-[#1E293B] dark:text-white sm:p-6 overflow-x-hidden">
         {/* ============ TIER 1: TOP HEADER BAR — transparent in dark ============ */}
       <header className="relative rounded-2xl bg-white dark:bg-[#1C1D24] px-4 py-3 border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner sm:px-6">
@@ -718,6 +720,50 @@ export default function ManagerReports() {
               />
             </section>
 
+            <Section title={itemPerf.title}>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                  {itemPerf.scopeNote}
+                </p>
+                {data.completedItemsDetailMeta?.truncated ? (
+                  <p className="text-xs font-semibold text-[#FFD600] dark:text-[#FF5500]">
+                    {t('completedItemsLimited').replace('{limit}', data.completedItemsDetailMeta.limit)}
+                  </p>
+                ) : null}
+              </div>
+              {menuItemPerformance.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                  {itemPerf.noItems}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div className="min-w-0">
+                    <MenuItemPerformanceList
+                      items={foodMenuPerformance}
+                      itemPerf={itemPerf}
+                      expandedKey={expandedMenuItem}
+                      onToggle={setExpandedMenuItem}
+                      t={t}
+                      lang={lang}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <MenuItemPerformanceList
+                      items={drinkMenuPerformance}
+                      offset={foodMenuPerformance.length}
+                      itemPerf={itemPerf}
+                      expandedKey={expandedMenuItem}
+                      onToggle={setExpandedMenuItem}
+                      t={t}
+                      lang={lang}
+                    />
+                  </div>
+                </div>
+              )}
+            </Section>
+
+            <div className="space-y-6">
+              <div className="min-w-0">
             <Section title={t('completedItems')}>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
@@ -756,138 +802,68 @@ export default function ManagerReports() {
                 </div>
               )}
             </Section>
-
-            <Section title={itemPerf.title}>
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
-                  {itemPerf.scopeNote}
-                </p>
-                {data.completedItemsDetailMeta?.truncated ? (
-                  <p className="text-xs font-semibold text-[#FFD600] dark:text-[#FF5500]">
-                    {t('completedItemsLimited').replace('{limit}', data.completedItemsDetailMeta.limit)}
-                  </p>
-                ) : null}
               </div>
-              {menuItemPerformance.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
-                  {itemPerf.noItems}
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {menuItemPerformance.map((item, index) => {
-                    const expanded = expandedMenuItem === item.key;
-                    const panelId = `menu-item-perf-${index}`;
-                    return (
-                      <li key={item.key} className="rounded-xl bg-[#F4F5F9] dark:bg-[#252631]">
-                        <button
-                          type="button"
-                          onClick={() => setExpandedMenuItem(expanded ? null : item.key)}
-                          aria-expanded={expanded}
-                          aria-controls={panelId}
-                          className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[#EEF0F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD600] dark:hover:bg-[#2A2B36] dark:focus-visible:ring-[#FF5500]"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate font-bold text-[#1E293B] dark:text-white">
-                              {item.name}
-                            </span>
-                            <span
-                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                item.category === 'FOOD'
-                                  ? 'bg-[var(--hms-glow-a)] text-[#FFD600] dark:text-[#FF5500]'
-                                  : 'bg-[var(--hms-badge-bg)] text-[#1E293B] dark:text-white'
-                              }`}
-                            >
-                              {item.category}
-                            </span>
-                          </span>
-                          <span className="flex flex-wrap items-center gap-4 text-right sm:gap-6">
-                            <span className="min-w-[68px]">
-                              <span className="block text-sm font-extrabold text-[#1E293B] dark:text-white">
-                                {item.units.toLocaleString()}
-                              </span>
-                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
-                                {itemPerf.units}
-                              </span>
-                            </span>
-                            <span className="min-w-[68px]">
-                              <span className="block text-sm font-extrabold text-[#1E293B] dark:text-white">
-                                {item.orderCount.toLocaleString()}
-                              </span>
-                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
-                                {itemPerf.orders}
-                              </span>
-                            </span>
-                            <span className="min-w-[92px]">
-                              <span className="block text-sm font-extrabold text-[#FFD600] dark:text-[#FF5500]">
-                                {fmtETB(item.revenue)}
-                              </span>
-                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
-                                {itemPerf.paidRevenue}
-                              </span>
-                            </span>
-                            <span
-                              className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1E293B] dark:bg-[#1C1D24] dark:text-white"
-                              aria-hidden="true"
-                            >
-                              <svg
-                                className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2.5}
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </span>
-                            <span className="sr-only">
-                              {expanded ? itemPerf.hideTimes : itemPerf.showTimes}
-                            </span>
-                          </span>
-                        </button>
-                        <div
-                          id={panelId}
-                          hidden={!expanded}
-                          className="border-t border-[#E2E8F0] px-3 pb-3 pt-2 dark:border-[#2A2B36]"
-                        >
-                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">
-                              {itemPerf.orderTimes}
-                            </p>
-                            <p className="text-[10px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
-                              {itemPerf.base} {fmtETB(item.baseRevenue)} · {itemPerf.extras}{' '}
-                              {fmtETB(item.extrasRevenue)}
-                            </p>
-                          </div>
-                          <ul className="space-y-1.5">
-                            {item.orders.map((order) => (
-                              <li
-                                key={`${item.key}-${order.key}`}
-                                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-white px-2.5 py-2 text-xs dark:bg-[#1C1D24]"
-                              >
-                                <span className="font-mono font-semibold text-[#1E293B] dark:text-white">
-                                  {order.orderNumber}
+              <div className="min-w-0">
+                <Section title={t('cancelledItems')}>
+                  <div className="mb-3 flex items-baseline gap-2">
+                    <p className="text-2xl font-extrabold text-[#1E293B] dark:text-white">
+                      {(kpis.cancelledItems ?? 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                      {t('cancelledItems')}
+                    </p>
+                  </div>
+                  {(!data.cancelledItemsDetail || data.cancelledItemsDetail.length === 0) ? (
+                    <p className="py-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                      {t('noSales')}
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[#F4F5F9] dark:bg-[#252631] text-left text-xs uppercase text-[#64748B] dark:text-[#94A3B8]">
+                          <tr>
+                            <th className="px-3 py-2">{t('item')}</th>
+                            <th className="px-3 py-2 text-right">{t('qty')}</th>
+                            <th className="px-3 py-2">{t('type')}</th>
+                            <th className="px-3 py-2">{t('table')}</th>
+                            <th className="px-3 py-2">{t('cancelled')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.cancelledItemsDetail.map((c, idx) => (
+                            <tr key={`cancelled-${c.orderNumber || 'na'}-${c.name}-${idx}`}>
+                              <td className="px-3 py-2 font-semibold text-[#1E293B] dark:text-white">
+                                {c.name}
+                                {c.note ? (
+                                  <span className="block text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8]">
+                                    {c.note}
+                                  </span>
+                                ) : null}
+                                <span className="block text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8]">
+                                  {c.orderNumber} {c.at ? formatOrderDateTime(c.at, lang) : ''}
                                 </span>
-                                <span className="text-[#64748B] dark:text-[#94A3B8]">
-                                  {order.eventAt
-                                    ? `${eventLabel(order.eventKind, t)} · ${formatOrderDateTime(order.eventAt, lang)}`
-                                    : itemPerf.noTime}
-                                </span>
-                                <span className="font-semibold text-[#1E293B] dark:text-white">
-                                  {order.units.toLocaleString()} {itemPerf.unitsShort}{' '}
-                                  {order.isPaid
-                                    ? `· ${fmtETB(order.revenue)}`
-                                    : `· ${itemPerf.notPaid}`}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Section>
+                              </td>
+                              <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
+                                {c.quantity}
+                              </td>
+                              <td className="px-3 py-2 text-[#64748B] dark:text-[#94A3B8]">
+                                {c.station || c.type || '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
+                                {c.tableNumber ?? '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-[#FFD600] dark:text-[#FF5500]">
+                                {c.quantity}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Section>
+              </div>
+            </div>
 
             {/* HOURLY */}
             {interval === 'hourly' && (
@@ -1200,66 +1176,6 @@ export default function ManagerReports() {
               </p>
             </Section>
 
-            {/* CANCELLED ITEMS — line-level count + detail, bottom of the completed-order reporting area */}
-            <Section title={t('cancelledItems')}>
-              <div className="mb-3 flex items-baseline gap-2">
-                <p className="text-2xl font-extrabold text-[#1E293B] dark:text-white">
-                  {(kpis.cancelledItems ?? 0).toLocaleString()}
-                </p>
-                <p className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">
-                  {t('cancelledItems')}
-                </p>
-              </div>
-              {(!data.cancelledItemsDetail || data.cancelledItemsDetail.length === 0) ? (
-                <p className="py-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
-                  {t('noSales')}
-                </p>
-              ) : (
-                <div className="overflow-hidden rounded-2xl">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[#F4F5F9] dark:bg-[#252631] text-left text-xs uppercase text-[#64748B] dark:text-[#94A3B8]">
-                      <tr>
-                        <th className="px-3 py-2">{t('item')}</th>
-                        <th className="px-3 py-2 text-right">{t('qty')}</th>
-                        <th className="px-3 py-2">{t('type')}</th>
-                        <th className="px-3 py-2">{t('table')}</th>
-                        <th className="px-3 py-2">{t('cancelled')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.cancelledItemsDetail.map((c, idx) => (
-                        <tr key={`cancelled-${c.orderNumber || 'na'}-${c.name}-${idx}`}>
-                          <td className="px-3 py-2 font-semibold text-[#1E293B] dark:text-white">
-                            {c.name}
-                            {c.note ? (
-                              <span className="block text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8]">
-                                {c.note}
-                              </span>
-                            ) : null}
-                            <span className="block text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8]">
-                              {c.orderNumber} {c.at ? formatOrderDateTime(c.at, lang) : ''}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
-                            {c.quantity}
-                          </td>
-                          <td className="px-3 py-2 text-[#64748B] dark:text-[#94A3B8]">
-                            {c.station || c.type || '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right text-[#1E293B] dark:text-white">
-                            {c.tableNumber ?? '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right font-bold text-[#FFD600] dark:text-[#FF5500]">
-                            {c.quantity}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Section>
-
           </>
         )}
       </main>
@@ -1422,6 +1338,124 @@ function Section({ title, action, children }) {
       </div>
       {children}
     </section>
+  );
+}
+
+function MenuItemPerformanceList({ items, offset = 0, itemPerf, expandedKey, onToggle, t, lang }) {
+  return (
+    <ul className="space-y-2">
+      {items.map((item, index) => {
+        const expanded = expandedKey === item.key;
+        const panelId = `menu-item-perf-${offset + index}`;
+        return (
+          <li key={item.key} className="rounded-xl bg-[#F4F5F9] dark:bg-[#252631]">
+            <button
+              type="button"
+              onClick={() => onToggle(expanded ? null : item.key)}
+              aria-expanded={expanded}
+              aria-controls={panelId}
+              className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[#EEF0F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD600] dark:hover:bg-[#2A2B36] dark:focus-visible:ring-[#FF5500]"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-bold text-[#1E293B] dark:text-white">
+                  {item.name}
+                </span>
+                <span
+                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    item.category === 'FOOD'
+                      ? 'bg-[var(--hms-glow-a)] text-[#FFD600] dark:text-[#FF5500]'
+                      : 'bg-[var(--hms-badge-bg)] text-[#1E293B] dark:text-white'
+                  }`}
+                >
+                  {item.category}
+                </span>
+              </span>
+              <span className="flex flex-wrap items-center gap-4 text-right sm:gap-6">
+                <span className="min-w-[68px]">
+                  <span className="block text-sm font-extrabold text-[#1E293B] dark:text-white">
+                    {item.units.toLocaleString()}
+                  </span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                    {itemPerf.units}
+                  </span>
+                </span>
+                <span className="min-w-[68px]">
+                  <span className="block text-sm font-extrabold text-[#1E293B] dark:text-white">
+                    {item.orderCount.toLocaleString()}
+                  </span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                    {itemPerf.orders}
+                  </span>
+                </span>
+                <span className="min-w-[92px]">
+                  <span className="block text-sm font-extrabold text-[#FFD600] dark:text-[#FF5500]">
+                    {fmtETB(item.revenue)}
+                  </span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                    {itemPerf.paidRevenue}
+                  </span>
+                </span>
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1E293B] dark:bg-[#1C1D24] dark:text-white"
+                  aria-hidden="true"
+                >
+                  <svg
+                    className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </span>
+                <span className="sr-only">
+                  {expanded ? itemPerf.hideTimes : itemPerf.showTimes}
+                </span>
+              </span>
+            </button>
+            <div
+              id={panelId}
+              hidden={!expanded}
+              className="border-t border-[#E2E8F0] px-3 pb-3 pt-2 dark:border-[#2A2B36]"
+            >
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8]">
+                  {itemPerf.orderTimes}
+                </p>
+                <p className="text-[10px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                  {itemPerf.base} {fmtETB(item.baseRevenue)} · {itemPerf.extras}{' '}
+                  {fmtETB(item.extrasRevenue)}
+                </p>
+              </div>
+              <ul className="space-y-1.5">
+                {item.orders.map((order) => (
+                  <li
+                    key={`${item.key}-${order.key}`}
+                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-white px-2.5 py-2 text-xs dark:bg-[#1C1D24]"
+                  >
+                    <span className="font-mono font-semibold text-[#1E293B] dark:text-white">
+                      {order.orderNumber}
+                    </span>
+                    <span className="text-[#64748B] dark:text-[#94A3B8]">
+                      {order.eventAt
+                        ? `${eventLabel(order.eventKind, t)} · ${formatOrderDateTime(order.eventAt, lang)}`
+                        : itemPerf.noTime}
+                    </span>
+                    <span className="font-semibold text-[#1E293B] dark:text-white">
+                      {order.units.toLocaleString()} {itemPerf.unitsShort}{' '}
+                      {order.isPaid
+                        ? `· ${fmtETB(order.revenue)}`
+                        : `· ${itemPerf.notPaid}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
