@@ -14,6 +14,8 @@ import {
   formatEthiopianDate,
   formatEthiopianDateTime,
   formatEthiopianClock,
+  addisYMDToUTCStart,
+  ethQuickRanges,
 } from '@/lib/ethiopianCalendar';
 
 // Cashier POS — Phase 1 isolated UI
@@ -34,6 +36,77 @@ const FILTERS = [
   { key: 'CANCELLED', label: 'Cancelled' },
   { key: 'ARCHIVED', label: 'Archived' },
 ];
+
+const REPORT_PRESETS = [
+  { key: 'today', labelKey: 'today' },
+  { key: 'yesterday', labelKey: 'yesterday' },
+  { key: 'thisWeek', labelKey: 'thisWeek' },
+  { key: 'thisMonth', labelKey: 'thisMonth' },
+  { key: 'last7', labelKey: 'last7' },
+];
+
+const REPORT_COPY = {
+  en: {
+    title: 'Revenue & Menu Item Performance',
+    subtitle: 'Paid revenue and completed item lines in the selected business range.',
+    item: 'Item',
+    units: 'Units',
+    orders: 'Orders',
+    paid: 'Paid',
+    expand: 'Show report',
+    collapse: 'Hide report',
+    unattributed: 'Unattributed',
+    roundingNote: 'Card totals follow canonical Birr rounding; item amounts are line-level.',
+    noItems: 'No completed items in this range.',
+    error: 'Unable to load the revenue report.',
+  },
+  am: {
+    title: 'የገቢ እና የምናሌ አፈጻጸም',
+    subtitle: 'በተመረጠው የስራ ክልል ውስጥ የተከፈለ ገቢ እና የተጠናቀቁ እቃዎች።',
+    item: 'እቃ',
+    units: 'ብዛት',
+    orders: 'ትዕዛዞች',
+    paid: 'ተከፍሎ',
+    expand: 'ሪፖርት አሳይ',
+    collapse: 'ሪፖርት ደብቅ',
+    unattributed: 'ያልተመደበ',
+    roundingNote: 'የካርድ ድምሮች በቀኖናዊ የብር ማጠጋጋት ይታያሉ፤ የእቃ መጠኖች በመስመር ደረጃ ናቸው።',
+    noItems: 'በዚህ ክልል የተጠናቀቁ እቃዎች የሉም።',
+    error: 'የገቢ ሪፖርቱን መጫን አልተቻለም።',
+  },
+  om: {
+    title: 'Galii fi Raawwii Meeshaa Menuu',
+    subtitle: "Galii kaffalame fi sarara meeshaa xumurame daangaa hojii filatame keessatti.",
+    item: 'Meeshaa',
+    units: "Baay'ina",
+    orders: 'Ajajoota',
+    paid: 'Kaffalame',
+    expand: 'Riipeertii agarsiisi',
+    collapse: 'Riipeertii dhoksi',
+    unattributed: 'Kan hin ramadamne',
+    roundingNote: "Ida'oon kaardii safartuu Birrii kanonaalii hordofa; hangi meeshaa sadarkaa sararaati.",
+    noItems: "Daangaa kana keessatti meeshaan xumurame hin jirin.",
+    error: "Riipeertii galii fecuu hin danda'amne.",
+  },
+};
+
+function reportCopy(lang) {
+  return REPORT_COPY[lang] || REPORT_COPY.en;
+}
+
+function presetRange(key) {
+  const ranges = ethQuickRanges();
+  const range = ranges[key] || ranges.last7;
+  return { from: range.from, to: range.to };
+}
+
+function reportRangeLabel(from, to, lang) {
+  const start = addisYMDToUTCStart(from);
+  const end = addisYMDToUTCStart(to);
+  if (!start || !end) return `${from} — ${to}`;
+  const locale = lang === 'om' ? 'om' : lang === 'en' ? 'en' : 'am';
+  return `${formatEthiopianDate(start, locale)} — ${formatEthiopianDate(end, locale)}`;
+}
 
 const STATUS_META = {
   PENDING: { label: 'PENDING', cls: 'bg-[#F4F5F9] dark:bg-[#12131A] text-[#64748B] dark:text-[#94A3B8] border border-[var(--c-border-soft)]' },
@@ -82,6 +155,68 @@ function fmtMoney(n) {
     return `ETB ${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
   }
 }
+
+function RevenueMetricCard({ label, value, highlight = false }) {
+  return (
+    <div className={`rounded-xl border p-3 ${highlight ? 'border-[var(--c-accent)]/40 bg-[var(--c-accent)]/10' : 'border-[var(--c-border-soft)] bg-[var(--c-bg)]'}`}>
+      <p className="text-[10px] font-black uppercase tracking-widest text-[var(--c-muted)]">{label}</p>
+      <p className="mt-1 text-lg sm:text-xl font-black tabular-nums text-[var(--c-text)]">{value}</p>
+    </div>
+  );
+}
+
+function MenuItemGroup({ title, items, copy, lang }) {
+  const list = Array.isArray(items) ? items : [];
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)]/60">
+      <div className="flex items-center justify-between border-b border-[var(--c-border-soft)] px-3 py-2">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-[var(--c-muted)]">{title}</h3>
+        <span className="rounded-full border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-2 py-0.5 text-[10px] font-black text-[var(--c-muted)]">{list.length}</span>
+      </div>
+      {list.length === 0 ? (
+        <p className="px-3 py-6 text-center text-xs font-medium text-[var(--c-muted)]">{copy.noItems}</p>
+      ) : (
+        <div className="max-h-56 overflow-y-auto custom-scrollbar">
+          <div className="sticky top-0 z-10 hidden grid-cols-[minmax(0,1fr)_3rem_3rem_5.25rem] gap-2 border-b border-[var(--c-border-soft)] bg-[var(--c-card)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-[var(--c-muted)] sm:grid">
+            <span>{copy.item}</span>
+            <span className="text-right">{copy.units}</span>
+            <span className="text-right">{copy.orders}</span>
+            <span className="text-right">{copy.paid}</span>
+          </div>
+          <ul>
+            {list.map((item, index) => {
+              const name = getLocalizedSingleString(item?.name, lang) || '—';
+              const units = Number(item?.units) || 0;
+              const orders = Number(item?.orderCount) || 0;
+              const paid = Number(item?.paidRevenue) || 0;
+              return (
+                <li
+                  key={item?.key || `${item?.category || 'ITEM'}-${index}`}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 border-b border-[var(--c-border-soft)] px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_3rem_3rem_5.25rem] sm:gap-2"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] text-[10px] font-black text-[var(--c-muted)]">{index + 1}</span>
+                    <span className="truncate text-xs font-bold text-[var(--c-text)]" title={name}>{name}</span>
+                  </span>
+                  <span className="hidden text-right text-xs font-bold tabular-nums text-[var(--c-text)] sm:block">{units.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                  <span className="hidden text-right text-xs font-semibold tabular-nums text-[var(--c-muted)] sm:block">{orders.toLocaleString('en-US')}</span>
+                  <span className="text-right text-xs font-black tabular-nums text-[var(--c-text)]">
+                    <span className="block text-[9px] font-black uppercase tracking-wide text-[var(--c-muted)] sm:hidden">{copy.paid}</span>
+                    {fmtMoney(paid)}
+                  </span>
+                  <span className="col-span-2 flex items-center gap-3 text-[10px] font-semibold text-[var(--c-muted)] sm:hidden">
+                    <span>{copy.units}: <strong className="font-black text-[var(--c-text)]">{units.toLocaleString('en-US', { maximumFractionDigits: 2 })}</strong></span>
+                    <span>{copy.orders}: <strong className="font-black text-[var(--c-text)]">{orders.toLocaleString('en-US')}</strong></span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 // Canonical business display: Ethiopian Calendar + Africa/Addis_Ababa +
 // Ethiopian clock (12h day + 12h night). `new Date(iso)` only wraps an
 // existing UTC instant; interpretation is Addis-aware, never browser-local.
@@ -121,6 +256,7 @@ function itemNameOf(it, lang) {
 }
 
 const POLL_MS = 30000;
+const REPORT_REFRESH_DEBOUNCE_MS = 3000;
 const subscribe = () => () => {};
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
@@ -140,6 +276,25 @@ export default function CashierUI() {
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState('');
   const [paySuccess, setPaySuccess] = useState('');
+  const [reportPreset, setReportPreset] = useState('last7');
+  const [reportRange, setReportRange] = useState(() => presetRange('last7'));
+  const [reportData, setReportData] = useState(null);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState('');
+  const [reportExpanded, setReportExpanded] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+    return window.matchMedia('(min-width: 768px)').matches;
+  });
+  const reportReqRef = useRef(0);
+  const reportInFlightRef = useRef(false);
+  const reportTimer = useRef(null);
+  const langRef = useRef(lang);
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    langRef.current = lang;
+    tRef.current = t;
+  }, [lang, t]);
 
   // Business brand for the printed ticket header — existing /api/brand
   // config (read-only here), operational fallback otherwise. Never written
@@ -184,6 +339,95 @@ export default function CashierUI() {
     try { router.push('/cashier'); } catch {}
   }, [router]);
 
+  const fetchReport = useCallback(async ({ silent = false, fresh = true } = {}) => {
+    if (sessionEndedRef.current) return;
+    const nextRange = presetRange(reportPreset);
+    if (nextRange.from !== reportRange.from || nextRange.to !== reportRange.to) {
+      reportReqRef.current += 1;
+      reportInFlightRef.current = false;
+      setReportData(null);
+      setReportLoading(true);
+      setReportRange(nextRange);
+      return;
+    }
+    if (reportInFlightRef.current && silent && !fresh) return;
+
+    const reqId = reportReqRef.current + 1;
+    reportReqRef.current = reqId;
+    reportInFlightRef.current = true;
+    if (!silent) setReportLoading(true);
+    setReportError('');
+    try {
+      const qs = new URLSearchParams({ from: nextRange.from, to: nextRange.to });
+      if (fresh) qs.set('fresh', '1');
+      const json = await safeFetchJson(`/api/cashier/report?${qs.toString()}`, { cache: 'no-store' });
+      if (reqId !== reportReqRef.current) return;
+      if (!json?.success) throw new Error(json?.error || json?.message || 'Failed to load report');
+      const data = json.data || {};
+      setReportData({
+        range: data.range || null,
+        revenue: data.revenue || {},
+        menuItems: Array.isArray(data.menuItems) ? data.menuItems : [],
+      });
+    } catch (err) {
+      if (reqId !== reportReqRef.current) return;
+      if (getSessionErrorKind(err)) {
+        enterSessionEnded();
+        return;
+      }
+      const status = err?.status;
+      if (status === 429) setReportError(tRef.current('cashierTooMany'));
+      else if (status === 403) setReportError(tRef.current('cashierForbidden'));
+      else if (status === 503) setReportError(tRef.current('cashierDbUnavailable'));
+      else setReportError(reportCopy(langRef.current).error);
+    } finally {
+      if (reqId === reportReqRef.current) {
+        reportInFlightRef.current = false;
+        setReportLoading(false);
+      }
+    }
+  }, [reportPreset, reportRange, enterSessionEnded]);
+
+  const scheduleReportRefresh = useCallback(() => {
+    if (sessionEndedRef.current) return;
+    clearTimeout(reportTimer.current);
+    reportTimer.current = setTimeout(
+      () => fetchReport({ silent: true, fresh: true }),
+      REPORT_REFRESH_DEBOUNCE_MS
+    );
+  }, [fetchReport]);
+
+  const selectReportPreset = useCallback((key) => {
+    clearTimeout(reportTimer.current);
+    const range = presetRange(key);
+    setReportPreset(key);
+    if (reportRange.from !== range.from || reportRange.to !== range.to) {
+      reportReqRef.current += 1;
+      reportInFlightRef.current = false;
+      setReportData(null);
+      setReportLoading(true);
+      setReportRange(range);
+    }
+  }, [reportRange]);
+
+  const refreshReport = useCallback(() => {
+    clearTimeout(reportTimer.current);
+    const range = presetRange(reportPreset);
+    if (reportRange.from !== range.from || reportRange.to !== range.to) {
+      reportReqRef.current += 1;
+      reportInFlightRef.current = false;
+      setReportData(null);
+      setReportLoading(true);
+      setReportRange(range);
+      return;
+    }
+    fetchReport();
+  }, [reportPreset, reportRange, fetchReport]);
+
+  useEffect(() => {
+    const id = setTimeout(() => fetchReport(), 0);
+    return () => clearTimeout(id);
+  }, [fetchReport]);
 
   const refreshTimer = useRef(null);
   const selectedIdRef = useRef(selectedId);
@@ -276,8 +520,9 @@ export default function CashierUI() {
     if (!event || event.type === 'ping') return;
     if (event.type === 'orders-changed' || event.type === 'ORDER_READY' || event.type === 'menu-changed' || !event.type) {
       scheduleRefresh();
+      scheduleReportRefresh();
     }
-  }, [scheduleRefresh]), !sessionEnded);
+  }, [scheduleRefresh, scheduleReportRefresh]), !sessionEnded);
 
   useEffect(() => {
     const t = setTimeout(fetchOrders, 0);
@@ -286,12 +531,23 @@ export default function CashierUI() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchOrders();
+      if (document.visibilityState !== 'visible') return;
+      fetchOrders();
+      fetchReport({ silent: true, fresh: false });
     }, POLL_MS);
-    const onVis = () => { if (document.visibilityState === 'visible') fetchOrders(); };
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchOrders();
+      fetchReport({ silent: true, fresh: true });
+    };
     document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); clearTimeout(refreshTimer.current); };
-  }, [fetchOrders]);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      clearTimeout(refreshTimer.current);
+      clearTimeout(reportTimer.current);
+    };
+  }, [fetchOrders, fetchReport]);
 
   useEffect(() => {
     if (paySuccess) {
@@ -424,6 +680,7 @@ export default function CashierUI() {
       });
       setPaySuccess(`${t('cashierPaymentVerified')}: ${updated.orderNumber}`);
       setNotice(`✓ ${updated.orderNumber} — ${t('cashierPaid')}`);
+      scheduleReportRefresh();
     } catch (err) {
       if (gen !== authGenRef.current) return;
       if (getSessionErrorKind(err)) { enterSessionEnded(); return; }
@@ -437,7 +694,7 @@ export default function CashierUI() {
     } finally {
       setPayBusy(false);
     }
-  }, [selected, payBusy, enterSessionEnded, verifyCashierIdentity, t]);
+  }, [selected, payBusy, enterSessionEnded, verifyCashierIdentity, t, scheduleReportRefresh]);
 
   const handleRejectPending = useCallback(async () => {
     if (!selected || payBusy) return;
@@ -520,6 +777,13 @@ export default function CashierUI() {
     return () => document.body.classList.remove('bono-print-ticket');
   }, [printableTicket]);
 
+  const reportLabels = reportCopy(lang);
+  const reportRevenue = reportData?.revenue || {};
+  const reportItems = Array.isArray(reportData?.menuItems) ? reportData.menuItems : [];
+  const foodReportItems = reportItems.filter((item) => String(item?.category).toUpperCase() === 'FOOD');
+  const drinkReportItems = reportItems.filter((item) => String(item?.category).toUpperCase() === 'DRINK');
+  const reportDateLabel = reportRangeLabel(reportRange.from, reportRange.to, lang);
+
   if (!hasMounted) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-[var(--c-bg)]">
@@ -598,6 +862,92 @@ export default function CashierUI() {
           )}
         </div>
       )}
+
+      <section aria-labelledby="cashier-report-title" className="mx-auto max-w-[1600px] px-3 sm:px-4 pt-4">
+        <div className="rounded-2xl border border-[var(--c-border-soft)] bg-[var(--c-card)] p-3 sm:p-4 shadow-[var(--shadow-card)]" aria-busy={reportLoading}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 id="cashier-report-title" className="text-xs font-black uppercase tracking-widest text-[var(--c-muted)]">{reportLabels.title}</h2>
+              <p className="mt-1 hidden text-[11px] font-medium text-[var(--c-muted)] sm:block">{reportLabels.subtitle}</p>
+              <p className="mt-1 text-[11px] font-bold text-[var(--c-text)]" aria-live="polite">{reportDateLabel}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={refreshReport}
+                disabled={reportLoading}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] shadow-sm disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden="true"><path d="M21 12a9 9 0 11-2.64-6.36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {t('cashierRefresh')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportExpanded((expanded) => !expanded)}
+                aria-expanded={reportExpanded}
+                aria-controls="cashier-report-body"
+                aria-label={reportExpanded ? reportLabels.collapse : reportLabels.expand}
+                title={reportExpanded ? reportLabels.collapse : reportLabels.expand}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white text-[var(--c-muted)] shadow-sm dark:bg-[#1C1D24]"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className={`h-3.5 w-3.5 transition-transform ${reportExpanded ? 'rotate-180' : ''}`} aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div id="cashier-report-body" className={reportExpanded ? '' : 'hidden'}>
+            <div className="no-scrollbar mt-3 flex gap-1.5 overflow-x-auto pb-1">
+              {REPORT_PRESETS.map((preset) => {
+                const active = reportPreset === preset.key;
+                return (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => selectReportPreset(preset.key)}
+                    aria-pressed={active}
+                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition-all duration-150 ease-out active:shadow-inner ${active ? 'border-transparent bg-[var(--c-accent)] text-[#1E293B] shadow-sm dark:text-white' : 'border-[var(--c-border-soft)] bg-white text-[var(--c-muted)] dark:bg-[#1C1D24]'}`}
+                  >
+                    {t(preset.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+
+            {reportError && (
+              <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-semibold text-[#DC2626]">
+                <span>{reportError}</span>
+                <button type="button" onClick={refreshReport} className="rounded-lg border border-[#FECACA] bg-white px-2.5 py-1 text-xs font-bold text-[#DC2626] hover:bg-[#FFF7ED]">{t('uiRetry')}</button>
+              </div>
+            )}
+
+            {reportLoading && !reportData ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="h-[76px] animate-pulse rounded-xl border border-[var(--c-border-soft)] bg-[var(--c-bg)]" />
+                ))}
+              </div>
+            ) : reportData ? (
+              <div className={`mt-3 transition-opacity ${reportLoading ? 'opacity-60' : ''}`}>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <RevenueMetricCard label={t('totalRevenue')} value={fmtMoney(reportRevenue.total)} highlight />
+                  <RevenueMetricCard label={t('foodRevenue')} value={fmtMoney(reportRevenue.food)} />
+                  <RevenueMetricCard label={t('drinkRevenue')} value={fmtMoney(reportRevenue.drink)} />
+                </div>
+                {Number(reportRevenue.unattributed) ? (
+                  <p className="mt-2 text-[10px] font-semibold text-[var(--c-muted)]">
+                    {reportLabels.unattributed}: <span className="font-black text-[var(--c-text)]">{fmtMoney(reportRevenue.unattributed)}</span>
+                  </p>
+                ) : null}
+                <p className="mt-1 text-[10px] font-medium text-[var(--c-muted)]">{reportLabels.roundingNote}</p>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <MenuItemGroup title={t('food')} items={foodReportItems} copy={reportLabels} lang={lang} />
+                  <MenuItemGroup title={t('drink')} items={drinkReportItems} copy={reportLabels} lang={lang} />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       {/* Main: responsive — queue + bill */}
       <main className="mx-auto max-w-[1600px] px-3 sm:px-4 py-4 grid gap-4 lg:grid-cols-12 items-start">
