@@ -1,0 +1,86 @@
+{
+  "harness": "wp04-06-t2",
+  "runId": "wp04-06-t2-54a30805c193",
+  "status": "FAILED_CLOSED",
+  "executedAt": "2026-11-13T23:24:22.867Z",
+  "authorization": "Explicit --execute, --run-id, and --confirm gates satisfied. Owner authorization must be recorded separately.",
+  "boundaries": {
+    "loopbackOnly": true,
+    "productionOrStagingAccess": "NONE",
+    "environmentFilesRead": "NONE",
+    "proxyUsedForVerification": false,
+    "effectWritePath": "lib/recovery/taskWriter.js#createRecoveryTaskWriter",
+    "effectTransactions": "W1 createTaskFromFinding, W2 claimLease, W6 reserveOperation, W7 commitOperation",
+    "boundedCommitRetryTimeoutMS": 2000,
+    "verifier": "separate MongoClient, directConnection, readPreference primary, readConcern majority, actual WP04 collections"
+  },
+  "scenarios": {},
+  "assertions": {},
+  "topology": {
+    "setName": "bonowp0406t2rs",
+    "myState": 1,
+    "members": [
+      {
+        "name": "127.0.0.1:27031",
+        "stateStr": "PRIMARY",
+        "health": 1
+      }
+    ]
+  },
+  "environment": {
+    "node": "v24.14.0",
+    "driver": "7.5.0",
+    "os": "Windows_NT 10.0.26200 x64",
+    "mongodPath": "C:\\Program Files\\MongoDB\\Server\\8.0\\bin\\mongod.exe",
+    "mongodbVersion": "8.0.34",
+    "mongodbGitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae",
+    "replicaSetName": "bonowp0406t2rs",
+    "ports": {
+      "mongod": 27031,
+      "proxy": 27032
+    },
+    "bindIp": "127.0.0.1",
+    "storageEngine": "wiredTiger",
+    "oplogSizeMB": 128,
+    "oplog": {
+      "latestOptime": {
+        "$timestamp": "7707800987175485457"
+      },
+      "earliestOptime": {
+        "$timestamp": "7707800987175485441"
+      }
+    },
+    "host": "XANIEL"
+  },
+  "replicaSetVerification": {
+    "verifier": "independent-direct-primary-majority",
+    "directConnection": true,
+    "readPreference": "primary",
+    "readConcern": "majority",
+    "setName": "bonowp0406t2rs",
+    "isWritablePrimary": true,
+    "primary": "127.0.0.1:27031",
+    "members": [
+      {
+        "name": "127.0.0.1:27031",
+        "stateStr": "PRIMARY",
+        "health": 1
+      }
+    ]
+  },
+  "failedScenario": "T2_A",
+  "error": {
+    "name": "MongoRuntimeError",
+    "message": "ClientSession cannot be serialized to BSON.",
+    "code": null,
+    "dbPath": null,
+    "stack": "MongoRuntimeError: ClientSession cannot be serialized to BSON.\n    at ClientSession.toBSON (C:\\hotelms\\node_modules\\mongodb\\lib\\sessions.js:457:15)\n    at serializeInto (C:\\hotelms\\node_modules\\bson\\lib\\bson.cjs:4154:27)\n    at Object.serialize (C:\\hotelms\\node_modules\\bson\\lib\\bson.cjs:4755:32)\n    at OpMsgRequest.serializeBson (C:\\hotelms\\node_modules\\mongodb\\lib\\cmap\\commands.js:421:28)\n    at OpMsgRequest.makeSections (C:\\hotelms\\node_modules\\mongodb\\lib\\cmap\\commands.js:384:37)\n    at OpMsgRequest.toBin (C:\\hotelms\\node_modules\\mongodb\\lib\\cmap\\commands.js:367:29)\n    at Connection.writeCommand (C:\\hotelms\\node_modules\\mongodb\\lib\\cmap\\connection.js:398:67)\n    at Connection.sendWire (C:\\hotelms\\node_modules\\mongodb\\lib\\cmap\\connection.js:253:24)\n    at sendWire.next (<anonymous>)\n    at Connection.sendCommand (C:\\hotelms\\node_modules\\mongodb\\lib\\cmap\\connection.js:305:24)"
+  },
+  "cleanup": {
+    "mongodStopped": true,
+    "dbPathRemoved": true,
+    "keptTemp": false,
+    "notes": [],
+    "blockers": []
+  }
+}

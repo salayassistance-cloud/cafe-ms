@@ -8,11 +8,13 @@ import { validatePin, validateObjectId, sanitizeName } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
 import { ok, fail } from "@/lib/apiResponse";
 import { requireAuth } from "@/lib/security";
+import { isRejectedDefaultCredential } from "@/lib/config/security";
+import { isRoleWidePinRole } from "@/lib/staffPinPolicy";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/manager/staff — Manager-only staff listing with safe fields only
-// Query: ?role=WAITER|KITCHEN|BARISTA|MANAGER|CASHIER|ALL  &status=active|disabled|all  &search=...
+// Query: ?role=WAITER|KITCHEN|BARISTA|HOT_DRINK|MANAGER|CASHIER|ALL  &status=active|disabled|all  &search=...
 // Returns: { staff: [{id,name,username,role,isActive,waiterNumber,createdAt,updatedAt}], counts: {total,active,disabled,byRole} }
 async function getHandler(request) {
   const auth = await requireAuth(request, ["MANAGER"]);
@@ -159,7 +161,7 @@ async function patchHandler(request) {
     } else if (typeof rawActive === "number") wantActive = !!rawActive;
     else wantActive = !!rawActive;
 
-    // Only WAITER/CASHIER individual accounts can be toggled; shared roles (KITCHEN/BARISTA/MANAGER) are not individual and must not be disabled via this UI
+    // Only WAITER/CASHIER individual accounts can be toggled; shared roles (KITCHEN/BARISTA/HOT_DRINK/MANAGER) are not individual and must not be disabled via this UI
     if (!["WAITER", "CASHIER"].includes(staff.role)) {
       return fail("Only WAITER or CASHIER accounts can be enabled/disabled individually", 400);
     }
@@ -237,6 +239,10 @@ async function handler(request) {
   if (!newPin) {
     return NextResponse.json({ success: false, message: "newPin must be 4 digits" }, { status: 400 });
   }
+  // Phase 2.2: a production PIN reset must not reintroduce a known default.
+  if (isRejectedDefaultCredential(newPin)) {
+    return NextResponse.json({ success: false, message: "Choose a PIN that is not a known default" }, { status: 400 });
+  }
 
   // Verify manager session via the canonical resolver (AUTH-ARCH-4):
   // live Staff.role === MANAGER (tab credential first, then the canonical
@@ -270,18 +276,22 @@ async function handler(request) {
   const targetRole = staff.role;
   const newHash = hashPin(newPin);
 
-  // For KITCHEN/BARISTA/MANAGER, PIN is per-role (single PIN) — update ALL staff of that role atomically
-  // For WAITER, PIN is per-person — update only that staff
+  // Station roles (KITCHEN/BARISTA/HOT_DRINK) intentionally share one PIN per
+  // role — update every account of that station atomically.
+  // WAITER/CASHIER/MANAGER are personal accounts — update only the addressed
+  // staff row. Phase 2.2: MANAGER moved out of the role-wide branch. The old
+  // `updateMany({ role: "MANAGER" })` rotated every Manager credential when an
+  // operator reset one account.
   // AUTH-ARCH-8C/8F: Staff-only. SystemAuth is never written by PIN
   // management (the former role-PIN mirror is retired with authService).
   // Mirroring the new PIN into a second store would only preserve a
   // duplicate credential authority.
-  if (["KITCHEN", "BARISTA", "MANAGER"].includes(targetRole)) {
+  if (isRoleWidePinRole(targetRole)) {
     await Staff.updateMany({ role: targetRole }, { $set: { pinHash: newHash } });
     // Also update the in-memory staff doc for response
     staff.pinHash = newHash;
   } else {
-    // WAITER/CASHIER — per-person
+    // WAITER/CASHIER/MANAGER — per-person
     staff.pinHash = newHash;
     await staff.save();
   }
@@ -296,13 +306,14 @@ async function handler(request) {
   } catch {}
 
   // AUTH-ARCH-3: manager PIN reset invalidates the target's server-side
-  // sessions. Role-wide resets (KITCHEN/BARISTA/MANAGER share one PIN) also
-  // revoke that role's sessions. Scoped to affected identities only.
+  // sessions. Only the shared station roles also revoke the whole role's
+  // sessions; a PERSONAL role (including MANAGER) revokes just its own
+  // sessions. Scoped to affected identities only.
   // Best-effort: the reset already succeeded and stays reported as success.
   try {
     const { revokeAllStaffSessions, revokeRoleSessions } = await import("@/lib/sessionStore");
     await revokeAllStaffSessions(conn, staffId, "PIN_RESET");
-    if (["KITCHEN", "BARISTA", "MANAGER"].includes(targetRole)) {
+    if (isRoleWidePinRole(targetRole)) {
       await revokeRoleSessions(conn, targetRole, "PIN_RESET");
     }
   } catch {}

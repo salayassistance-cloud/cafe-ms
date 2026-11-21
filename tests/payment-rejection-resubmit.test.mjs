@@ -75,11 +75,16 @@ describe('Payment rejection and resubmission - DB-free', () => {
     const src = fs.readFileSync(path.join(process.cwd(), 'lib', 'orderService.js'), 'utf8');
     const confirmFn = src.slice(src.indexOf('export async function confirmPayment'));
     const confirmBlock = confirmFn.slice(0, confirmFn.indexOf('// Cashier rejects'));
-    assert.ok(confirmBlock.includes('prepareInventoryDeduction'), 'confirm must deduct inventory');
-    assert.ok(confirmBlock.includes('executeInventoryDeduction'), 'confirm must deduct inventory');
+    // Phase 1: confirmation consumes the pre-preparation reservation exactly
+    // once instead of running the legacy planner/executor pair.
+    assert.ok(confirmBlock.includes('applyPaidInventory'), 'confirm must consume inventory');
+    assert.ok(
+      src.includes('consumeOrderInventory(conn, doc, { actorId, trigger: "PAYMENT" })'),
+      'confirmation must use the reservation consumption path'
+    );
     const submitFn = src.slice(src.indexOf('export async function submitPaymentForVerification'));
     const submitBlock = submitFn.slice(0, submitFn.indexOf('export async function confirmPayment'));
-    assert.ok(!submitBlock.includes('prepareInventoryDeduction'), 'submit must not deduct inventory');
+    assert.ok(!submitBlock.includes('consumeOrderInventory'), 'submit must not deduct inventory');
   });
 
   test('7. Cashier and Manager can confirm/reject', () => {

@@ -8,6 +8,8 @@ import { withApi } from "@/lib/withApi";
 import { ok, fail, isDbError } from "@/lib/apiResponse";
 import { validateRecipeCreate } from "@/lib/recipeValidation";
 import { serializeRecipe } from "@/lib/recipeService";
+import { createRecipe } from "@/lib/recipeWriteService";
+import { isRecipeWriteError } from "@/lib/recipeUnitCoordination";
 
 export const dynamic = "force-dynamic";
 
@@ -69,44 +71,21 @@ async function postHandler(request) {
   }
 
   const validated = validateRecipeCreate(body);
-  if (!validated.ok) return fail(validated.error, 400);
+  if (!validated.ok) return fail(validated.error, 400, validated.code);
 
   try {
     const conn = await connectToDatabase();
-    const Recipe = getRecipeModel(conn);
-    const MenuItem = getMenuItemModel(conn);
-    const InventoryItem = getInventoryItemModel(conn);
+    // All authoritative Recipe/MenuItem/InventoryItem reads, the Recipe write
+    // and the sorted `unitRevision` coordination writes share one transaction
+    // inside the service (see lib/recipeWriteService.js).
+    const { doc, menuDoc, invDocs } = await createRecipe(conn, validated.data);
 
-    // Verify menu item exists
-    const menuExists = await MenuItem.findById(validated.data.menuItemId).select("_id name").lean();
-    if (!menuExists) return fail("Menu item not found", 404);
-
-    // Verify inventory items exist and validate unit consistency (case-insensitive)
-    const invIds = validated.data.ingredients.map((i) => i.inventoryItemId);
-    const invDocsForValidation = await InventoryItem.find({ _id: { $in: invIds } }).select("name category unit currentStock status").lean();
-    if (invDocsForValidation.length !== invIds.length) return fail("One or more inventory items not found", 404);
-    const invUnitMap = new Map(invDocsForValidation.map((d) => [String(d._id), String(d.unit || "").trim().toLowerCase()]));
-    for (const ing of validated.data.ingredients) {
-      const expectedUnit = invUnitMap.get(String(ing.inventoryItemId)) || "";
-      const ingUnit = String(ing.unit || "").trim().toLowerCase();
-      if (expectedUnit && ingUnit !== expectedUnit) {
-        const invName = invDocsForValidation.find((d) => String(d._id) === String(ing.inventoryItemId))?.name || ing.inventoryItemId;
-        return fail(`Unit mismatch for ingredient "${invName}": recipe unit "${ing.unit}" does not match inventory unit "${invDocsForValidation.find((d) => String(d._id) === String(ing.inventoryItemId))?.unit}"`, 400);
-      }
-    }
-
-    // Check duplicate recipe for same menuItem
-    const existing = await Recipe.findOne({ menuItemId: validated.data.menuItemId }).lean();
-    if (existing) return fail("Recipe for this menu item already exists", 409);
-
-    const doc = new Recipe(validated.data);
-    await doc.save();
-
-    // Serialize for response — reuse already-fetched inventory docs
-    const menuMap = new Map([[String(menuExists._id), menuExists]]);
-    const invMap = new Map(invDocsForValidation.map((i) => [String(i._id), i]));
+    // Serialize for response — reuse the inventory docs read in the transaction
+    const menuMap = new Map([[String(menuDoc._id), menuDoc]]);
+    const invMap = new Map(invDocs.map((i) => [String(i._id), i]));
     return ok({ recipe: serializeRecipe(doc.toObject(), menuMap, invMap) }, 201);
   } catch (err) {
+    if (isRecipeWriteError(err)) return fail(err.message, err.status, err.code);
     if (isDbError(err)) return fail("Database connection error. Please retry shortly.", 503);
     if (err && err.code === 11000) return fail("Recipe for this menu item already exists", 409);
     console.error("[api] recipes POST error:", err);

@@ -1,12 +1,14 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import { getOrderModel } from "@/lib/models/Order";
 import { createOrder, toKdsShape } from "@/lib/orderService";
+import { ExtraItemError } from "@/lib/extraItemService";
 import { publish } from "@/lib/eventHub";
 import { withApi } from "@/lib/withApi";
 import { ok, fail } from "@/lib/apiResponse";
 import { cookies } from "next/headers";
 import { requireAuth } from "@/lib/security";
 import { can, canTransition } from "@/lib/policy";
+import { stationForRole, STATION_ITEM_TYPE } from "@/lib/stationStatus";
 import { validateCreateOrderPayload, sanitizeString, validateDateString } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
 import { addisWallToUTC, getAddisParts } from "@/lib/analytics";
@@ -95,7 +97,15 @@ async function postHandler(request) {
     doc = await createOrder(conn, sanitizedBody);
   } catch (e) {
     const msg = String(e?.message || "");
+    // Typed service failures carry an explicit status/code (catalog unavailable
+    // 503, unavailable/unknown catalog item 4xx, Extra Item failures). Mirrors
+    // the other order routes so a controlled failure never becomes a generic
+    // 500. These checks happen BEFORE any order write.
+    if (Number.isInteger(e?.status) && e.status >= 400 && e.status <= 599) {
+      return fail(msg, e.status, e.code);
+    }
     if (/tableNumber|must contain|required/i.test(msg)) return fail(msg, 400);
+    if (e instanceof ExtraItemError) return fail(msg, e.status, e.code);
     throw e; // let withApi map to 500/503
   }
 
@@ -176,7 +186,7 @@ async function getHandler(request) {
     // Canonical station ownership: active line = type matches station AND not cancelled (same element).
     // Prevents Kitchen seeing DRINK-only work (or cancelled-only FOOD) and vice versa, and avoids
     // payload leakage where a mixed order with cancelled FOOD still matches a bare "items.type" filter.
-    if (d === "FOOD" || d === "DRINK") query["items"] = { $elemMatch: { type: d, cancelled: { $ne: true } } };
+    if (d === "FOOD" || d === "DRINK" || d === "HOT_DRINK") query["items"] = { $elemMatch: { type: d, cancelled: { $ne: true } } };
     else if (d !== "ALL" && d.length > 0) return fail("Invalid dest param", 400);
   }
 
@@ -186,9 +196,14 @@ async function getHandler(request) {
     // Force own orders only — ignore any client-provided waiter filters (client is untrusted)
     if (!auth.payload.staffId) return fail("Waiter session missing staff identity", 401);
     query.waiterId = String(auth.payload.staffId);
-  } else if (role === "KITCHEN" || role === "BARISTA") {
-    // KDS/Barista sees by station (items.type) via dest filter, not by waiter ownership — ignore waiter filters
-    // (client waiter params are ignored for these roles)
+  } else if (role === "KITCHEN" || role === "BARISTA" || role === "HOT_DRINK") {
+    // KDS/Barista/Jebena are station-scoped by AUTHORIZATION, not by a
+    // client-supplied dest. Derive the station from the live session role and
+    // override any client filter, so omitting dest cannot expose another
+    // station's orders. (The UI still sends dest; this is server authority.)
+    const station = stationForRole(role);
+    const type = station ? STATION_ITEM_TYPE[station] : null;
+    if (type) query["items"] = { $elemMatch: { type, cancelled: { $ne: true } } };
   } else if (role === "MANAGER" || role === "CASHIER") {
     // Manager/Cashier may filter by waiter if explicitly requested (auditable) — Cashier needs pending queue across all waiters
     if (rawWaiterName) {
@@ -225,7 +240,7 @@ async function getHandler(request) {
 
   // Optimized: select only needed fields, lean, indexed sort
   const orders = await Order.find(query)
-    .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod paymentAccountId paymentAccountSnapshot paymentSubmittedAt paymentSubmittedBy paymentVerifiedAt paymentVerifiedBy paymentRejectedAt paymentRejectedBy paymentRejectionReason createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal")
+    .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId hotDrinkStaffId items status kitchenStatus baristaStatus hotDrinkStatus totalAmount paymentMethod paymentAccountId paymentAccountSnapshot paymentSubmittedAt paymentSubmittedBy paymentVerifiedAt paymentVerifiedBy paymentRejectedAt paymentRejectedBy paymentRejectionReason createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt hotDrinkPreparingAt hotDrinkReadyAt isExternal")
     .sort({ createdAt: -1 })
     .limit(200) // safety cap - prevents huge payload DoS
     .lean();

@@ -782,6 +782,7 @@ export default function CashierUI() {
   const reportItems = Array.isArray(reportData?.menuItems) ? reportData.menuItems : [];
   const foodReportItems = reportItems.filter((item) => String(item?.category).toUpperCase() === 'FOOD');
   const drinkReportItems = reportItems.filter((item) => String(item?.category).toUpperCase() === 'DRINK');
+  const hotDrinkReportItems = reportItems.filter((item) => String(item?.category).toUpperCase() === 'HOT_DRINK');
   const reportDateLabel = reportRangeLabel(reportRange.from, reportRange.to, lang);
 
   if (!hasMounted) {
@@ -928,10 +929,11 @@ export default function CashierUI() {
               </div>
             ) : reportData ? (
               <div className={`mt-3 transition-opacity ${reportLoading ? 'opacity-60' : ''}`}>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <RevenueMetricCard label={t('totalRevenue')} value={fmtMoney(reportRevenue.total)} highlight />
                   <RevenueMetricCard label={t('foodRevenue')} value={fmtMoney(reportRevenue.food)} />
                   <RevenueMetricCard label={t('drinkRevenue')} value={fmtMoney(reportRevenue.drink)} />
+                  <RevenueMetricCard label={t('hotDrinkRevenue')} value={fmtMoney(reportRevenue.hotDrink)} />
                 </div>
                 {Number(reportRevenue.unattributed) ? (
                   <p className="mt-2 text-[10px] font-semibold text-[var(--c-muted)]">
@@ -942,6 +944,7 @@ export default function CashierUI() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   <MenuItemGroup title={t('food')} items={foodReportItems} copy={reportLabels} lang={lang} />
                   <MenuItemGroup title={t('drink')} items={drinkReportItems} copy={reportLabels} lang={lang} />
+                  <MenuItemGroup title={t('hotDrink')} items={hotDrinkReportItems} copy={reportLabels} lang={lang} />
                 </div>
               </div>
             ) : null}
@@ -1057,7 +1060,6 @@ export default function CashierUI() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="inline-flex items-center rounded-lg bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-2 py-1 text-xs font-black text-[var(--c-text)]">T{table}</span>
                             <span className="text-xs font-bold text-[var(--c-muted)] truncate max-w-[14ch]" title={o.orderNumber}>{o.orderNumber}</span>
-                            {o.isExternal && <span className="rounded-full bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] px-2 py-0.5 text-[10px] font-black uppercase">{t('cashierExternal')}</span>}
                           </div>
                           <p className="mt-1 text-xs font-semibold text-[var(--c-muted)] truncate">{t('waiter')}: {o.waiterName || '—'} {o.waiterNumber != null ? `#${o.waiterNumber}` : ''}</p>
                         </div>
@@ -1107,7 +1109,6 @@ export default function CashierUI() {
                         <span className="text-base font-black text-[var(--c-text)]">{selected.tableNumber ?? '—'}</span>
                       </span>
                       <span className="rounded-xl bg-white dark:bg-[#1C1D24] border border-[var(--c-border-soft)] px-3 py-1.5 text-xs font-bold text-[var(--c-muted)] shadow-sm truncate max-w-[20ch]" title={selected.orderNumber}>{selected.orderNumber}</span>
-                      {selected.isExternal && <span className="rounded-full bg-[#FEF3C7] border border-[#FDE68A] px-2.5 py-1 text-xs font-black uppercase text-[#92400E]">{t('cashierExternal')}</span>}
                       <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${statusBadge(selected.status).cls}`}>{statusBadge(selected.status).label}</span>
                     </div>
                     <p className="mt-2 text-xs font-semibold text-[var(--c-muted)]">
@@ -1142,7 +1143,7 @@ export default function CashierUI() {
                             <span className={`flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${isCancelled ? 'bg-[#FECACA] text-[#991B1B] dark:bg-[#7F1D1D] dark:text-white' : 'bg-[var(--c-accent)] text-[#1E293B] dark:text-white'}`}>{qty}</span>
                             <div className="min-w-0 flex-1">
                               <p className={`truncate text-sm font-bold ${isCancelled ? 'line-through text-[#991B1B] dark:text-[#FCA5A5]' : 'text-[var(--c-text)]'}`} title={nm}>{nm}{isCancelled ? ` ${t('cashierCancelledWord')}` : ''}</p>
-                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} {fmtMoney(price)} {t('cashierEach')} {it.isExternal ? t('cashierLegacyExternal') : ''}{isCancelled ? ` ${it.cancelledStation || t('cashierStationWord')}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
+                              <p className="text-xs font-medium text-[var(--c-muted)]">{it.type || 'FOOD'} {fmtMoney(price)} {t('cashierEach')}{isCancelled ? ` ${it.cancelledStation || t('cashierStationWord')}${it.cancelReason ? `: ${it.cancelReason}` : ''}` : ''}</p>
                               {isCancelled && it.cancelledAt && <p className="text-[10px] text-[#991B1B] dark:text-[#FCA5A5]">{t('cashierCancelledWord')} {fmtDate(it.cancelledAt, lang)}</p>}
                               {Array.isArray(it.components) && it.components.length > 0 && (
                                 <ul className="mt-1 space-y-0.5">

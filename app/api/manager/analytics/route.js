@@ -71,13 +71,19 @@ async function handler(request) {
     detailOrders.slice(0, COMPLETED_ITEMS_DETAIL_ORDER_LIMIT),
     { limit: COMPLETED_ITEMS_DETAIL_LIMIT }
   );
-  report.completedItemsDetail = detail.rows;
-  report.completedItemsDetailMeta = {
-    returned: detail.rows.length,
-    limit: COMPLETED_ITEMS_DETAIL_LIMIT,
-    truncated: detail.truncated || detailOrders.length > COMPLETED_ITEMS_DETAIL_ORDER_LIMIT,
+  // Annotate a shallow copy, never the cached report object itself: the same
+  // getReport key is served to /api/manager/reports, which must not inherit
+  // this endpoint's per-order detail projection.
+  const responseReport = {
+    ...report,
+    completedItemsDetail: detail.rows,
+    completedItemsDetailMeta: {
+      returned: detail.rows.length,
+      limit: COMPLETED_ITEMS_DETAIL_LIMIT,
+      truncated: detail.truncated || detailOrders.length > COMPLETED_ITEMS_DETAIL_ORDER_LIMIT,
+    },
   };
-  return ok(report, 200);
+  return ok(responseReport, 200);
 }
 
 export const GET = withApi(handler);

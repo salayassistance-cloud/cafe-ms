@@ -50,9 +50,9 @@ const menuService = fs.readFileSync("lib/menuService.js","utf8");
 ok("menuService resolveCategoryStation handles FOOD/DRINK", menuService.includes("resolveCategoryStation") && menuService.includes("BARISTA") && menuService.includes("KITCHEN"));
 ok("Category type FOOD→KITCHEN DRINK→BARISTA preserved", menuService.includes('FOOD') && menuService.includes('DRINK') && menuService.includes('targetStation'));
 const categoryModel = fs.readFileSync("lib/models/Category.js","utf8");
-ok("Category model type enum FOOD|DRINK", categoryModel.includes('enum: ["FOOD", "DRINK"]'));
+ok("Category model type enum FOOD|DRINK|HOT_DRINK", categoryModel.includes('enum: ["FOOD", "DRINK", "HOT_DRINK"]'));
 const menuItemModel = fs.readFileSync("lib/models/MenuItem.js","utf8");
-ok("MenuItem station enum KITCHEN|BARISTA", menuItemModel.includes('enum: ["KITCHEN", "BARISTA"]'));
+ok("MenuItem station enum KITCHEN|BARISTA|HOT_DRINK", menuItemModel.includes('enum: ["KITCHEN", "BARISTA", "HOT_DRINK"]'));
 
 // 3. Idempotent dry-run and non-destructive default
 console.log("\n--- Dry-run and non-destructive ---");
@@ -75,8 +75,24 @@ ok("Menu items sorted A→Z", menuCrud.includes("localeCompare"));
 console.log("\n--- Category cascade delete ---");
 const actions = fs.readFileSync("app/manager/menu-crud/actions.js","utf8");
 ok("deleteCategory counts items with both aliases", actions.includes("countDocuments") && actions.includes("category") && actions.includes("categoryId"));
-ok("deleteCategory cascade deletes items then category", actions.includes("deleteMany") && actions.includes("deleteOne") && actions.includes("MenuItem.deleteMany"));
-ok("deleteCategory confirms count and handles N items", actions.includes("Category and") && actions.includes("menu item(s) deleted"));
+// D16: items are ARCHIVED (soft-deleted), never hard-deleted. The category row
+// itself is the only hard delete, so Recipe and historical order references
+// survive an operator removing a category.
+ok(
+  "deleteCategory archives items (updateMany isDeleted) then deletes the category row",
+  actions.includes("MenuItem.updateMany(") &&
+    actions.includes("isDeleted: true") &&
+    actions.includes("deletedAt: new Date()") &&
+    actions.includes("Category.deleteOne(")
+);
+ok(
+  "deleteCategory never hard-deletes MenuItem records",
+  !actions.includes("MenuItem.deleteMany(") && !actions.includes("MenuItem.deleteOne(")
+);
+ok("deleteCategory confirms archived count", actions.includes("Category and") && actions.includes("menu item(s) archived"));
+ok("deleteMenuItem soft-deletes instead of hard-deleting", actions.includes("findOneAndUpdate(") && actions.includes("isDeleted: true") && actions.includes("deletedAt: new Date()"));
+ok("deleteMenuItem keeps the row so Recipe and order history survive", actions.includes("recipe and order history preserved"));
+ok("active menu reads hide archived items", menuService.includes("MenuItem.find({ isDeleted: { $ne: true } })"));
 ok("MenuCrudClient shows count in confirmation", menuCrud.includes("relatedCount") && menuCrud.includes("Delete category") && menuCrud.includes("menu item(s)"));
 ok("MenuCrudClient prevents accidental deletion (confirm mandatory)", menuCrud.includes("confirm(") && menuCrud.includes("cannot be undone"));
 ok("Empty category deletion works (count 0 path)", menuCrud.includes("relatedCount > 0"));
@@ -84,7 +100,7 @@ ok("Empty category deletion works (count 0 path)", menuCrud.includes("relatedCou
 // 6. Failure handling — partial cascade never reported as success
 console.log("\n--- Failure handling ---");
 ok("deleteCategory aborts transaction on category not found", actions.includes("abortTransaction") && actions.includes("Category not found"));
-ok("deleteCategory reports partial failure not success", actions.includes("were deleted before failure") || actions.includes("Partial failure"));
+ok("deleteCategory reports archive-then-failure as partial failure", actions.includes("were archived before failure") || actions.includes("Partial failure"));
 ok("deleteCategory fallback handles replica set unsupported", actions.includes("isTxnUnsupported") || actions.includes("replica"));
 ok("deleteCategory revalidates only on success", actions.includes("revalidateAll"));
 

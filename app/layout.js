@@ -1,4 +1,4 @@
-import { Geist } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { LanguageProvider } from "./components/LanguageProvider";
 import { ThemeProvider } from "./components/ThemeProvider";
@@ -12,9 +12,16 @@ import { SITE_CONFIG } from "@/lib/constants";
 // this class attribute (it is set here, pre-hydration).
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('hotel_theme');if(t!=='light'&&t!=='dark'){t='dark';}var d=document.documentElement;if(t==='dark'){d.classList.add('dark');}else{d.classList.remove('dark');}}catch(e){document.documentElement.classList.add('dark');}})();`;
 
-const geistSans = Geist({
+// Geist is vendored locally (app/fonts/geist-latin.woff2, SIL OFL 1.1) so the
+// app never needs to reach fonts.googleapis.com / fonts.gstatic.com at build or
+// runtime. It is the same variable Geist family (weights 100–900) and the same
+// latin subset that `Geist({ subsets: ["latin"] })` requested.
+const geistSans = localFont({
+  src: "./fonts/geist-latin.woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  display: "swap",
+  weight: "100 900",
+  style: "normal",
 });
 
 export const metadata = {

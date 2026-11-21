@@ -5,6 +5,14 @@ import { publish } from "@/lib/eventHub";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { cookies } from "next/headers";
 import { NEW_SESSION_COOKIE } from "@/lib/serverSessionCookies";
+import {
+  resolveInventoryPolicy,
+  validateExplicitInventoryPolicy,
+} from "@/lib/inventoryPolicy";
+import {
+  classifyMenuItemInventoryPolicy,
+  isMenuPolicyChangeError,
+} from "@/lib/menuInventoryPolicyService";
 
 // Centralized guard for menu CRUD — canonical policy is MANAGER only (lib/policy.js)
 // AUTH-ARCH-4/8F: canonical resolver (lib/serverAuth). Manager means LIVE
@@ -12,7 +20,10 @@ import { NEW_SESSION_COOKIE } from "@/lib/serverSessionCookies";
 // payload, roleSnapshot, or client claim alone.
 // Server Actions cannot use requireAuth(request) (no Request); this is the
 // same authority as lib/authServer getPortalSession.
-async function assertManager(formDataOrId) {
+// Returns { payload, error } so guarded writes can attribute audit records to
+// the LIVE session identity. The payload is resolved here only — never from a
+// FormData field supplied by the client.
+async function getManagerSession(formDataOrId) {
   // AUTH-ARCH-11: tab-scoped Server Action auth. Server Actions receive no
   // Request headers, so the tab credential (if the tab holds one) travels in
   // the FormData field `tabSession` (see appendTabCredential in
@@ -32,23 +43,28 @@ async function assertManager(formDataOrId) {
     try {
       const { resolveTabSession } = await import("@/lib/serverAuth");
       const payload = await resolveTabSession(tabCredential, ["MANAGER"]);
-      if (payload) return null;
-      return { success: false, error: "Forbidden: requires MANAGER role" };
+      if (payload) return { payload, error: null };
+      return { payload: null, error: "Forbidden: requires MANAGER role" };
     } catch {
-      return { success: false, error: "Authentication required" };
+      return { payload: null, error: "Authentication required" };
     }
   }
   try {
     const store = await cookies();
     const { getLiveSessionFromCookies } = await import("@/lib/serverAuth");
     const payload = await getLiveSessionFromCookies(store, ["MANAGER"]);
-    if (payload) return null;
+    if (payload) return { payload, error: null };
     const hasCredential = store.get(NEW_SESSION_COOKIE)?.value;
-    if (!hasCredential) return { success: false, error: "Authentication required" };
-    return { success: false, error: "Forbidden: requires MANAGER role" };
+    if (!hasCredential) return { payload: null, error: "Authentication required" };
+    return { payload: null, error: "Forbidden: requires MANAGER role" };
   } catch {
-    return { success: false, error: "Authentication required" };
+    return { payload: null, error: "Authentication required" };
   }
+}
+
+async function assertManager(formDataOrId) {
+  const { payload, error } = await getManagerSession(formDataOrId);
+  return payload ? null : { success: false, error };
 }
 
 function parseBool(v) {
@@ -59,6 +75,26 @@ function parseBool(v) {
 
 function slugify(input) {
   return String(input).toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "category";
+}
+
+// Station -> item type. Single three-way mapping shared by every CRUD write so
+// KITCHEN/BARISTA behaviour is unchanged and HOT_DRINK is a first-class peer.
+function stationType(station) {
+  return station === "BARISTA" ? "DRINK" : station === "HOT_DRINK" ? "HOT_DRINK" : "FOOD";
+}
+
+// Resolve a category's station with the same priority as lib/menuService:
+// explicit targetStation > explicit HOT_DRINK type > DRINK/legacy heuristics.
+function resolveCategoryStation(cat) {
+  if (!cat) return "KITCHEN";
+  if (cat.targetStation === "HOT_DRINK") return "HOT_DRINK";
+  if (cat.targetStation === "BARISTA") return "BARISTA";
+  if (cat.targetStation) return "KITCHEN";
+  if (cat.type === "HOT_DRINK") return "HOT_DRINK";
+  if (cat.type === "DRINK" || /drink|barista|juice|coffee|beer|wine/i.test(cat.name?.en || cat.slug || "")) {
+    return "BARISTA";
+  }
+  return "KITCHEN";
 }
 
 async function getDbModels() {
@@ -104,7 +140,7 @@ export async function createCategory(prevState, formData) {
   const finalNameOm = nameOm || primaryName;
   const slug = slugify(finalNameEn || finalNameAm || finalNameOm);
   const rawStation = formData.get("targetStation")?.toString().trim().toUpperCase();
-  const targetStation = rawStation === "BARISTA" ? "BARISTA" : "KITCHEN";
+  const targetStation = rawStation === "BARISTA" ? "BARISTA" : rawStation === "HOT_DRINK" ? "HOT_DRINK" : "KITCHEN";
   try {
     const { Category } = await getDbModels();
     const existing = await Category.findOne({ slug }).lean();
@@ -112,7 +148,7 @@ export async function createCategory(prevState, formData) {
     const doc = new Category({
       name: { en: finalNameEn, am: finalNameAm, om: finalNameOm },
       slug,
-      type: targetStation === "BARISTA" ? "DRINK" : "FOOD",
+      type: stationType(targetStation),
       targetStation,
       isActive: true,
       order: Date.now() % 10000,
@@ -132,7 +168,7 @@ export async function createCategory(prevState, formData) {
         nameAm: finalNameAm,
         nameOm: finalNameOm,
         slug,
-        type: targetStation === "BARISTA" ? "DRINK" : "FOOD",
+        type: stationType(targetStation),
         targetStation,
         station: targetStation,
       },
@@ -151,7 +187,10 @@ export async function deleteCategory(formDataOrId) {
     const { conn, Category, MenuItem } = await getDbModels();
     // Advisory pre-transaction count (canonical _id match, both aliases). UI relatedCount is
     // advisory only and is never trusted here � the transaction-time recount below is authoritative.
-    const count = await MenuItem.countDocuments({ $or: [{ category: id }, { categoryId: id }] });
+    const count = await MenuItem.countDocuments({
+      $or: [{ category: id }, { categoryId: id }],
+      isDeleted: { $ne: true },
+    });
     // Attempt transactional cascade delete for atomicity (requires replica set)
     let session = null;
     try {
@@ -162,8 +201,27 @@ export async function deleteCategory(formDataOrId) {
       // Does NOT claim to prevent concurrent inserts after the snapshot � MongoDB snapshot
       // isolation does not lock the collection; concurrent inserts after snapshot may survive.
       // Food/Drink/category isolation preserved: filter is strictly this category _id.
-      const txCount = await MenuItem.countDocuments({ $or: [{ category: id }, { categoryId: id }] }).session(session);
-      const menuRes = await MenuItem.deleteMany({ $or: [{ category: id }, { categoryId: id }] }, { session });
+      const txCount = await MenuItem.countDocuments({
+        $or: [{ category: id }, { categoryId: id }],
+        isDeleted: { $ne: true },
+      }).session(session);
+      // H1: archive the category's items instead of hard-deleting them so
+      // Recipe and historical order references survive the category removal.
+      const menuRes = await MenuItem.updateMany(
+        {
+          $or: [{ category: id }, { categoryId: id }],
+          isDeleted: { $ne: true },
+        },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: new Date(),
+            isAvailable: false,
+            inStock: false,
+          },
+        },
+        { session }
+      );
       const catRes = await Category.deleteOne({ _id: id }, { session });
       if (catRes.deletedCount === 0) {
         try { await session.abortTransaction(); } catch {}
@@ -172,8 +230,9 @@ export async function deleteCategory(formDataOrId) {
       await session.commitTransaction();
       revalidateAll();
       const authoritativeCount = typeof txCount === "number" ? txCount : count;
-      const msg = authoritativeCount > 0 ? `Category and ${menuRes.deletedCount} menu item(s) deleted` : "Category deleted";
-      return { success: true, message: msg, deletedCount: menuRes.deletedCount };
+      const archivedCount = menuRes.modifiedCount ?? menuRes.nModified ?? 0;
+      const msg = authoritativeCount > 0 ? `Category and ${archivedCount} menu item(s) archived` : "Category deleted";
+      return { success: true, message: msg, deletedCount: archivedCount };
     } catch (txErr) {
       if (session) {
         try { await session.abortTransaction(); } catch {}
@@ -183,15 +242,28 @@ export async function deleteCategory(formDataOrId) {
       if (isTxnUnsupported) {
         // Fallback: non-transactional sequential delete with explicit partial-failure handling
         try {
-          const menuRes = await MenuItem.deleteMany({ $or: [{ category: id }, { categoryId: id }] });
+          const menuRes = await MenuItem.updateMany(
+            {
+              $or: [{ category: id }, { categoryId: id }],
+              isDeleted: { $ne: true },
+            },
+            {
+              $set: {
+                isDeleted: true,
+                deletedAt: new Date(),
+                isAvailable: false,
+                inStock: false,
+              },
+            }
+          );
           const catRes = await Category.deleteOne({ _id: id });
           if (catRes.deletedCount === 0) {
-            // Items may have been deleted but category missing � do not report success
-            return { success: false, error: `Category not found � ${menuRes.deletedCount} item(s) were deleted before failure` };
+            // Items may have been archived but category missing � do not report success
+            return { success: false, error: `Category not found � ${menuRes.modifiedCount ?? 0} item(s) were archived before failure` };
           }
           revalidateAll();
-          const msg = menuRes.deletedCount > 0 ? `Category and ${menuRes.deletedCount} menu item(s) deleted` : "Category deleted";
-          return { success: true, message: msg, deletedCount: menuRes.deletedCount };
+          const msg = (menuRes.modifiedCount ?? menuRes.nModified ?? 0) > 0 ? `Category and ${menuRes.modifiedCount ?? menuRes.nModified ?? 0} menu item(s) archived` : "Category deleted";
+          return { success: true, message: msg, deletedCount: menuRes.modifiedCount ?? menuRes.nModified ?? 0 };
         } catch (fallbackErr) {
           return { success: false, error: fallbackErr.message || "Failed to delete category and items" };
         }
@@ -216,7 +288,7 @@ export async function updateCategory(prevState, formData) {
   const submittedNameAm = (hasLocalizedNames ? formData.get("nameAm") : legacyName)?.toString().trim() || "";
   const submittedNameOm = (hasLocalizedNames ? formData.get("nameOm") : legacyName)?.toString().trim() || "";
   const rawStation = formData.get("targetStation")?.toString().trim().toUpperCase();
-  const targetStation = rawStation === "BARISTA" ? "BARISTA" : rawStation === "KITCHEN" ? "KITCHEN" : null;
+  const targetStation = rawStation === "BARISTA" ? "BARISTA" : rawStation === "KITCHEN" ? "KITCHEN" : rawStation === "HOT_DRINK" ? "HOT_DRINK" : null;
   try {
     const { Category } = await getDbModels();
     const cat = await Category.findById(id);
@@ -238,7 +310,7 @@ export async function updateCategory(prevState, formData) {
     cat.slug = slug;
     if (targetStation) {
       cat.targetStation = targetStation;
-      cat.type = targetStation === "BARISTA" ? "DRINK" : "FOOD";
+      cat.type = stationType(targetStation);
     }
     await cat.save();
     revalidateAll();
@@ -285,6 +357,14 @@ export async function createMenuItem(prevState, formData) {
     const isNonFasting = parseBool(formData.get("isNonFasting"));
     if (!nameEn && !nameAm && !nameOm) return { success: false, error: "At least one name (EN/AM/OM) is required" };
     if (!category) return { success: false, error: "Category is required" };
+    // H1: a new MenuItem must state an explicit TRACKED/UNTRACKED policy.
+    // Legacy items are unaffected; this only governs new catalog writes.
+    const inventoryPolicyCheck = validateExplicitInventoryPolicy(
+      formData.get("inventoryPolicy")
+    );
+    if (!inventoryPolicyCheck.ok) {
+      return { success: false, error: inventoryPolicyCheck.error };
+    }
     const price = Number(priceRaw);
     if (!Number.isFinite(price) || price < 0) return { success: false, error: "Price must be a non-negative number" };
     const primaryName = nameEn || nameAm || nameOm;
@@ -322,12 +402,12 @@ export async function createMenuItem(prevState, formData) {
     if (!catDoc) return { success: false, error: "Category not found" };
     const catId = catDoc._id;
     const rawStation = formData.get("targetStation")?.toString().trim().toUpperCase();
-    const forcedStation = rawStation === "BARISTA" ? "BARISTA" : rawStation === "KITCHEN" ? "KITCHEN" : null;
-    const catStation = catDoc.targetStation ? catDoc.targetStation : (catDoc.type === "DRINK" || /drink|barista|juice|coffee|beer|wine/i.test(catDoc.name?.en || catDoc.slug || "")) ? "BARISTA" : "KITCHEN";
+    const forcedStation = rawStation === "BARISTA" ? "BARISTA" : rawStation === "KITCHEN" ? "KITCHEN" : rawStation === "HOT_DRINK" ? "HOT_DRINK" : null;
+    const catStation = resolveCategoryStation(catDoc);
     const resolvedStation = forcedStation || catStation;
     // Ensure category itself carries correct station tag for reports
     if (catDoc.targetStation !== resolvedStation) {
-      try { await Category.updateOne({ _id: catId }, { $set: { targetStation: resolvedStation, type: resolvedStation === "BARISTA" ? "DRINK" : "FOOD" } }); } catch {}
+      try { await Category.updateOne({ _id: catId }, { $set: { targetStation: resolvedStation, type: stationType(resolvedStation) } }); } catch {}
     }
     const payload = {
       name: { am: finalNameAm, en: finalNameEn, om: finalNameOm },
@@ -335,7 +415,7 @@ export async function createMenuItem(prevState, formData) {
       price: Math.round(price * 100) / 100,
       category: catId,
       categoryId: catId,
-      categoryType: resolvedStation === "BARISTA" ? "DRINK" : "FOOD",
+      categoryType: stationType(resolvedStation),
       station: resolvedStation,
       targetStation: resolvedStation,
       imageUrl: finalImageUrl,
@@ -348,6 +428,7 @@ export async function createMenuItem(prevState, formData) {
       isFasting: fastingFlags.isFasting,
       isNonFasting: fastingFlags.isNonFasting,
       inStock: isAvailable,
+      inventoryPolicy: inventoryPolicyCheck.policy,
     };
     const doc = new MenuItem(payload);
     const saved = await doc.save();
@@ -398,6 +479,21 @@ export async function updateMenuItem(prevState, formData) {
       existing = await MenuItem.findById(id).lean();
     } catch {}
     if (!existing) return { success: false, error: "Item not found" };
+    if (existing.isDeleted === true) return { success: false, error: "Item not found" };
+    // H1: an update cannot silently classify a legacy item or inject an
+    // unsupported value. Policy changes belong to the audited review workflow
+    // (deferred); an unchanged value is accepted as a no-op.
+    if (formData.has("inventoryPolicy")) {
+      const policyCheck = validateExplicitInventoryPolicy(formData.get("inventoryPolicy"));
+      if (!policyCheck.ok) return { success: false, error: policyCheck.error };
+      if (policyCheck.policy !== resolveInventoryPolicy(existing)) {
+        return {
+          success: false,
+          error:
+            "Inventory tracking can only be changed through the inventory review workflow.",
+        };
+      }
+    }
     const exName = existing.name || {};
     const isLocalized = typeof exName === "object" && (exName.en || exName.am || exName.om);
     const baseEn = isLocalized ? (exName.en || "") : (typeof exName === "string" ? exName : "");
@@ -457,17 +553,17 @@ export async function updateMenuItem(prevState, formData) {
       if (!catDoc) return { success: false, error: "Category not found" };
       update.category = catDoc._id;
       update.categoryId = catDoc._id;
-      const catStation = catDoc.targetStation ? catDoc.targetStation : (catDoc.type === "DRINK" || /drink|barista|juice|coffee|beer|wine/i.test(catDoc.name?.en || catDoc.slug || "")) ? "BARISTA" : "KITCHEN";
-      update.categoryType = catStation === "BARISTA" ? "DRINK" : "FOOD";
+      const catStation = resolveCategoryStation(catDoc);
+      update.categoryType = stationType(catStation);
       update.station = catStation;
       update.targetStation = catStation;
     }
     // Explicit targetStation override for reports routing (Foods/Drinks toggle)
     const rawStationUpd = formData.get("targetStation")?.toString().trim().toUpperCase();
-    if (rawStationUpd === "KITCHEN" || rawStationUpd === "BARISTA") {
+    if (rawStationUpd === "KITCHEN" || rawStationUpd === "BARISTA" || rawStationUpd === "HOT_DRINK") {
       update.targetStation = rawStationUpd;
       update.station = rawStationUpd;
-      update.categoryType = rawStationUpd === "BARISTA" ? "DRINK" : "FOOD";
+      update.categoryType = stationType(rawStationUpd);
     }
     if (hasSpecial) update.isSpecial = parseBool(formData.get("isSpecial"));
     if (hasNew) update.isNew = parseBool(formData.get("isNew") || formData.get("isItemNew") || formData.get("isPopular"));
@@ -490,6 +586,43 @@ export async function updateMenuItem(prevState, formData) {
   }
 }
 
+// Dedicated, audited classification path. The ordinary updateMenuItem action
+// above still refuses policy changes, so this is the only way to reclassify an
+// existing MenuItem. Client identity fields are never read: the actor comes
+// exclusively from the live Manager session via getManagerSession().
+export async function setMenuItemInventoryPolicy(prevState, formData) {
+  const { payload, error } = await getManagerSession(formData);
+  if (error) return { success: false, error };
+  try {
+    const menuItemId =
+      formData?.get?.("id")?.toString().trim() ||
+      formData?.get?.("menuItemId")?.toString().trim();
+    const requestedPolicy = formData?.get?.("inventoryPolicy")?.toString().trim();
+    const { conn } = await getDbModels();
+    const result = await classifyMenuItemInventoryPolicy(conn, {
+      menuItemId,
+      requestedPolicy,
+      actor: {
+        staffId: payload.staffId,
+        role: payload.role,
+      },
+    });
+    if (result.changed) revalidateAll();
+    return {
+      success: true,
+      changed: result.changed,
+      itemId: result.itemId,
+      inventoryPolicy: result.inventoryPolicy,
+      message: result.changed
+        ? `Inventory classification saved as ${result.inventoryPolicy}.`
+        : `Inventory classification is already ${result.inventoryPolicy}.`,
+    };
+  } catch (e) {
+    if (isMenuPolicyChangeError(e)) return { success: false, error: e.message };
+    return { success: false, error: e?.message || "Failed to change inventory classification" };
+  }
+}
+
 export async function deleteMenuItem(formDataOrId) {
   const authErr = await assertManager(formDataOrId);
   if (authErr) return authErr;
@@ -497,12 +630,27 @@ export async function deleteMenuItem(formDataOrId) {
   if (!id) return { success: false, error: "Item id required" };
   try {
     const { MenuItem } = await getDbModels();
-    const res = await MenuItem.deleteOne({ _id: id });
-    if (res.deletedCount === 0) return { success: false, error: "Item not found" };
+    // H1 soft deletion: retain the catalog row so Recipe and historical order
+    // references survive. Hard deletion is never used here, so it can never
+    // orphan a Recipe or destroy history. isDeleted:true excludes the item from
+    // every active read path (menu, new orders, recipe writes).
+    const res = await MenuItem.findOneAndUpdate(
+      { _id: id, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          isAvailable: false,
+          inStock: false,
+        },
+      },
+      { new: true }
+    );
+    if (!res) return { success: false, error: "Item not found or already archived" };
     revalidateAll();
-    return { success: true, message: "Menu item deleted" };
+    return { success: true, message: "Menu item archived; recipe and order history preserved" };
   } catch (e) {
-    return { success: false, error: e.message || "Failed to delete menu item" };
+    return { success: false, error: e.message || "Failed to archive menu item" };
   }
 }
 

@@ -252,8 +252,8 @@ describe('Cashier response projection', () => {
     }, []);
 
     assert.deepEqual(Object.keys(response).sort(), ['menuItems', 'range', 'revenue']);
-    assert.deepEqual(Object.keys(response.revenue).sort(), ['drink', 'food', 'total', 'unattributed']);
-    assert.deepEqual(response.revenue, { total: 100, food: 60, drink: 30, unattributed: 10 });
+    assert.deepEqual(Object.keys(response.revenue).sort(), ['drink', 'food', 'hotDrink', 'total', 'unattributed']);
+    assert.deepEqual(response.revenue, { total: 100, food: 60, drink: 30, hotDrink: 0, unattributed: 10 });
     assert.deepEqual(response.menuItems, []);
     assert.equal('kpis' in response, false);
   });

@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { safeFetchJson } from '@/lib/clientFetch';
 import { getLocalizedSingleString } from '@/lib/displayName';
+import {
+  isMenuItemOrderable,
+  isMenuItemBlockedForReview,
+} from '@/lib/menuOrderability';
 import { useLanguage } from '@/app/components/LanguageProvider';
 import MenuItemImage from '@/app/components/MenuItemImage';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
@@ -33,6 +37,8 @@ const TEXTS = {
   fasting: { am: 'ጾም', en: 'Fasting', om: 'Soomii' },
   nonFasting: { am: 'ያልጾም', en: 'Non-Fasting', om: 'Hin soomne' },
   outStock: { am: 'ያለቀ', en: 'Out of Stock', om: 'Dhuma' },
+  // D10: neutral reason for an in-stock item that is not open for orders yet.
+  reviewRequired: { am: 'አይገኝም — አስተዳዳሪውን ይጠይቁ', en: 'Not available — ask manager', om: 'Hin argamu — bulchaa gaafadhu' },
   cash: { am: 'ጥሬ ገንዘብ', en: 'Cash', om: 'Maallaqa' },
   transfer: { am: 'በባንክ/ትራንስፈር', en: 'Bank / Transfer', om: 'Baankii' },
   paymentTitle: { am: 'የክፍያ መንገድ ይምረጡ', en: 'Select Payment Method', om: 'Karaa Kaffaltii Filadhu' },
@@ -314,7 +320,7 @@ export default function MenuPage() {
     visibleItems.sort((a, b) => (a.price || 0) - (b.price || 0));
   }
 
-  const specialItems = items.filter((i) => i.isAvailable !== false).slice(0, 10);
+  const specialItems = items.filter((i) => isMenuItemOrderable(i)).slice(0, 10);
 
   const cartEntries = Object.values(cart);
   const cartCount = cartEntries.reduce((sum, entry) => sum + entry.qty, 0);
@@ -324,7 +330,9 @@ export default function MenuPage() {
   );
 
   function addToCart(item) {
-    if (!item.isAvailable) return;
+    // D9: same shared presentation gate as the Waiter UI. The server remains
+    // authoritative for every submitted order.
+    if (!isMenuItemOrderable(item)) return;
     setCart((prev) => {
       const existing = prev[item._id];
       return {
@@ -605,7 +613,8 @@ export default function MenuPage() {
             <div className="menu-banner-viewport overflow-hidden">
               <div className="menu-banner-track flex w-max gap-3 pb-1">
                 {[...specialItems, ...specialItems].map((item, bIdx) => {
-                  const available = item.isAvailable !== false;
+                  const available = isMenuItemOrderable(item);
+                  const reviewRequired = isMenuItemBlockedForReview(item);
                   const inCart = cart[item._id];
                   const description = localizedDesc(item, lang);
                   return (
@@ -632,7 +641,7 @@ export default function MenuPage() {
                           </span>
                           {!available ? (
                             <span className="rounded-full border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-2.5 py-1.5 text-[10px] font-bold text-[#94A3B8]">
-                              {tx('outStock')}
+                              {reviewRequired ? tx('reviewRequired') : tx('outStock')}
                             </span>
                           ) : inCart ? (
                             <div className="flex items-center justify-center gap-1.5 rounded-full border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
@@ -709,7 +718,8 @@ export default function MenuPage() {
           ) : (
             <div className="grid w-full grid-cols-1 gap-5">
               {visibleItems.map((item, idx) => {
-                const available = item.isAvailable !== false;
+                const available = isMenuItemOrderable(item);
+                const reviewRequired = isMenuItemBlockedForReview(item);
                 const inCart = cart[item._id];
                 const description = localizedDesc(item, lang);
                 return (
@@ -741,7 +751,7 @@ export default function MenuPage() {
                         </span>
                         {!available ? (
                           <span className="flex items-center justify-center rounded-2xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-4 py-2.5 text-center text-[11px] font-semibold text-[#94A3B8]">
-                            {tx('outStock')}
+                            {reviewRequired ? tx('reviewRequired') : tx('outStock')}
                           </span>
                         ) : inCart ? (
                           <div className="flex items-center justify-center gap-2 rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-2 py-1">

@@ -6,7 +6,7 @@
 import { useState, useEffect, useTransition, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createCategory, updateCategory, deleteCategory, createMenuItem, updateMenuItem, deleteMenuItem } from './actions';
+import { createCategory, updateCategory, deleteCategory, createMenuItem, updateMenuItem, deleteMenuItem, setMenuItemInventoryPolicy } from './actions';
 import { appendTabCredential } from '@/lib/clientFetch';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import { useLanguage } from '@/app/components/LanguageProvider';
@@ -29,6 +29,19 @@ const BTN_SECONDARY =
   'flex h-10 items-center gap-1.5 rounded-full bg-white dark:bg-[#1C1D24] px-4 text-xs font-bold uppercase tracking-wide text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner hover:bg-[#F8FAFC] dark:hover:bg-[#252631]';
 
 const EMPTY_CATEGORY_FORM = { nameEn: '', nameAm: '', nameOm: '' };
+
+// Station -> item type. Three-way peer mapping; KITCHEN/BARISTA unchanged.
+function stationType(station) {
+  return station === 'BARISTA' ? 'DRINK' : station === 'HOT_DRINK' ? 'HOT_DRINK' : 'FOOD';
+}
+
+function stationOfCategory(c) {
+  return c.targetStation || c.station || (c.type === 'HOT_DRINK' ? 'HOT_DRINK' : c.type === 'DRINK' ? 'BARISTA' : 'KITCHEN');
+}
+
+function stationOfItem(i) {
+  return i.targetStation || i.station || (i.categoryType === 'HOT_DRINK' ? 'HOT_DRINK' : i.categoryType === 'DRINK' ? 'BARISTA' : 'KITCHEN');
+}
 
 function TogglePill({ checked, onChange, label }) {
   return (
@@ -54,7 +67,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
   const [categories, setCategories] = useState(initialCategories || []);
   const [items, setItems] = useState(initialItems || []);
   const [isPending, startTransition] = useTransition();
-  const [activeTab, setActiveTab] = useState('KITCHEN'); // Foods = KITCHEN, Drinks = BARISTA
+  const [activeTab, setActiveTab] = useState('KITCHEN'); // Foods = KITCHEN, Drinks = BARISTA, Hot drinks = HOT_DRINK
   const [dietFilter, setDietFilter] = useState('all'); // 'all' | 'fasting' | 'nonFasting'
 
   // Sync when server data changes (revalidate)
@@ -62,12 +75,9 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
   useEffect(() => { setItems(initialItems || []); }, [initialItems]);
 
   // Filtered by station tab
-  const filteredCategories = categories.filter((c) => {
-    const st = c.targetStation || c.station || (c.type === 'DRINK' ? 'BARISTA' : 'KITCHEN');
-    return st === activeTab;
-  });
+  const filteredCategories = categories.filter((c) => stationOfCategory(c) === activeTab);
   const filteredItems = items.filter((i) => {
-    const st = i.targetStation || i.station || (i.categoryType === 'DRINK' ? 'BARISTA' : 'KITCHEN');
+    const st = stationOfItem(i);
     if (st !== activeTab) return false;
     if (dietFilter === 'fasting') return !!i.isFasting;
     if (dietFilter === 'nonFasting') return !!i.isNonFasting;
@@ -98,7 +108,8 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
       descriptionEn: '', descriptionAm: '', descriptionOm: '',
       price: '', category: '', categoryId: '', image: '',
       isSpecial: false, isNew: false, isAvailable: true,
-      isFasting: false, isNonFasting: false
+      isFasting: false, isNonFasting: false,
+      inventoryPolicy: ''
     });
     setPreviewUrl('');
     setImageFile(null);
@@ -122,12 +133,32 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     price: '',
     category: '',
     isSpecial: false, isNew: false, isAvailable: true, isFasting: false, isNonFasting: true,
+    inventoryPolicy: '',
   });
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const fileRef = useRef(null);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  // Classification is edited in its own guarded action, never through the
+  // ordinary item form. `savedPolicy` is only changed from the action response.
+  const [savedPolicy, setSavedPolicy] = useState('');
+  const [classificationDraft, setClassificationDraft] = useState('');
+  // Synchronous guard: React's isPending is established only after the
+  // transition starts, so a ref is needed to block two rapid clicks.
+  const classificationInFlight = useRef(false);
+  // Keep the displayed saved policy tied to server data after a refresh.
+  // Ordinary item edits never touch these fields, so a pending draft survives.
+  useEffect(() => {
+    if (!editingId || !editingItem) return;
+    const resolved = editingItem.inventoryPolicyResolved
+      ? editingItem.inventoryPolicy
+      : (editingItem.inventoryPolicy || '');
+    setSavedPolicy(resolved);
+    setClassificationDraft(
+      editingItem.inventoryPolicyResolved ? editingItem.inventoryPolicy : ''
+    );
+  }, [editingId, editingItem?.inventoryPolicy, editingItem?.inventoryPolicyResolved]);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   // Payment Information CRUD state
@@ -200,7 +231,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             nameEn: res.category.nameEn ?? categoryName.en ?? '',
             nameAm: res.category.nameAm ?? categoryName.am ?? '',
             nameOm: res.category.nameOm ?? categoryName.om ?? '',
-            type: res.category.type || (station === 'BARISTA' ? 'DRINK' : 'FOOD'),
+            type: res.category.type || stationType(station),
             targetStation: station,
             station,
           };
@@ -271,6 +302,8 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     if (!form.category) { setFormError(t('categoryRequired')); return; }
     const priceNum = Number(form.price);
     if (!Number.isFinite(priceNum) || priceNum < 0) { setFormError(t('priceNonNegative')); return; }
+    // H1: new catalog items must state an explicit tracking policy.
+    if (!editingId && !form.inventoryPolicy) { setFormError(t('inventoryPolicyRequired')); return; }
 
     const fd = new FormData();
     fd.set('nameEn', form.nameEn.trim());
@@ -288,6 +321,8 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
     else fd.set('isAvailable', 'false');
     if (form.isFasting) fd.set('isFasting', 'true');
     if (form.isNonFasting) fd.set('isNonFasting', 'true');
+    // Create-only: edits never re-submit policy (audited review is deferred).
+    if (!editingId) fd.set('inventoryPolicy', form.inventoryPolicy);
     if (imageFile) fd.set('image', imageFile);
     if (editingItem?.imageUrl) fd.set('existingImageUrl', editingItem.imageUrl);
     // AUTH-ARCH-11: carry this tab's credential for Server Action auth.
@@ -331,7 +366,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             isNonFasting: form.isNonFasting,
             targetStation: activeTab,
             station: activeTab,
-            categoryType: activeTab === 'BARISTA' ? 'DRINK' : 'FOOD',
+            categoryType: stationType(activeTab),
           };
           setItems(prev => [optimistic, ...prev]);
         } else {
@@ -354,7 +389,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             isNonFasting: form.isNonFasting,
             targetStation: activeTab,
             station: activeTab,
-            categoryType: activeTab === 'BARISTA' ? 'DRINK' : 'FOOD',
+            categoryType: stationType(activeTab),
           } : i));
           setEditingId(null);
         }
@@ -366,6 +401,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             price: '',
             category: filteredCategories[0]?._id ? String(filteredCategories[0]._id) : '',
             isSpecial: false, isNew: false, isAvailable: true, isFasting: false, isNonFasting: true,
+            inventoryPolicy: '',
           });
           setImageFile(null); setPreviewUrl('');
           if (fileRef.current) fileRef.current.value = '';
@@ -392,13 +428,70 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
       isAvailable: item.isAvailable !== false,
       isFasting: !!item.isFasting,
       isNonFasting: item.isNonFasting !== undefined ? !!item.isNonFasting : !item.isFasting,
+      inventoryPolicy: item.inventoryPolicyResolved
+        ? item.inventoryPolicy
+        : item.inventoryPolicy === 'EXTERNAL'
+        ? 'EXTERNAL'
+        : '',
     });
+    const savedClassification = item.inventoryPolicyResolved
+      ? item.inventoryPolicy
+      : (item.inventoryPolicy || '');
+    setSavedPolicy(savedClassification);
+    setClassificationDraft(item.inventoryPolicyResolved ? item.inventoryPolicy : '');
     setPreviewUrl(item.imageUrl || item.image || '');
     setImageFile(null);
     if (fileRef.current) fileRef.current.value = '';
     setFormError('');
     setFormSuccess('');
   };
+
+  async function handleSaveClassification() {
+    if (!editingId || isPending || classificationInFlight.current) return;
+    if (classificationDraft !== 'TRACKED' && classificationDraft !== 'UNTRACKED') {
+      setFormError(t('inventoryPolicyRequired'));
+      return;
+    }
+    // An unresolved saved value (legacy UNKNOWN) is a real change; it is never
+    // treated as already equal to a selected policy.
+    if (savedPolicy === classificationDraft) {
+      setFormSuccess(t('inventoryPolicyAlreadySaved'));
+      return;
+    }
+    if (!confirm(t('confirmClassificationChange'))) return;
+    classificationInFlight.current = true;
+    setFormError(''); setFormSuccess('');
+    const fd = new FormData();
+    fd.set('id', editingId);
+    fd.set('inventoryPolicy', classificationDraft);
+    appendTabCredential(fd);
+    startTransition(async () => {
+      try {
+        const res = await setMenuItemInventoryPolicy(null, fd);
+        if (!res.success) {
+          // Nothing displayed as saved until the server confirms the write.
+          setFormError(res.error);
+          return;
+        }
+        if (res.changed) {
+          setSavedPolicy(res.inventoryPolicy);
+          setClassificationDraft(res.inventoryPolicy);
+          setForm(f => ({ ...f, inventoryPolicy: res.inventoryPolicy }));
+          setItems(prev => prev.map(i => String(i._id) === String(res.itemId)
+            ? { ...i, inventoryPolicy: res.inventoryPolicy, inventoryPolicyResolved: true }
+            : i));
+        }
+        setFormSuccess(res.message);
+        router.refresh();
+      } catch (err) {
+        // Network/server exception: show an error and leave the confirmed
+        // saved policy untouched.
+        setFormError(err?.message || 'Failed to change inventory classification');
+      } finally {
+        classificationInFlight.current = false;
+      }
+    });
+  }
 
   async function handleDelete(item) {
     if (!confirm(t('confirmDeleteItem'))) return;
@@ -641,7 +734,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langEnglish')} *</label>
-                <input value={form.nameEn} onChange={e => setForm(f => ({ ...f, nameEn: e.target.value }))} placeholder={activeTab === 'BARISTA' ? 'e.g. Macchiato' : 'e.g. Doro Wot'} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
+                <input value={form.nameEn} onChange={e => setForm(f => ({ ...f, nameEn: e.target.value }))} placeholder={activeTab === 'HOT_DRINK' ? 'e.g. Jebena Buna' : activeTab === 'BARISTA' ? 'e.g. Macchiato' : 'e.g. Doro Wot'} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langAmharic')}</label>
@@ -649,7 +742,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langOromo')}</label>
-                <input value={form.nameOm} onChange={e => setForm(f => ({ ...f, nameOm: e.target.value }))} placeholder={activeTab === 'BARISTA' ? 'e.g. Macchiato' : 'Doro Wot'} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
+                <input value={form.nameOm} onChange={e => setForm(f => ({ ...f, nameOm: e.target.value }))} placeholder={activeTab === 'HOT_DRINK' ? 'e.g. Jebena Buna' : activeTab === 'BARISTA' ? 'e.g. Macchiato' : 'Doro Wot'} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40" />
               </div>
             </div>
           </div>
@@ -660,7 +753,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langEnglish')}</label>
-                <textarea value={form.descriptionEn} onChange={e => setForm(f => ({ ...f, descriptionEn: e.target.value }))} placeholder={activeTab === 'BARISTA' ? 'Macchiato — rich espresso topped with velvety steamed milk...' : 'Spicy chicken stew...'} rows={3} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40 resize-none" />
+                <textarea value={form.descriptionEn} onChange={e => setForm(f => ({ ...f, descriptionEn: e.target.value }))} placeholder={activeTab === 'HOT_DRINK' ? 'Jebena Buna - traditional Ethiopian coffee...' : activeTab === 'BARISTA' ? 'Macchiato - rich espresso topped with velvety steamed milk...' : 'Spicy chicken stew...'} rows={3} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40 resize-none" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langAmharic')}</label>
@@ -668,7 +761,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#64748B] dark:text-[#94A3B8] mb-1">{t('langOromo')}</label>
-                <textarea value={form.descriptionOm} onChange={e => setForm(f => ({ ...f, descriptionOm: e.target.value }))} placeholder={activeTab === 'BARISTA' ? 'Ibsa Maakiyaattoo...' : 'Ibsa Doro Wot...'} rows={3} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40 resize-none" />
+                <textarea value={form.descriptionOm} onChange={e => setForm(f => ({ ...f, descriptionOm: e.target.value }))} placeholder={activeTab === 'HOT_DRINK' ? 'Ibsa Jebena Buna...' : activeTab === 'BARISTA' ? 'Ibsa Maakiyaattoo...' : 'Ibsa Doro Wot...'} rows={3} className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-2.5 text-sm text-[#1E293B] dark:text-white placeholder:text-[#64748B]/60 dark:placeholder:text-[#94A3B8]/60 focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40 resize-none" />
               </div>
             </div>
           </div>
@@ -704,6 +797,62 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Inventory tracking — explicit on create; guarded Manager control on edit */}
+          <div className="rounded-xl bg-[#F4F5F9] dark:bg-[#252631] border border-[#E2E8F0]/60 dark:border-[#2A2B36] p-4">
+            <label className="block text-xs font-bold uppercase tracking-widest text-[#64748B] dark:text-[#94A3B8] mb-2">
+              {t('inventoryPolicyLabel')}{!editingId ? ' *' : ''}
+            </label>
+            {editingId ? (
+              <div>
+                <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                  {t('inventoryPolicySavedLabel')}
+                </p>
+                <p className="text-sm font-semibold text-[#1E293B] dark:text-white mb-3">
+                  {savedPolicy === 'TRACKED'
+                    ? t('inventoryPolicyTracked')
+                    : savedPolicy === 'UNTRACKED'
+                    ? t('inventoryPolicyUntracked')
+                    : savedPolicy === 'EXTERNAL'
+                    ? t('inventoryPolicyExternalHistorical')
+                    : t('inventoryPolicyUnknown')}
+                </p>
+                <select
+                  value={classificationDraft}
+                  onChange={e => setClassificationDraft(e.target.value)}
+                  className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-3 text-sm text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40"
+                >
+                  <option value="">{t('inventoryPolicySelect')}</option>
+                  <option value="TRACKED">{t('inventoryPolicyTracked')}</option>
+                  <option value="UNTRACKED">{t('inventoryPolicyUntracked')}</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={handleSaveClassification}
+                  className="mt-2 w-full rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-2 text-sm font-bold text-[#1E293B] dark:text-white disabled:opacity-50"
+                >
+                  {t('inventoryPolicySaveClassification')}
+                </button>
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  {t('inventoryPolicyReviewHint')}
+                </p>
+                <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                  {t('inventoryPolicyChangeHint')}
+                </p>
+              </div>
+            ) : (
+              <select
+                value={form.inventoryPolicy}
+                onChange={e => setForm(f => ({ ...f, inventoryPolicy: e.target.value }))}
+                className="w-full rounded-xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36] px-3 py-3 text-sm text-[#1E293B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFD600]/40 dark:focus:ring-[#FF5E00]/40"
+              >
+                <option value="">{t('inventoryPolicySelect')}</option>
+                <option value="TRACKED">{t('inventoryPolicyTracked')}</option>
+                <option value="UNTRACKED">{t('inventoryPolicyUntracked')}</option>
+              </select>
+            )}
           </div>
 
           {/* Toggles — pills */}
@@ -754,6 +903,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             <div className="flex items-center gap-1 rounded-full bg-[#F4F5F9] dark:bg-[#12131A] p-1 border border-[#E2E8F0]/60 dark:border-[#2A2B36]">
               <button type="button" onClick={() => handleTabChange('KITCHEN')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'KITCHEN' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]'}`}>{t('food')}</button>
               <button type="button" onClick={() => handleTabChange('BARISTA')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'BARISTA' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]'}`}>{t('drink')}</button>
+              <button type="button" onClick={() => handleTabChange('HOT_DRINK')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'HOT_DRINK' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]'}`}>{t('hotDrinkPortal')}</button>
             </div>
             <LanguageToggle includeOromia={false} />
             <div className="flex items-center gap-2">
@@ -785,6 +935,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
           <div className="flex items-center justify-center gap-1 rounded-full bg-[#F4F5F9] dark:bg-[#12131A] p-1 border border-[#E2E8F0]/60 dark:border-[#2A2B36] self-center">
             <button type="button" onClick={() => handleTabChange('KITCHEN')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'KITCHEN' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36]'}`}>{t('food')}</button>
             <button type="button" onClick={() => handleTabChange('BARISTA')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'BARISTA' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36]'}`}>{t('drink')}</button>
+            <button type="button" onClick={() => handleTabChange('HOT_DRINK')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'HOT_DRINK' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36]'}`}>{t('hotDrinkPortal')}</button>
           </div>
         </div>
       </header>

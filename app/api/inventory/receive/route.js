@@ -4,6 +4,7 @@ import { can } from "@/lib/policy";
 import { withApi } from "@/lib/withApi";
 import { ok, fail, isDbError } from "@/lib/apiResponse";
 import { sanitizeString, OBJECTID_RE } from "@/lib/validate";
+import { validateInventoryUnit } from "@/lib/inventoryUnitGuard";
 import { receiveInventory, isReceiveServiceError } from "@/lib/inventoryReceiveService";
 
 export const dynamic = "force-dynamic";
@@ -46,11 +47,13 @@ async function postHandler(request) {
   if (!Number.isFinite(unitCost) || unitCost < 0) return fail("unitCost must be number >= 0", 400);
   const roundedUnitCost = Math.round(unitCost * 100) / 100;
 
-  // Validate unit (optional, must match item's unit if provided)
+  // Validate unit (optional, must be an approved unit and match the item's unit)
   let unit = null;
   if (body.unit != null && String(body.unit).trim() !== "") {
     const u = sanitizeString(body.unit, { maxLen: 50 });
-    if (!u) return fail("unit must be 1-50 chars", 400);
+    if (!u) return fail("unit must be 1-50 chars", 400, "INVALID_UNIT");
+    const unitCheck = validateInventoryUnit(u, "unit");
+    if (!unitCheck.ok) return fail(unitCheck.error, 400, unitCheck.code);
     unit = u;
   }
 
@@ -97,7 +100,7 @@ async function postHandler(request) {
     return ok(result.data, result.status);
   } catch (err) {
     if (isReceiveServiceError(err)) {
-      return fail(err.message, err.status);
+      return fail(err.message, err.status, err.code);
     }
     if (isDbError(err)) throw err;
     throw err;

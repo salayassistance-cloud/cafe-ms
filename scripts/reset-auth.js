@@ -1,7 +1,17 @@
-// Dev helper: resets the `system_auth` document — restores the default PINs
-// (stored scrypt-hashed) AND force-clears any locked waiter numbers. Only
+// Legacy DEV helper: resets the `system_auth` document — restores the default
+// PINs (stored scrypt-hashed) AND force-clears any locked waiter numbers. Only
 // touches system_auth; orders and menu collections are never affected.
+//
+// Phase 2.2: SystemAuth is retired as a runtime authority. This script refuses
+// to run with NODE_ENV=production and never prints PIN values.
 const mongoose = require("mongoose");
+
+if (String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+  console.error(
+    "Refusing to reset legacy SystemAuth credentials in production. Use the Staff PIN reset flow."
+  );
+  process.exit(1);
+}
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {

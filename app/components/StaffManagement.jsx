@@ -43,7 +43,7 @@ function fmtStaffDateTime(value, lang) {
 
 
 
-const ROLES = ['WAITER', 'CASHIER', 'KITCHEN', 'BARISTA', 'MANAGER'];
+const ROLES = ['WAITER', 'CASHIER', 'KITCHEN', 'BARISTA', 'HOT_DRINK', 'MANAGER'];
 
 function roleBadgeCls(role) {
   const r = String(role).toUpperCase();
@@ -52,6 +52,7 @@ function roleBadgeCls(role) {
   if (r === 'WAITER') return 'bg-[#FFD600]/20 text-[#8A6D00] border-[#FFD600]/30 dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FF8A3D] dark:border-[#FF5E00]/20';
   if (r === 'KITCHEN') return 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0] dark:bg-[rgba(16,185,129,0.12)] dark:text-[#6EE7B7] dark:border-[#10B981]/20';
   if (r === 'BARISTA') return 'bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE] dark:bg-[#1E1B4B] dark:text-[#A5B4FC] dark:border-[#3730A3]';
+  if (r === 'HOT_DRINK') return 'bg-[#FFF7ED] text-[#9A3412] border-[#FED7AA] dark:bg-[#431407] dark:text-[#FDBA74] dark:border-[#7C2D12]';
   return 'bg-[#F4F5F9] text-[#64748B] border-[var(--c-border-soft)]';
 }
 
@@ -68,6 +69,7 @@ export default function StaffManagement() {
     CASHIER: t('staffRoleCashier'),
     KITCHEN: t('staffRoleKitchen'),
     BARISTA: t('staffRoleBarista'),
+    HOT_DRINK: t('staffRoleHotDrink'),
     MANAGER: t('staffRoleManager'),
   }[r] || r);
   const [staff, setStaff] = useState([]);
@@ -966,7 +968,7 @@ export default function StaffManagement() {
             <form onSubmit={handlePinReset} className="w-full max-w-md rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-5 shadow-[0_12px_30px_rgba(0,0,0,0.15)]">
               <h3 className="text-base font-black text-[var(--c-text)]">{t('staffResetPin')} {pinTarget.name}</h3>
               <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">
-                {['KITCHEN','BARISTA','MANAGER'].includes(pinTarget.role)
+                {['KITCHEN','BARISTA','HOT_DRINK','MANAGER'].includes(pinTarget.role)
                   ? `${t('staffRolePinNoteA')} ${roleLabel(pinTarget.role)} ${t('staffRolePinNoteB')}`
                   : `${t('staffIndividualPinNoteA')} ${pinTarget.username}. ${t('staffIndividualPinNoteB')}`}
               </p>

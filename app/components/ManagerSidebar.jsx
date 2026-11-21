@@ -6,7 +6,6 @@ import { useState, useRef } from 'react';
 import {
   IconDashboardFilled,
   IconBookFilled,
-  IconCashRegister,
   IconArchiveFilled,
   IconUsers,
   IconFileTypeCsv,
@@ -21,7 +20,6 @@ import {
 const RAW_ENTRIES = [
   { id: 'reports', label: 'Manager Reports', href: '/manager/reports', icon: IconDashboardFilled, type: 'link' },
   { id: 'menu', label: 'Menu Management', href: '/manager/menu-crud', icon: IconBookFilled, type: 'link' },
-  { id: 'cashier', label: 'Cashier', href: '/cashier', icon: IconCashRegister, type: 'link' },
   { id: 'inventory', label: 'Inventory', href: '/manager/inventory', icon: IconArchiveFilled, type: 'link' },
   { id: 'staff', label: 'Staff Management', href: '/manager/staff', icon: IconUsers, type: 'link' },
   { id: 'exportCsv', label: 'Export CSV', icon: IconFileTypeCsv, type: 'action', action: 'exportCsv' },

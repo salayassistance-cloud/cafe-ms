@@ -1,0 +1,74 @@
+{
+  "harness": "wp04-06-t2",
+  "runId": "wp04-06-t2-8f31c2a9d604",
+  "status": "FAILED_CLOSED",
+  "executedAt": "2026-11-12T23:13:02.289Z",
+  "authorization": "Explicit --execute, --run-id, and --confirm gates satisfied. Owner authorization must be recorded separately.",
+  "boundaries": {
+    "loopbackOnly": true,
+    "productionOrStagingAccess": "NONE",
+    "environmentFilesRead": "NONE",
+    "proxyUsedForVerification": false,
+    "verifier": "separate MongoClient, directConnection, readPreference primary, readConcern majority, actual WP04 collections"
+  },
+  "scenarios": {},
+  "topology": {
+    "setName": "bonowp0406t2rs",
+    "myState": 1,
+    "members": [
+      {
+        "name": "127.0.0.1:27031",
+        "stateStr": "PRIMARY",
+        "health": 1
+      }
+    ]
+  },
+  "environment": {
+    "node": "v24.14.0",
+    "driver": "7.5.0",
+    "os": "Windows_NT 10.0.26200 x64",
+    "mongodPath": "C:\\Program Files\\MongoDB\\Server\\8.0\\bin\\mongod.exe",
+    "mongodbVersion": "8.0.34",
+    "mongodbGitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae",
+    "replicaSetName": "bonowp0406t2rs",
+    "ports": {
+      "mongod": 27031,
+      "proxy": 27032
+    },
+    "bindIp": "127.0.0.1",
+    "storageEngine": "wiredTiger",
+    "oplogSizeMB": 128,
+    "oplog": null,
+    "host": "XANIEL"
+  },
+  "replicaSetVerification": {
+    "verifier": "independent-direct-primary-majority",
+    "directConnection": true,
+    "readPreference": "primary",
+    "readConcern": "majority",
+    "setName": "bonowp0406t2rs",
+    "isWritablePrimary": true,
+    "primary": "127.0.0.1:27031",
+    "members": [
+      {
+        "name": "127.0.0.1:27031",
+        "stateStr": "PRIMARY",
+        "health": 1
+      }
+    ]
+  },
+  "error": {
+    "name": "Error",
+    "message": "T2-A did not detect exactly one parsed commitTransaction frame.",
+    "code": null,
+    "dbPath": null,
+    "stack": "Error: T2-A did not detect exactly one parsed commitTransaction frame.\n    at assertProxyScenarioEvidence (file:///C:/hotelms/tests/integration/wp04-06-t2-runner.mjs:1061:11)\n    at main (file:///C:/hotelms/tests/integration/wp04-06-t2-runner.mjs:1240:5)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "cleanup": {
+    "mongodStopped": true,
+    "dbPathRemoved": true,
+    "keptTemp": false,
+    "notes": [],
+    "blockers": []
+  }
+}

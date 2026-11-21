@@ -43,7 +43,11 @@ async function getHandler(request) {
   }
   const includeUnavailable = searchParams.get("all") === "true" || searchParams.get("includeUnavailable") === "true";
   try {
-    const data = await getUnifiedMenu({ includeUnavailable });
+    // D12: this route is public (customer QR menu + Waiter). Internal inventory
+    // policy metadata is never serialized here; the protected Manager page reads
+    // getUnifiedMenu directly and keeps it. `orderable` is the only neutral
+    // orderability signal public clients receive.
+    const data = await getUnifiedMenu({ includeUnavailable, includeInventoryPolicy: false });
     let { categories, items } = data;
 
     // Category filter (ObjectId or slug)

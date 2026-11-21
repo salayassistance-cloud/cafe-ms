@@ -26,6 +26,7 @@ async function getHandler(request) {
   const rawFrom = searchParams.get("from");
   const rawTo = searchParams.get("to");
   const rawItemId = searchParams.get("itemId"); // alias
+  const rawType = searchParams.get("type");
 
   const query = {};
 
@@ -34,6 +35,13 @@ async function getHandler(request) {
     const sid = sanitizeString(itemId, { maxLen: 50 });
     if (!sid || !validateObjectId(sid)) return fail("Invalid item filter: must be ObjectId", 400);
     query.item = sid;
+  }
+
+  if (rawType && rawType !== "ALL") {
+    const st = sanitizeString(rawType, { maxLen: 20 }).toUpperCase();
+    if (["IN", "OUT", "ADJUSTMENT"].includes(st)) {
+      query.type = st;
+    }
   }
 
   // Date range filters on createdAt — canonical Addis business-day half-open
@@ -64,7 +72,7 @@ async function getHandler(request) {
     const conn = await connectToDatabase();
     const StockMovement = getStockMovementModel(conn);
     const docs = await StockMovement.find(query)
-      .select("item type quantity reason createdBy refOrderId notes createdAt updatedAt")
+      .select("item type quantity unit unitCost totalCost reason createdBy refOrderId voidedAt voidReason notes createdAt updatedAt")
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();

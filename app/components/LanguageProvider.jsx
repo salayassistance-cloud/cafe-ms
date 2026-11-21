@@ -2,10 +2,10 @@
 
 import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
   useCallback,
+  useContext,
+  useMemo,
+  useSyncExternalStore,
 } from "react";
 import {
   defaultLang,
@@ -14,57 +14,65 @@ import {
   translate,
 } from "@/lib/translations";
 
-// Global i18n context for the Executive POS. Default language is Amharic; the
-// choice is persisted in localStorage (`hms_lang`) so it survives refreshes
-// and navigation. `t(key)` always returns a safe fallback string.
+// Global i18n context for BONO. Default language is Amharic; the choice is
+// persisted in localStorage (`hms_lang`) so it survives refreshes and route
+// changes. `t(key)` always returns a safe fallback string.
+//
+// Language is read through a single external store (useSyncExternalStore):
+// the server and the first client (hydration) render snapshot use `defaultLang`,
+// so there is no hydration mismatch; after hydration the persisted value is
+// read synchronously. This replaces the old deferred setTimeout bootstrap,
+// which flashed the default language and could overwrite a fast user click.
 
 const LanguageContext = createContext(null);
+const LANGUAGE_EVENT = "bono-language-change";
+
+function subscribe(onStoreChange) {
+  window.addEventListener(LANGUAGE_EVENT, onStoreChange);
+  window.addEventListener("storage", onStoreChange);
+  return () => {
+    window.removeEventListener(LANGUAGE_EVENT, onStoreChange);
+    window.removeEventListener("storage", onStoreChange);
+  };
+}
+
+function readPersistedLang() {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    return SUPPORTED_LANGS.includes(saved) ? saved : defaultLang;
+  } catch {
+    return defaultLang;
+  }
+}
+
+function getServerLang() {
+  return defaultLang;
+}
 
 export function LanguageProvider({ children }) {
-  const [lang, setLangState] = useState(defaultLang);
-  const [hydrated, setHydrated] = useState(false);
-
-  // Hydrate the persisted preference only AFTER the first client mount to
-  // prevent React Hydration Mismatch (server renders defaultLang, client
-  // must match until useEffect fires).
-  useEffect(() => {
-    let active = true;
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (SUPPORTED_LANGS.includes(saved)) {
-        // Defer so setState isn't synchronous within the effect body.
-        setTimeout(() => {
-          if (active) setLangState(saved);
-        }, 0);
-      }
-    } catch {
-      /* storage unavailable — keep default */
-    }
-    setTimeout(() => {
-      if (active) setHydrated(true);
-    }, 0);
-    return () => {
-      active = false;
-    };
-  }, []);
+  // One source of truth — no duplicate local language state, no timeouts.
+  const lang = useSyncExternalStore(subscribe, readPersistedLang, getServerLang);
 
   const setLang = useCallback((next) => {
     const value = SUPPORTED_LANGS.includes(next) ? next : defaultLang;
-    setLangState(value);
     try {
       window.localStorage.setItem(STORAGE_KEY, value);
+    } catch {
+      /* storage unavailable — keep the in-memory snapshot */
+    }
+    // Notify this provider (and any other mounted providers/tabs) immediately,
+    // so the visible text and the selected segment update in the same commit.
+    try {
+      window.dispatchEvent(new Event(LANGUAGE_EVENT));
     } catch {
       /* ignore */
     }
   }, []);
 
   const t = useCallback((key) => translate(lang, key), [lang]);
+  const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
 
-  return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
-      {children}
-    </LanguageContext.Provider>
-  );
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
 // Safe consumer: returns a no-op fallback if used outside the provider so a

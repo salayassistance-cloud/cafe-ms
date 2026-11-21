@@ -1,0 +1,956 @@
+{
+  "harness": "wp04-06-t2",
+  "runId": "wp04-06-t2-c74e91b82a60",
+  "status": "EXECUTED_EVIDENCE_RECORDED",
+  "executedAt": "2026-11-12T23:37:13.087Z",
+  "authorization": "Explicit --execute, --run-id, and --confirm gates satisfied. Owner authorization must be recorded separately.",
+  "boundaries": {
+    "loopbackOnly": true,
+    "productionOrStagingAccess": "NONE",
+    "environmentFilesRead": "NONE",
+    "proxyUsedForVerification": false,
+    "verifier": "separate MongoClient, directConnection, readPreference primary, readConcern majority, actual WP04 collections"
+  },
+  "scenarios": {
+    "T2_A": {
+      "scenario": "T2-A",
+      "mode": "sever-before-commit",
+      "effects": {
+        "taskId": "REC:v1:0810fae32b126f42ffe5c4ae21555c72",
+        "taskKey": "GRP:0123456789abcdef01234567",
+        "operationId": "t2-op-wp04-06-t2-c74e91b82a60-T2-A",
+        "eventId": "EVT:REC:v1:0810fae32b126f42ffe5c4ae21555c72:1",
+        "historyId": "OPH:REC:v1:0810fae32b126f42ffe5c4ae21555c72:t2-op-wp04-06-t2-c74e91b82a60-T2-A"
+      },
+      "commitError": {
+        "name": "MongoNetworkError",
+        "message": "connection 2 to 127.0.0.1:27032 closed",
+        "code": null,
+        "codeName": null
+      },
+      "proxy": {
+        "stats": {
+          "mode": "sever-before-commit",
+          "commitDetections": 2,
+          "forwardedCommit": false,
+          "withheldCommit": true,
+          "ackDropped": false,
+          "droppedAckResponseTo": null,
+          "commitRequestIDs": [
+            32,
+            35
+          ],
+          "correlationWarnings": 0,
+          "legacyFramesForwarded": 8,
+          "openSockets": 0
+        },
+        "events": [
+          {
+            "type": "proxy-listening",
+            "listenHost": "127.0.0.1",
+            "listenPort": 27032,
+            "targetHost": "127.0.0.1",
+            "targetPort": 27031,
+            "mode": "sever-before-commit",
+            "at": "2026-11-12T23:37:16.109Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 1,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 27,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.125Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 1,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 39,
+            "responseTo": 27,
+            "at": "2026-11-12T23:37:16.128Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 2,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 28,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.137Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 2,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 40,
+            "responseTo": 28,
+            "at": "2026-11-12T23:37:16.139Z"
+          },
+          {
+            "type": "commit-detected",
+            "connectionId": 2,
+            "requestID": 32,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "sever-before-commit",
+            "at": "2026-11-12T23:37:16.163Z"
+          },
+          {
+            "type": "commit-withheld",
+            "connectionId": 2,
+            "requestID": 32,
+            "at": "2026-11-12T23:37:16.163Z"
+          },
+          {
+            "type": "connection-severed",
+            "connectionId": 2,
+            "reason": "pre-commit-severance",
+            "at": "2026-11-12T23:37:16.164Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 3,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 33,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.177Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 3,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 45,
+            "responseTo": 33,
+            "at": "2026-11-12T23:37:16.178Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 4,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 34,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.184Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 4,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 46,
+            "responseTo": 34,
+            "at": "2026-11-12T23:37:16.185Z"
+          },
+          {
+            "type": "commit-detected",
+            "connectionId": 4,
+            "requestID": 35,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "sever-before-commit",
+            "at": "2026-11-12T23:37:16.187Z"
+          },
+          {
+            "type": "commit-withheld",
+            "connectionId": 4,
+            "requestID": 35,
+            "at": "2026-11-12T23:37:16.187Z"
+          },
+          {
+            "type": "connection-severed",
+            "connectionId": 4,
+            "reason": "pre-commit-severance",
+            "at": "2026-11-12T23:37:16.187Z"
+          }
+        ]
+      },
+      "verification": {
+        "verifier": "independent-direct-primary-majority",
+        "directConnection": true,
+        "readPreference": "primary",
+        "readConcern": "majority",
+        "collections": {
+          "task": "inventory_recovery_tasks",
+          "event": "inventory_recovery_events",
+          "history": "inventory_recovery_operation_history"
+        },
+        "startedAt": "2026-11-12T23:37:16.194Z",
+        "finishedAt": "2026-11-12T23:37:16.226Z",
+        "complete": true,
+        "expectPresent": false,
+        "found": {
+          "task": false,
+          "event": false,
+          "history": false
+        },
+        "problems": [],
+        "documents": {
+          "task": null,
+          "event": null,
+          "history": null
+        }
+      },
+      "diagnostics": {
+        "commitDetections": 2,
+        "forwardedCommit": false,
+        "withheldCommit": true,
+        "ackDropped": false,
+        "droppedAckResponseTo": null,
+        "commitDetectedEvents": [
+          {
+            "type": "commit-detected",
+            "connectionId": 2,
+            "requestID": 32,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "sever-before-commit",
+            "at": "2026-11-12T23:37:16.163Z"
+          },
+          {
+            "type": "commit-detected",
+            "connectionId": 4,
+            "requestID": 35,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "sever-before-commit",
+            "at": "2026-11-12T23:37:16.187Z"
+          }
+        ],
+        "commitWithheldEvents": [
+          {
+            "type": "commit-withheld",
+            "connectionId": 2,
+            "requestID": 32,
+            "at": "2026-11-12T23:37:16.163Z"
+          },
+          {
+            "type": "commit-withheld",
+            "connectionId": 4,
+            "requestID": 35,
+            "at": "2026-11-12T23:37:16.187Z"
+          }
+        ],
+        "commitForwardedEvents": [],
+        "commitAckDroppedEvents": [],
+        "connectionSeveredEvents": [
+          {
+            "type": "connection-severed",
+            "connectionId": 2,
+            "reason": "pre-commit-severance",
+            "at": "2026-11-12T23:37:16.164Z"
+          },
+          {
+            "type": "connection-severed",
+            "connectionId": 4,
+            "reason": "pre-commit-severance",
+            "at": "2026-11-12T23:37:16.187Z"
+          }
+        ]
+      }
+    },
+    "T2_B": {
+      "scenario": "T2-B",
+      "mode": "drop-commit-ack",
+      "effects": {
+        "taskId": "REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e",
+        "taskKey": "GRP:0123456789abcdef01234567",
+        "operationId": "t2-op-wp04-06-t2-c74e91b82a60-T2-B",
+        "eventId": "EVT:REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e:1",
+        "historyId": "OPH:REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e:t2-op-wp04-06-t2-c74e91b82a60-T2-B"
+      },
+      "commitError": {
+        "name": "MongoNetworkError",
+        "message": "connection 2 to 127.0.0.1:27032 closed",
+        "code": null,
+        "codeName": null
+      },
+      "proxy": {
+        "stats": {
+          "mode": "drop-commit-ack",
+          "commitDetections": 2,
+          "forwardedCommit": true,
+          "withheldCommit": false,
+          "ackDropped": true,
+          "droppedAckResponseTo": 52,
+          "commitRequestIDs": [
+            49,
+            52
+          ],
+          "correlationWarnings": 0,
+          "legacyFramesForwarded": 8,
+          "openSockets": 0
+        },
+        "events": [
+          {
+            "type": "proxy-listening",
+            "listenHost": "127.0.0.1",
+            "listenPort": 27032,
+            "targetHost": "127.0.0.1",
+            "targetPort": 27031,
+            "mode": "drop-commit-ack",
+            "at": "2026-11-12T23:37:16.234Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 1,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 44,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.242Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 1,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 54,
+            "responseTo": 44,
+            "at": "2026-11-12T23:37:16.243Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 2,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 45,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.249Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 2,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 55,
+            "responseTo": 45,
+            "at": "2026-11-12T23:37:16.250Z"
+          },
+          {
+            "type": "commit-detected",
+            "connectionId": 2,
+            "requestID": 49,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "drop-commit-ack",
+            "at": "2026-11-12T23:37:16.267Z"
+          },
+          {
+            "type": "commit-forwarded",
+            "connectionId": 2,
+            "requestID": 49,
+            "at": "2026-11-12T23:37:16.267Z"
+          },
+          {
+            "type": "commit-ack-dropped",
+            "connectionId": 2,
+            "responseTo": 49,
+            "requestID": 60,
+            "correlatedRequestID": 49,
+            "correlatedCommand": "commitTransaction",
+            "at": "2026-11-12T23:37:16.275Z"
+          },
+          {
+            "type": "connection-severed",
+            "connectionId": 2,
+            "reason": "post-commit-ack-loss",
+            "at": "2026-11-12T23:37:16.275Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 3,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 50,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.283Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 3,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 61,
+            "responseTo": 50,
+            "at": "2026-11-12T23:37:16.284Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 4,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 51,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.290Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 4,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 62,
+            "responseTo": 51,
+            "at": "2026-11-12T23:37:16.292Z"
+          },
+          {
+            "type": "commit-detected",
+            "connectionId": 4,
+            "requestID": 52,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "drop-commit-ack",
+            "at": "2026-11-12T23:37:16.295Z"
+          },
+          {
+            "type": "commit-forwarded",
+            "connectionId": 4,
+            "requestID": 52,
+            "at": "2026-11-12T23:37:16.295Z"
+          },
+          {
+            "type": "commit-ack-dropped",
+            "connectionId": 4,
+            "responseTo": 52,
+            "requestID": 63,
+            "correlatedRequestID": 52,
+            "correlatedCommand": "commitTransaction",
+            "at": "2026-11-12T23:37:16.297Z"
+          },
+          {
+            "type": "connection-severed",
+            "connectionId": 4,
+            "reason": "post-commit-ack-loss",
+            "at": "2026-11-12T23:37:16.298Z"
+          }
+        ]
+      },
+      "verification": {
+        "verifier": "independent-direct-primary-majority",
+        "directConnection": true,
+        "readPreference": "primary",
+        "readConcern": "majority",
+        "collections": {
+          "task": "inventory_recovery_tasks",
+          "event": "inventory_recovery_events",
+          "history": "inventory_recovery_operation_history"
+        },
+        "startedAt": "2026-11-12T23:37:16.304Z",
+        "finishedAt": "2026-11-12T23:37:16.331Z",
+        "complete": true,
+        "expectPresent": true,
+        "found": {
+          "task": true,
+          "event": true,
+          "history": true
+        },
+        "problems": [],
+        "documents": {
+          "task": {
+            "_id": "6af64dac4d889fdb65bdfbee",
+            "taskId": "REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e",
+            "taskKey": "GRP:0123456789abcdef01234567",
+            "findingIdentityKey": "REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e",
+            "orderId": "0123456789abcdef01234567",
+            "orderNumber": "T2-T2-B-c74e91b82a60",
+            "reservationId": null,
+            "itemId": null,
+            "lineId": null,
+            "rule": "D01",
+            "code": "T2_T2-B",
+            "classification": "INFO",
+            "severity": "INFO",
+            "confidence": "HIGH",
+            "evidenceLevel": "E1",
+            "findingCodeOnly": false,
+            "durableClass": null,
+            "fingerprintSchema": "wp04-fingerprint-v1",
+            "evidenceSchema": "wp04-evidence-v1",
+            "initialFingerprint": "53a4a67ddf4037a0a2ad62d3b6b1beedde1cec9287501cc290475a662a9fe0e2",
+            "currentFingerprint": "dd6ad0ebcdc6cbf18fd3a194bdc8e5eb5dd68fe5b15a0511003073ccbb6d8f3e",
+            "status": "RESOLVED",
+            "isOpen": true,
+            "leaseOwner": "wp04-06-t2-harness",
+            "leaseToken": "26514eb0-eb40-4412-a7fd-eb5f6cdee62f",
+            "leaseUntil": "2026-11-12T23:42:16.236Z",
+            "leaseGeneration": 1,
+            "eventSequenceCounter": 1,
+            "attempts": 1,
+            "maxAttempts": 5,
+            "nextAttemptAt": null,
+            "manualReasonCode": null,
+            "escalation": null,
+            "approval": null,
+            "approvedBy": null,
+            "approvedAt": null,
+            "executedBy": null,
+            "executedAt": null,
+            "verifierId": null,
+            "verifiedAt": null,
+            "resolution": null,
+            "lastErrorCode": null,
+            "lastErrorField": null,
+            "priorTaskId": null,
+            "pendingOperation": {
+              "operationId": "t2-op-wp04-06-t2-c74e91b82a60-T2-B",
+              "state": "COMMITTED",
+              "leaseGeneration": 1,
+              "sequenceNumber": 1,
+              "eventId": "EVT:REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e:1",
+              "reservedAt": "2026-11-12T23:37:16.236Z",
+              "reservedBy": "wp04-06-t2-harness",
+              "intentDigest": "928f883d89e62e25f02e9b92d4a8bd3a3268589ddfe69a343cdaf81bd3218a2e",
+              "settledAt": "2026-11-12T23:37:16.236Z",
+              "settlement": null
+            },
+            "createdAt": "2026-11-12T23:37:16.236Z",
+            "updatedAt": "2026-11-12T23:37:16.236Z",
+            "closedAt": null,
+            "cancelledAt": null
+          },
+          "event": {
+            "_id": "6af64dac4d889fdb65bdfbef",
+            "eventId": "EVT:REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e:1",
+            "taskId": "REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e",
+            "orderId": "0123456789abcdef01234567",
+            "sequenceNumber": 1,
+            "leaseGeneration": 1,
+            "timestamp": "2026-11-12T23:37:16.236Z",
+            "eventType": "RECOVERY_RESOLVED",
+            "actorId": "wp04-06-t2-harness",
+            "actorRole": "SERVICE-WORKER",
+            "actorType": "WORKER",
+            "fencingToken": "26514eb0-eb40-4412-a7fd-eb5f6cdee62f",
+            "fingerprintVersion": "wp04-fingerprint-v1",
+            "evidenceSchemaVersion": "wp04-evidence-v1",
+            "evidenceDigest": "dd6ad0ebcdc6cbf18fd3a194bdc8e5eb5dd68fe5b15a0511003073ccbb6d8f3e",
+            "projectedEvidence": {},
+            "details": {
+              "fromStatus": "LEASED",
+              "toStatus": "RESOLVED",
+              "attempts": 1,
+              "diagnosticCode": null,
+              "observedFingerprint": null,
+              "leaseDurationMs": 300000,
+              "delta": null
+            }
+          },
+          "history": {
+            "_id": "6af64dac4d889fdb65bdfbf0",
+            "historyId": "OPH:REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e:t2-op-wp04-06-t2-c74e91b82a60-T2-B",
+            "taskId": "REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e",
+            "operationId": "t2-op-wp04-06-t2-c74e91b82a60-T2-B",
+            "state": "COMMITTED",
+            "leaseGeneration": 1,
+            "sequenceNumber": 1,
+            "eventId": "EVT:REC:v1:8d1e39e9980d1b1b63d2c9cb4210038e:1",
+            "reservedAt": "2026-11-12T23:37:16.236Z",
+            "reservedBy": "wp04-06-t2-harness",
+            "settledAt": "2026-11-12T23:37:16.236Z",
+            "intentDigest": "928f883d89e62e25f02e9b92d4a8bd3a3268589ddfe69a343cdaf81bd3218a2e",
+            "settlement": null,
+            "manualReasonCode": null,
+            "basis": null
+          }
+        }
+      },
+      "diagnostics": {
+        "commitDetections": 2,
+        "forwardedCommit": true,
+        "withheldCommit": false,
+        "ackDropped": true,
+        "droppedAckResponseTo": 52,
+        "commitDetectedEvents": [
+          {
+            "type": "commit-detected",
+            "connectionId": 2,
+            "requestID": 49,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "drop-commit-ack",
+            "at": "2026-11-12T23:37:16.267Z"
+          },
+          {
+            "type": "commit-detected",
+            "connectionId": 4,
+            "requestID": 52,
+            "responseTo": 0,
+            "command": "commitTransaction",
+            "mode": "drop-commit-ack",
+            "at": "2026-11-12T23:37:16.295Z"
+          }
+        ],
+        "commitWithheldEvents": [],
+        "commitForwardedEvents": [
+          {
+            "type": "commit-forwarded",
+            "connectionId": 2,
+            "requestID": 49,
+            "at": "2026-11-12T23:37:16.267Z"
+          },
+          {
+            "type": "commit-forwarded",
+            "connectionId": 4,
+            "requestID": 52,
+            "at": "2026-11-12T23:37:16.295Z"
+          }
+        ],
+        "commitAckDroppedEvents": [
+          {
+            "type": "commit-ack-dropped",
+            "connectionId": 2,
+            "responseTo": 49,
+            "requestID": 60,
+            "correlatedRequestID": 49,
+            "correlatedCommand": "commitTransaction",
+            "at": "2026-11-12T23:37:16.275Z"
+          },
+          {
+            "type": "commit-ack-dropped",
+            "connectionId": 4,
+            "responseTo": 52,
+            "requestID": 63,
+            "correlatedRequestID": 52,
+            "correlatedCommand": "commitTransaction",
+            "at": "2026-11-12T23:37:16.297Z"
+          }
+        ],
+        "connectionSeveredEvents": [
+          {
+            "type": "connection-severed",
+            "connectionId": 2,
+            "reason": "post-commit-ack-loss",
+            "at": "2026-11-12T23:37:16.275Z"
+          },
+          {
+            "type": "connection-severed",
+            "connectionId": 4,
+            "reason": "post-commit-ack-loss",
+            "at": "2026-11-12T23:37:16.298Z"
+          }
+        ]
+      }
+    },
+    "T2_C": {
+      "scenario": "T2-C",
+      "mode": "negative-control",
+      "effects": {
+        "taskId": "REC:v1:7f5592b461a85251b1878fcad46bc617",
+        "eventId": "EVT:REC:v1:7f5592b461a85251b1878fcad46bc617:1",
+        "historyId": "OPH:REC:v1:7f5592b461a85251b1878fcad46bc617:t2-op-wp04-06-t2-c74e91b82a60-T2-C"
+      },
+      "commandResult": {
+        "ok": 1,
+        "cursorKeys": [
+          "firstBatch",
+          "id",
+          "ns"
+        ]
+      },
+      "insertAcknowledged": true,
+      "proxy": {
+        "stats": {
+          "mode": "negative-control",
+          "commitDetections": 0,
+          "forwardedCommit": false,
+          "withheldCommit": false,
+          "ackDropped": false,
+          "droppedAckResponseTo": null,
+          "commitRequestIDs": [],
+          "correlationWarnings": 0,
+          "legacyFramesForwarded": 4,
+          "openSockets": 0
+        },
+        "events": [
+          {
+            "type": "proxy-listening",
+            "listenHost": "127.0.0.1",
+            "listenPort": 27032,
+            "targetHost": "127.0.0.1",
+            "targetPort": 27031,
+            "mode": "negative-control",
+            "at": "2026-11-12T23:37:16.337Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 1,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 61,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.346Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 1,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 71,
+            "responseTo": 61,
+            "at": "2026-11-12T23:37:16.347Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 2,
+            "direction": "client-to-server",
+            "opCode": 2004,
+            "messageLength": 302,
+            "requestID": 62,
+            "responseTo": 0,
+            "at": "2026-11-12T23:37:16.353Z"
+          },
+          {
+            "type": "legacy-frame-forwarded",
+            "connectionId": 2,
+            "direction": "server-to-client",
+            "opCode": 1,
+            "messageLength": 768,
+            "requestID": 72,
+            "responseTo": 62,
+            "at": "2026-11-12T23:37:16.354Z"
+          }
+        ]
+      },
+      "verification": {
+        "verifier": "independent-direct-primary-majority",
+        "directConnection": true,
+        "readPreference": "primary",
+        "readConcern": "majority",
+        "collections": {
+          "task": "inventory_recovery_tasks",
+          "event": "inventory_recovery_events",
+          "history": "inventory_recovery_operation_history"
+        },
+        "startedAt": "2026-11-12T23:37:16.396Z",
+        "finishedAt": "2026-11-12T23:37:16.431Z",
+        "complete": true,
+        "expectPresent": true,
+        "found": {
+          "task": true,
+          "event": true,
+          "history": true
+        },
+        "problems": [],
+        "documents": {
+          "task": {
+            "_id": "6af64dac4d889fdb65bdfbf1",
+            "taskId": "REC:v1:7f5592b461a85251b1878fcad46bc617",
+            "taskKey": "GRP:0123456789abcdef01234567",
+            "findingIdentityKey": "REC:v1:7f5592b461a85251b1878fcad46bc617",
+            "orderId": "0123456789abcdef01234567",
+            "orderNumber": "T2-T2-C-c74e91b82a60",
+            "reservationId": null,
+            "itemId": null,
+            "lineId": null,
+            "rule": "D01",
+            "code": "T2_T2-C",
+            "classification": "INFO",
+            "severity": "INFO",
+            "confidence": "HIGH",
+            "evidenceLevel": "E1",
+            "findingCodeOnly": false,
+            "durableClass": null,
+            "fingerprintSchema": "wp04-fingerprint-v1",
+            "evidenceSchema": "wp04-evidence-v1",
+            "initialFingerprint": "d856b298cb589206602e65fd9ed41d695910b38dfb0bffd29ac88fc8e424d68e",
+            "currentFingerprint": "0e63951d9a873904e26836f0d67a2efc66482191f0f2eee3f760c9215b2b12f9",
+            "status": "RESOLVED",
+            "isOpen": true,
+            "leaseOwner": "wp04-06-t2-harness",
+            "leaseToken": "c72caac8-2cb6-4930-b145-761fd327c0bc",
+            "leaseUntil": "2026-11-12T23:42:16.339Z",
+            "leaseGeneration": 1,
+            "eventSequenceCounter": 1,
+            "attempts": 1,
+            "maxAttempts": 5,
+            "nextAttemptAt": null,
+            "manualReasonCode": null,
+            "escalation": null,
+            "approval": null,
+            "approvedBy": null,
+            "approvedAt": null,
+            "executedBy": null,
+            "executedAt": null,
+            "verifierId": null,
+            "verifiedAt": null,
+            "resolution": null,
+            "lastErrorCode": null,
+            "lastErrorField": null,
+            "priorTaskId": null,
+            "pendingOperation": {
+              "operationId": "t2-op-wp04-06-t2-c74e91b82a60-T2-C",
+              "state": "COMMITTED",
+              "leaseGeneration": 1,
+              "sequenceNumber": 1,
+              "eventId": "EVT:REC:v1:7f5592b461a85251b1878fcad46bc617:1",
+              "reservedAt": "2026-11-12T23:37:16.339Z",
+              "reservedBy": "wp04-06-t2-harness",
+              "intentDigest": "b417cd0d32b9fb5db355e899f12e656b5d4c5737117bf102608bc480c5d6b789",
+              "settledAt": "2026-11-12T23:37:16.339Z",
+              "settlement": null
+            },
+            "createdAt": "2026-11-12T23:37:16.339Z",
+            "updatedAt": "2026-11-12T23:37:16.339Z",
+            "closedAt": null,
+            "cancelledAt": null,
+            "negativeControlNote": "commitTransaction is only payload text"
+          },
+          "event": {
+            "_id": "6af64dac4d889fdb65bdfbf2",
+            "eventId": "EVT:REC:v1:7f5592b461a85251b1878fcad46bc617:1",
+            "taskId": "REC:v1:7f5592b461a85251b1878fcad46bc617",
+            "orderId": "0123456789abcdef01234567",
+            "sequenceNumber": 1,
+            "leaseGeneration": 1,
+            "timestamp": "2026-11-12T23:37:16.339Z",
+            "eventType": "RECOVERY_RESOLVED",
+            "actorId": "wp04-06-t2-harness",
+            "actorRole": "SERVICE-WORKER",
+            "actorType": "WORKER",
+            "fencingToken": "c72caac8-2cb6-4930-b145-761fd327c0bc",
+            "fingerprintVersion": "wp04-fingerprint-v1",
+            "evidenceSchemaVersion": "wp04-evidence-v1",
+            "evidenceDigest": "0e63951d9a873904e26836f0d67a2efc66482191f0f2eee3f760c9215b2b12f9",
+            "projectedEvidence": {},
+            "details": {
+              "fromStatus": "LEASED",
+              "toStatus": "RESOLVED",
+              "attempts": 1,
+              "diagnosticCode": null,
+              "observedFingerprint": null,
+              "leaseDurationMs": 300000,
+              "delta": null
+            }
+          },
+          "history": {
+            "_id": "6af64dac4d889fdb65bdfbf3",
+            "historyId": "OPH:REC:v1:7f5592b461a85251b1878fcad46bc617:t2-op-wp04-06-t2-c74e91b82a60-T2-C",
+            "taskId": "REC:v1:7f5592b461a85251b1878fcad46bc617",
+            "operationId": "t2-op-wp04-06-t2-c74e91b82a60-T2-C",
+            "state": "COMMITTED",
+            "leaseGeneration": 1,
+            "sequenceNumber": 1,
+            "eventId": "EVT:REC:v1:7f5592b461a85251b1878fcad46bc617:1",
+            "reservedAt": "2026-11-12T23:37:16.339Z",
+            "reservedBy": "wp04-06-t2-harness",
+            "settledAt": "2026-11-12T23:37:16.339Z",
+            "intentDigest": "b417cd0d32b9fb5db355e899f12e656b5d4c5737117bf102608bc480c5d6b789",
+            "settlement": null,
+            "manualReasonCode": null,
+            "basis": null
+          }
+        }
+      },
+      "diagnostics": {
+        "commitDetections": 0,
+        "forwardedCommit": false,
+        "withheldCommit": false,
+        "ackDropped": false,
+        "droppedAckResponseTo": null,
+        "commitDetectedEvents": [],
+        "commitWithheldEvents": [],
+        "commitForwardedEvents": [],
+        "commitAckDroppedEvents": [],
+        "connectionSeveredEvents": []
+      }
+    }
+  },
+  "assertions": {
+    "T2_A": {
+      "status": "PASSED"
+    },
+    "T2_B": {
+      "status": "PASSED"
+    },
+    "T2_C": {
+      "status": "PASSED"
+    }
+  },
+  "topology": {
+    "setName": "bonowp0406t2rs",
+    "myState": 1,
+    "members": [
+      {
+        "name": "127.0.0.1:27031",
+        "stateStr": "PRIMARY",
+        "health": 1
+      }
+    ]
+  },
+  "environment": {
+    "node": "v24.14.0",
+    "driver": "7.5.0",
+    "os": "Windows_NT 10.0.26200 x64",
+    "mongodPath": "C:\\Program Files\\MongoDB\\Server\\8.0\\bin\\mongod.exe",
+    "mongodbVersion": "8.0.34",
+    "mongodbGitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae",
+    "replicaSetName": "bonowp0406t2rs",
+    "ports": {
+      "mongod": 27031,
+      "proxy": 27032
+    },
+    "bindIp": "127.0.0.1",
+    "storageEngine": "wiredTiger",
+    "oplogSizeMB": 128,
+    "oplog": {
+      "latestOptime": {
+        "$timestamp": "7707433209125928977"
+      },
+      "earliestOptime": {
+        "$timestamp": "7707433209125928961"
+      }
+    },
+    "host": "XANIEL"
+  },
+  "replicaSetVerification": {
+    "verifier": "independent-direct-primary-majority",
+    "directConnection": true,
+    "readPreference": "primary",
+    "readConcern": "majority",
+    "setName": "bonowp0406t2rs",
+    "isWritablePrimary": true,
+    "primary": "127.0.0.1:27031",
+    "members": [
+      {
+        "name": "127.0.0.1:27031",
+        "stateStr": "PRIMARY",
+        "health": 1
+      }
+    ]
+  },
+  "claims": {
+    "p1_p6": "Execution evidence recorded; requires independent review before any acceptance claim.",
+    "t2": "OPEN — do not close from this runner output alone.",
+    "blk_uc_01_02": "OPEN — unchanged by this harness."
+  },
+  "cleanup": {
+    "mongodStopped": true,
+    "dbPathRemoved": true,
+    "keptTemp": false,
+    "notes": [],
+    "blockers": []
+  }
+}

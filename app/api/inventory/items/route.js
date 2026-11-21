@@ -8,6 +8,7 @@ import { ok, fail, isDbError } from "@/lib/apiResponse";
 import { validateInventoryItemCreate } from "@/lib/inventoryValidation";
 import { serializeInventoryItem } from "@/lib/inventoryService";
 import { sanitizeString } from "@/lib/validate";
+import { normalizeStockGroup } from "@/lib/inventoryCategories";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +21,18 @@ async function getHandler(request) {
 
   const { searchParams } = new URL(request.url);
   const rawCategory = searchParams.get("category");
+  const rawStockGroup = searchParams.get("stockGroup");
   const rawStatus = searchParams.get("status");
 
   const query = {};
   if (rawCategory) {
     const cat = sanitizeString(rawCategory, { maxLen: 100, allowEmpty: true });
     if (cat) query.category = cat;
+  }
+  if (rawStockGroup) {
+    const group = normalizeStockGroup(rawStockGroup);
+    if (!group) return fail(`Invalid stockGroup filter: ${rawStockGroup}`, 400);
+    query.stockGroup = group;
   }
   if (rawStatus) {
     const st = String(rawStatus).trim();
@@ -38,7 +45,7 @@ async function getHandler(request) {
     const conn = await connectToDatabase();
     const InventoryItem = getInventoryItemModel(conn);
     const docs = await InventoryItem.find(query)
-      .select("name category unit currentStock minimumStock cost supplier status createdAt updatedAt")
+      .select("name category stockGroup unit currentStock reservedStock minimumStock cost supplier status createdAt updatedAt")
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
@@ -66,7 +73,7 @@ async function postHandler(request) {
   }
 
   const validated = validateInventoryItemCreate(body);
-  if (!validated.ok && validated.error) return fail(validated.error, 400);
+  if (!validated.ok && validated.error) return fail(validated.error, 400, validated.code);
   if (!validated.ok) return fail("Validation failed", 400);
 
   const conn = await connectToDatabase();
@@ -95,6 +102,7 @@ async function postHandler(request) {
           afterSnapshot: {
             name: doc.name,
             category: doc.category,
+            stockGroup: doc.stockGroup || null,
             unit: doc.unit,
             currentStock: Number(doc.currentStock) || 0,
             minimumStock: Number(doc.minimumStock) || 0,

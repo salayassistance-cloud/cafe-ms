@@ -42,11 +42,12 @@ async function handler(request) {
   let pinStatusMap = null;
   if (isManager) {
     try {
-      const { DEFAULT_WAITER_PIN, DEFAULT_KITCHEN_PIN, DEFAULT_BARISTA_PIN, DEFAULT_MANAGER_PIN } = await import("@/lib/config/security");
+      const { DEFAULT_WAITER_PIN, DEFAULT_KITCHEN_PIN, DEFAULT_BARISTA_PIN, DEFAULT_HOT_DRINK_PIN, DEFAULT_MANAGER_PIN } = await import("@/lib/config/security");
       const defaults = {
         WAITER: DEFAULT_WAITER_PIN,
         KITCHEN: DEFAULT_KITCHEN_PIN,
         BARISTA: DEFAULT_BARISTA_PIN,
+        HOT_DRINK: DEFAULT_HOT_DRINK_PIN,
         MANAGER: DEFAULT_MANAGER_PIN,
       };
       pinStatusMap = new Map();

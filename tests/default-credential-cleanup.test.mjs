@@ -117,7 +117,7 @@ describe('AUTH-ARCH-8B default-credential cleanup (DB-free)', () => {
 
   test('13-15. KITCHEN/BARISTA/MANAGER resolve through existing Staff identity', async () => {
     const vp = codeOnly('app/api/auth/verify-pin/route.js');
-    assert.ok(vp.includes('Staff.find({ role })'), 'per-role Staff lookup preserved');
+    assert.ok(vp.includes('Staff.find({ role, isActive: { $ne: false } })'), 'per-role Staff lookup preserved and inactive-filtered');
     for (const role of ['KITCHEN', 'BARISTA', 'MANAGER']) {
       const staff = staffRec(role === 'KITCHEN' ? 'Kitchen' : role === 'BARISTA' ? 'Barista' : 'Manager', role);
       const row = sessionRow(staff);

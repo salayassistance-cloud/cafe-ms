@@ -210,7 +210,7 @@ policy.can() per permission
 - Financial integrity — client price never trusted.
 
 ### RISK
-- Requiring `itemId` breaks external ad-hoc items (handled via `isExternal` + `/api/external-sales`).
+- Requiring `itemId` breaks external ad-hoc items (handled via `isExternal` + `/api/external-sales`). *(Route removed in H1; historical `isExternal` values remain read-only.)*
 
 ### MIGRATION METHOD
 - Phase 2 documents matrix; Phase 3 enforces `requireAuth` per transition and price guard.
@@ -330,7 +330,7 @@ app/
     auth/ (verify-pin, verify-waiter, login-staff, change-pin, logout)
     brand/ (+ upload)
     events/ (SSE)
-    external-sales/ (isExternal)
+    external-sales/ (REMOVED in H1; historical isExternal fields are read-only)
     manager/analytics (CANONICAL) ← reportService
     manager/reports (LEGACY alias) → same
     manager/settings/* (pins, waiters, clear-orders)
@@ -373,7 +373,7 @@ No mass moves. Only new canonical files added (`policy`, `menuService`, `reportS
 | 4 | Reporting unify | Two identical handlers | `lib/reportService` + `analytics` canonical, `reports` deprecated alias | DRY, cache | Stale cache 5s | Refactor both to `getReport`+`resolveReportRange`, add `Deprecation` header | Parity test `analytics` vs `reports` |
 | 5 | AUTH_SECRET prod guard | Fallback dev secret | Throw if `NODE_ENV=production && !AUTH_SECRET` | Prevent forgery | Restart fails if env missed | Added in `sessionCrypto` | `NODE_ENV=production` without var → throw |
 | 6 | Menu aliases | `category↔categoryId` etc. scattered, `strict:false` | `lib/menuService` canonical, aliases deprecated | One field per concept | Dropping alias early → orphan | Backfill script, verify count 0, then drop indexes | `menuService.serialize` before/after |
-| 7 | Order price trust | Client `price` trusted if no `itemId` | Server snapshot required, recomputed total | Financial integrity | Breaks ad-hoc external items | Require `itemId` for catalog, keep `external-sales` path | Post with low price but valid `itemId` → stored DB price |
+| 7 | Order price trust | Client `price` trusted if no `itemId` | Server snapshot required, recomputed total | Financial integrity | Breaks ad-hoc external items | Require `itemId` for catalog, keep `external-sales` path *(removed in H1)* | Post with low price but valid `itemId` → stored DB price |
 | 8 | Real-time | SSE + aggressive polls overlap | SSE-first, poll fallback only | Reduce DB 50 req/min | Missed event if SSE drops | Keep EventSource, add `OPEN` check, visibility pause | POST order → SSE within 500ms |
 | 9 | Caching | `no-store` everywhere | `revalidateTag` for menu, TTL for reports | Performance | Stale menu | Introduce `cache.js`, migrate menu fetch | Create item → menu reflects after revalidate |
 | 10 | API envelope | Mostly consistent but some `NextResponse.json` with `message` | `withApi` + `ok/fail` everywhere | Predictable clients | None | Audit `login-staff` envelope (already `{success,message}`) | All routes return `{success,data,error}` |

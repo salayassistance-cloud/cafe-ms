@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { safeFetchJson, sendOrder, updateOrderStatusClient, getSessionErrorKind, tabLogout } from '@/lib/clientFetch';
 import { playChime, notifyBrowser, ensureBrowserNotifyPermission } from '@/lib/notify';
 import { getLocalizedSingleString } from '@/lib/displayName';
+import {
+  isMenuItemOrderable,
+  isMenuItemBlockedForReview,
+} from '@/lib/menuOrderability';
 import { useOrderEvents } from '@/lib/orderEvents';
 import MenuItemImage from '@/app/components/MenuItemImage';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
@@ -26,6 +30,9 @@ const LABELS = {
   table: { am: 'ጠረጴዛ', en: 'Table', om: 'Teebuu' },
   inStock: { am: 'በክምችት ላይ ያለ', en: 'In Stock', om: 'Ku jira' },
   outStock: { am: 'ያለቀ', en: 'Out of Stock', om: 'Dhuma' },
+  // D10: neutral, actionable reason for an item that is in stock but not open
+  // for new orders (catalog review pending). Never names the internal policy.
+  reviewRequired: { am: 'አይገኝም — አስተዳዳሪውን ይጠይቁ', en: 'Not available — ask manager', om: 'Hin argamu — bulchaa gaafadhu' },
   ordered: { am: 'ትዕዛዙ ተልኳል!', en: 'Order sent!', om: 'Ajajni ergame!' },
   sortDefault: { am: 'ነባሪ', en: 'Default', om: 'Durtii' },
   sortPrice: { am: 'ዋጋ፡ ከዝቅተኛ ወደ ከፍተኛ', en: 'Price: Low → High', om: 'Gatii: Xiqqaa → Guddaa' },
@@ -45,10 +52,13 @@ const LABELS = {
   payError: { am: 'ክፍያው አልተሳካም', en: 'Payment failed', om: 'Kaffaltiin hin milkoofne' },
   orderError: { am: 'ትዕዛዙ መላክ አልተሳካም፣ እባክዎ ደግመው ይሞክሩ', en: 'Order submission failed', om: 'Ajajni erguun hin milkoofne' },
   cancel: { am: 'ሰርዝ', en: 'Cancel', om: 'Haqi' },
-  addExternal: { am: 'የውጭ እቃ/ምግብ ጨምር', en: 'External Request', om: 'Kabaa dabali' },
-  extName: { am: 'የእቃ ስም', en: 'Item Name', om: 'Maqaa' },
-  extPrice: { am: 'ዋጋ', en: 'Price', om: 'Gatii' },
-  extSaved: { am: 'የውጭ እቃ ተጨምሯል', en: 'External item added', om: 'Kaba dabalame' },
+  extraItem: { am: 'ተጨማሪ እቃ', en: 'Extra Item', om: 'Meeshaa Dabaluu' },
+  extraItemTitle: { am: 'ተጨማሪ እቃ ይምረጡ', en: 'Select Extra Item', om: 'Meeshaa Dabaluu Filadhu' },
+  extraItemHint: { am: 'ከማናጀር የሜኑ ዝርዝር ውስጥ የሚገኝ እቃ ብቻ። ብዛት ብቻ ይምረጡ።', en: 'Choose an available catalog item. Quantity only — name, price and unit come from the server catalog.', om: 'Meeshaa kataloogii jiru filadhu. Baayyina qofa.' },
+  extraItemSearch: { am: 'እቃ ፈልግ', en: 'Search items', om: 'Meeshaa barbaadi' },
+  extraItemEmpty: { am: 'ተጨማሪ እቃ አልተገኘም', en: 'No Extra Items available', om: 'Meeshaan dabaluu hin argamne' },
+  extraItemAdd: { am: 'ጨምር', en: 'Add', om: 'Dabali' },
+  extraItemError: { am: 'ተጨማሪ እቃ ማምጣት አልተቻለም', en: 'Could not load Extra Items', om: 'Meeshaa dabaluu fiduun hin danda\'amne' },
   required: { am: 'አስፈላጊ ነው', en: 'is required', om: 'bara' },
   add: { am: 'ጨምር', en: 'Add', om: 'Dabali' },
   edit: { am: 'አርትዕ', en: 'Edit', om: 'Sirreessi' },
@@ -152,13 +162,21 @@ export default function WaiterUI() {
   const [submitting, setSubmitting] = useState(false);
   const [orderDone, setOrderDone] = useState(null);
   const [orderError, setOrderError] = useState('');
+  // Extra Item picker — server-authoritative, always bound to ONE parent cart
+  // line. The waiter selects an extra and quantity only; name/price/unit/stock
+  // are resolved server-side.
+  const [extraOpen, setExtraOpen] = useState(false);
+  const [extraTarget, setExtraTarget] = useState(null); // parent cartKey
+  const [extraQty, setExtraQty] = useState('1');
+  const [extraCatalog, setExtraCatalog] = useState([]);
+  const [extraLoading, setExtraLoading] = useState(false);
+  const [extraError, setExtraError] = useState('');
+  const [extraQuery, setExtraQuery] = useState('');
 
-  // Components per cart line — Type A NOTE (no price) and Type B PRICED_COMPONENT (billable)
-  const [editingComponent, setEditingComponent] = useState(null); // { cartKey, kind: "NOTE"|"PRICED" }
+  // NOTE editor per cart line. Priced add-ons are Extra Items only and are
+  // added through the per-line Extra picker, never free text.
+  const [editingComponent, setEditingComponent] = useState(null); // { cartKey, kind: "NOTE" }
   const [compNote, setCompNote] = useState('');
-  const [compName, setCompName] = useState('');
-  const [compQty, setCompQty] = useState('1');
-  const [compPrice, setCompPrice] = useState('');
   const [compError, setCompError] = useState('');
 
   const [readyToasts, setReadyToasts] = useState([]);
@@ -278,17 +296,18 @@ export default function WaiterUI() {
           title: i.title || i.name || "",
           imageUrl: i.imageUrl || i.image || "",
         }));
-        // Unavailable items remain VISIBLE with a disabled "Out of Stock" action —
-        // only adding them to the cart is blocked. Cart hygiene unchanged: entries
-        // whose item became unavailable/deleted are still pruned.
-        const orderable = (it) => it.isAvailable !== false && it.inStock !== false;
+        // D9/D10: unavailable and policy-blocked items remain VISIBLE with a
+        // disabled action — only adding them to the cart is blocked. The neutral
+        // `orderable` flag comes from the server; no policy metadata is exposed.
+        // Cart hygiene unchanged: entries whose item became unavailable/deleted
+        // or lost orderability are still pruned.
         // Prune cart of any items that are now unavailable/deleted (dynamic sync)
         setCart((prev) => {
           const next = { ...prev };
           let changed = false;
           for (const key of Object.keys(next)) {
             const match = its.find((a) => String(a._id) === String(key));
-            if (!match || !orderable(match)) {
+            if (!match || !isMenuItemOrderable(match)) {
               delete next[key];
               changed = true;
             }
@@ -574,8 +593,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
       const payload = raw?.data && (raw.data.categories || raw.data.items) ? raw.data : raw;
       const cats = (payload?.categories || []).map((c) => ({ ...c, _id: c._id || c.id, id: c.id || c._id }));
       const its = (payload?.items || []).map((i) => ({ ...i, _id: i._id || i.id, id: i.id || i._id, title: i.title || i.name || "", imageUrl: i.imageUrl || i.image || "" }));
-      // Unavailable items stay visible with a disabled action; cart prunes unavailable/deleted
-      const orderable = (it) => it.isAvailable !== false && it.inStock !== false;
+      // D9/D10: unavailable/policy-blocked items stay visible with a disabled
+      // action; cart prunes anything no longer orderable.
       setCategories(cats);
       setItems(its);
       setCart((prev) => {
@@ -583,7 +602,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
         let changed = false;
         for (const key of Object.keys(next)) {
           const match = its.find((a) => String(a._id) === String(key));
-          if (!match || !orderable(match)) {
+          if (!match || !isMenuItemOrderable(match)) {
             delete next[key];
             changed = true;
           }
@@ -797,14 +816,25 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
       .reduce((s, c) => s + (Number(c.quantity) || 0) * (Number(c.unitPrice) || 0), 0);
     return sum + base + comps;
   }, 0);
+  const extraQueryNorm = extraQuery.trim().toLowerCase();
+  const extraFiltered = extraCatalog.filter((cat) => {
+    if (!extraQueryNorm) return true;
+    return `${localizedName(cat, lang)} ${cat.nameText || ''} ${cat.type || ''} ${cat.unit || ''}`
+      .toLowerCase()
+      .includes(extraQueryNorm);
+  });
 
   function addToCart(item) {
-    if (!item.isAvailable) return;
+    // D9: the shared predicate is the single presentation gate (availability +
+    // neutral server orderability flag). Server validation stays authoritative.
+    if (!isMenuItemOrderable(item)) return;
+    const cartKey = String(item._id);
     setCart((prev) => {
-      const existing = prev[item._id];
+      const existing = prev[cartKey];
       return {
         ...prev,
-        [item._id]: {
+        [cartKey]: {
+          cartKey,
           item,
           qty: (existing?.qty || 0) + 1,
           components: existing?.components || [],
@@ -813,6 +843,89 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     });
     setCartBump((n) => n + 1);
     setOrderDone(null);
+  }
+
+  async function openExtraPicker(cartKey) {
+    if (!cartKey || !cart[cartKey]) return;
+    setExtraTarget(cartKey);
+    setExtraOpen(true);
+    setExtraError('');
+    setExtraQuery('');
+    setExtraQty('1');
+    setExtraLoading(true);
+    try {
+      const data = await safeFetchJson('/api/extra-items/catalog', { cache: 'no-store' });
+      const list = data?.data?.items || data?.items || [];
+      setExtraCatalog(Array.isArray(list) ? list : []);
+    } catch (err) {
+      if (err?.status === 401 || err?.status === 403) enterSessionEnded('expired');
+      setExtraError(err?.message || t('extraItemError'));
+      setExtraCatalog([]);
+    } finally {
+      setExtraLoading(false);
+    }
+  }
+
+  function closeExtraPicker() {
+    setExtraOpen(false);
+    setExtraTarget(null);
+    setExtraQty('1');
+  }
+
+  // Attach the selected Extra Item to the parent cart line as a
+  // PRICED_COMPONENT. Only extraItemId + quantity are submitted later; the
+  // display values below are a local estimate until the server responds.
+  function addExtraItem(cat) {
+    const extraItemId = String(cat?.extraItemId || '');
+    const qty = Number(extraQty);
+    const target = extraTarget;
+    if (!extraItemId || !target) return;
+    if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
+      setExtraError('Quantity must be 1-99');
+      return;
+    }
+    const price = Math.round((Number(cat.price) || 0) * 100) / 100;
+    setCart((prev) => {
+      const entry = prev[target];
+      if (!entry) return prev;
+      const list = Array.isArray(entry.components) ? entry.components : [];
+      if (list.length >= 20) return prev;
+      const existingIdx = list.findIndex(
+        (c) => c.kind === 'PRICED_COMPONENT' && String(c.extraItemId) === extraItemId
+      );
+      let components;
+      if (existingIdx >= 0) {
+        components = list.map((c, i) => {
+          if (i !== existingIdx) return c;
+          const nextQty = Math.min(99, (Number(c.quantity) || 0) + qty);
+          return {
+            ...c,
+            quantity: nextQty,
+            lineSum: Math.round(nextQty * price * 100) / 100,
+          };
+        });
+      } else {
+        components = [
+          ...list,
+          {
+            kind: 'PRICED_COMPONENT',
+            extraItemId,
+            name: cat.nameText || cat.name || '',
+            quantity: qty,
+            unitPrice: price,
+            unit: cat.unit || null,
+            lineSum: Math.round(qty * price * 100) / 100,
+          },
+        ];
+      }
+      return { ...prev, [target]: { ...entry, components } };
+    });
+    setCartBump((n) => n + 1);
+    setOrderDone(null);
+    setExtraOpen(false);
+    setExtraTarget(null);
+    setExtraQty('1');
+    setCartOpen(true);
   }
 
   function changeQty(itemId, delta) {
@@ -887,46 +1000,6 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     setEditingComponent(null);
     setOrderDone(null);
   }
-  function addPricedToCart(cartKey) {
-    const name = compName.trim();
-    const qty = Number(compQty);
-    const price = Number(compPrice);
-    if (!name) {
-      setCompError("Component name is required");
-      return;
-    }
-    if (name.length > 100) {
-      setCompError("Component name max 100 chars");
-      return;
-    }
-    if (/<script/i.test(name)) {
-      setCompError("Component name contains invalid characters");
-      return;
-    }
-    if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
-      setCompError("Quantity must be 1-99");
-      return;
-    }
-    if (!Number.isFinite(price) || price < 0 || price > 100000) {
-      setCompError("Unit price must be 0-100000");
-      return;
-    }
-    // No inventory link collected here — the backend accepts priced components
-    // without inventory fields and handles absence safely.
-    addComponentToCart(cartKey, {
-      kind: "PRICED_COMPONENT",
-      name: name.slice(0, 100),
-      quantity: qty,
-      unitPrice: Math.round(price * 100) / 100,
-    });
-    setCompName("");
-    setCompQty("1");
-    setCompPrice("");
-    setCompError("");
-    setEditingComponent(null);
-    setOrderDone(null);
-  }
-
   // Post-submit ownership check (non-blocking): confirms THIS tab's session
   // still resolves to the same waiter. With a tab credential the identity
   // cannot drift; without one (cookie mode) a mismatch means this tab's own
@@ -955,7 +1028,9 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
     setSubmitting(true);
     setOrderError('');
     try {
-      // Components are attached to parent menu item, not standalone orders
+      // Components are attached to parent menu item, not standalone orders.
+      // Extras are identified by extraItemId only: name, selling price, unit,
+      // stock link and deduction quantity are resolved by the server.
       const payload = {
         tableNumber: selectedTable,
         items: cartEntries.map(({ item, qty, components }) => ({
@@ -963,16 +1038,14 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
           name: item.title,
           price: item.price,
           quantity: qty,
-          type: item.type || item.categoryType || (item.targetStation === "BARISTA" || item.barista ? "DRINK" : "FOOD"),
+          type: item.type || item.categoryType || (item.targetStation === "HOT_DRINK" || item.hotDrink ? "HOT_DRINK" : item.targetStation === "BARISTA" || item.barista ? "DRINK" : "FOOD"),
           components: Array.isArray(components)
             ? components.map((c) => {
                 if (c.kind === "NOTE") return { kind: "NOTE", note: c.note };
                 return {
                   kind: "PRICED_COMPONENT",
-                  name: c.name,
+                  extraItemId: c.extraItemId,
                   quantity: c.quantity,
-                  unitPrice: c.unitPrice,
-                  ...(c.inventoryItemId ? { inventoryItemId: c.inventoryItemId, stockQuantity: c.stockQuantity, stockUnit: c.stockUnit } : {}),
                 };
               })
             : [],
@@ -1517,7 +1590,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                 <h3 className="mb-2 px-1 text-xs font-bold uppercase tracking-widest text-[#1E293B] dark:text-white">Favorites ({favoriteVisible.length})</h3>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {favoriteVisible.map((item, idx) => {
-              const available = item.isAvailable !== false;
+              const available = isMenuItemOrderable(item);
+              const reviewRequired = isMenuItemBlockedForReview(item);
               const inCart = cart[item._id];
               return (
                 <article
@@ -1570,7 +1644,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                         className="cursor-not-allowed rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-2.5 py-1.5 text-xs font-bold text-[#94A3B8]"
                         aria-disabled="true"
                       >
-                        {t('outStock')}
+                        {reviewRequired ? t('reviewRequired') : t('outStock')}
                       </span>
                     ) : inCart ? (
                       <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
@@ -1613,7 +1687,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
             )}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {nonFavoriteVisible.map((item, idx) => {
-                const available = item.isAvailable !== false;
+                const available = isMenuItemOrderable(item);
+                const reviewRequired = isMenuItemBlockedForReview(item);
                 const inCart = cart[item._id];
                 return (
                   <article
@@ -1659,7 +1734,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           className="cursor-not-allowed rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-2.5 py-1.5 text-xs font-bold text-[#94A3B8]"
                           aria-disabled="true"
                         >
-                          {t('outStock')}
+                          {reviewRequired ? t('reviewRequired') : t('outStock')}
                         </span>
                       ) : inCart ? (
                         <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
@@ -1787,22 +1862,45 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                         <p className="mt-0.5 truncate text-xs text-[#64748B] dark:text-[#94A3B8]">
                           {o.waiterName || 'Waiter'}
                         </p>
-                        {/* Mixed-order readiness: distinguish FOOD (Kitchen) vs DRINK (Barista) */}
+                        {/* Mixed-order readiness: one chip per present station
+                            (Kitchen/Barista/Jebena). Shown only when more than
+                            one station is involved; overall READY stays
+                            server-derived. */}
                         {(() => {
                           const its = o.items || [];
-                          const hf = its.some((i) => i.type === 'FOOD');
-                          const hd = its.some((i) => i.type === 'DRINK');
-                          if (!hf || !hd) return null;
-                          const fk = o.kitchenStatus || 'PENDING';
-                          const bk = o.baristaStatus || 'PENDING';
+                          const stations = [];
+                          if (its.some((i) => i.type === 'FOOD')) {
+                            stations.push({
+                              key: 'kitchen',
+                              label: 'Kitchen',
+                              status: o.kitchenStatus || 'PENDING',
+                              cls: 'bg-[#FFD600]/15 text-[#8A6D00] dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FF8A3D]',
+                            });
+                          }
+                          if (its.some((i) => i.type === 'DRINK')) {
+                            stations.push({
+                              key: 'barista',
+                              label: 'Barista',
+                              status: o.baristaStatus || 'PENDING',
+                              cls: 'bg-[#E2E8F0] text-[#64748B] dark:bg-[#2A2B36] dark:text-[#94A3B8]',
+                            });
+                          }
+                          if (its.some((i) => i.type === 'HOT_DRINK')) {
+                            stations.push({
+                              key: 'hotDrink',
+                              label: 'Jebena',
+                              status: o.hotDrinkStatus || 'PENDING',
+                              cls: 'bg-[#FFEDD5] text-[#9A3412] dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FDBA74]',
+                            });
+                          }
+                          if (stations.length < 2) return null;
                           return (
                             <p className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
-                              <span className="rounded-full bg-[#FFD600]/15 px-2 py-0.5 text-[#8A6D00] dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FF8A3D]">
-                                Kitchen: {fk}
-                              </span>
-                              <span className="rounded-full bg-[#E2E8F0] px-2 py-0.5 text-[#64748B] dark:bg-[#2A2B36] dark:text-[#94A3B8]">
-                                Barista: {bk}
-                              </span>
+                              {stations.map((s) => (
+                                <span key={s.key} className={`rounded-full px-2 py-0.5 ${s.cls}`}>
+                                  {s.label}: {s.status}
+                                </span>
+                              ))}
                             </p>
                           );
                         })()}
@@ -1935,7 +2033,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           >
                             <option value="">{t('addItem')}</option>
                             {items
-                              .filter((m) => m.isAvailable !== false && m.inStock !== false)
+                              .filter((m) => isMenuItemOrderable(m))
                               .map((m) => (
                                 <option key={m._id || m.id} value={m._id || m.id}>
                                   {localizedName(m, lang)}
@@ -2212,8 +2310,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
               {cartEntries.length === 0 ? (
                 <p className="py-10 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">{t('empty')}</p>
               ) : (
-                cartEntries.map(({ item, qty, isExternal, components }) => {
-                  const cartKey = item._id;
+                cartEntries.map(({ item, qty, components, cartKey: entryKey }) => {
+                  const cartKey = entryKey || String(item._id);
                   const comps = Array.isArray(components) ? components : [];
                   const noteCount = comps.filter((c) => c.kind === "NOTE").length;
                   const priced = comps.filter((c) => c.kind === "PRICED_COMPONENT");
@@ -2227,11 +2325,8 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-[#1E293B] dark:text-white">
                             {localizedName(item, lang)}
-                            {isExternal && (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-[#E2E8F0] dark:bg-[#2A2B36] px-1.5 py-0.5 text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">LEGACY EXTERNAL {item.type || 'FOOD'}</span>
-                            )}
                           </p>
-                          <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${item.price} ETB × ${qty} = ${Math.round(item.price * qty * 100) / 100} ETB`}{pricedSum > 0 ? ` + components ${Math.round(pricedSum * 100) / 100} ETB` : ""}{noteCount > 0 ? ` ${noteCount} note${noteCount > 1 ? "s" : ""}` : ""}</p>
+                          <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${item.price} ETB${item.unit ? ` / ${item.unit}` : ''} × ${qty} = ${Math.round(item.price * qty * 100) / 100} ETB`}{pricedSum > 0 ? ` + components ${Math.round(pricedSum * 100) / 100} ETB` : ""}{noteCount > 0 ? ` ${noteCount} note${noteCount > 1 ? "s" : ""}` : ""}</p>
                         </div>
                         <div className="flex items-center gap-1.5 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-1.5 py-1">
                           <button type="button" onClick={() => changeQty(cartKey, -1)} aria-label="decrease quantity" className="flex h-7 w-7 items-center justify-center rounded-lg bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0] dark:border-[#2A2B36] shadow-sm">−</button>
@@ -2253,7 +2348,7 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                           ))}
                         </ul>
                       )}
-                      {/* Add component buttons */}
+                      {/* Add component buttons — extras are per-parent, never standalone */}
                       <div className="mt-2 flex gap-2">
                         <button
                           type="button"
@@ -2268,39 +2363,19 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingComponent({ cartKey, kind: "PRICED" });
-                            setCompName("");
-                            setCompQty("1");
-                            setCompPrice("");
-                            setCompError("");
-                          }}
-                          className={`flex-1 rounded-xl py-2 text-xs font-bold border ${editingComponent?.cartKey === cartKey && editingComponent?.kind === "PRICED" ? "bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border-[#FFD600] dark:border-[#FF5E00]" : "bg-white dark:bg-[#1C1D24] text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#2A2B36]"}`}
+                          onClick={() => openExtraPicker(cartKey)}
+                          className="flex-1 rounded-xl py-2 text-xs font-bold border bg-white dark:bg-[#1C1D24] text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#2A2B36]"
                         >
-                          + Priced Add-on
+                          + {t('extraItem')}
                         </button>
                       </div>
-                      {/* Inline editors */}
+                      {/* NOTE inline editor */}
                       {editingComponent?.cartKey === cartKey && editingComponent?.kind === "NOTE" && (
                         <div className="mt-2 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-2">
                           <input type="text" value={compNote} onChange={(e) => setCompNote(e.target.value)} placeholder="e.g. no onion, extra spicy" maxLength={500} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
                           {compError && <p className="mt-1 text-xs text-[#DC2626]">{compError}</p>}
                           <div className="mt-2 flex gap-2">
                             <button type="button" onClick={() => addNoteToCart(cartKey)} className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2 text-xs font-bold text-[#1E293B] dark:text-white">Add Note</button>
-                            <button type="button" onClick={() => setEditingComponent(null)} className="flex-1 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Cancel</button>
-                          </div>
-                        </div>
-                      )}
-                      {editingComponent?.cartKey === cartKey && editingComponent?.kind === "PRICED" && (
-                        <div className="mt-2 space-y-2 rounded-xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] p-2">
-                          <input type="text" value={compName} onChange={(e) => setCompName(e.target.value)} placeholder="Component name e.g. Extra Cheese" maxLength={100} className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                          <div className="grid grid-cols-2 gap-2">
-                            <input type="number" min="1" max="99" step="1" value={compQty} onChange={(e) => setCompQty(e.target.value)} placeholder="Qty" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                            <input type="number" min="0" step="0.01" value={compPrice} onChange={(e) => setCompPrice(e.target.value)} placeholder="Unit price ETB" className="w-full rounded-lg border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-3 py-2 text-sm text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]" />
-                          </div>
-                          {compError && <p className="text-xs text-[#DC2626]">{compError}</p>}
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => addPricedToCart(cartKey)} className="flex-1 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] py-2 text-xs font-bold text-[#1E293B] dark:text-white">Add Priced</button>
                             <button type="button" onClick={() => setEditingComponent(null)} className="flex-1 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] py-2 text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Cancel</button>
                           </div>
                         </div>
@@ -2337,6 +2412,87 @@ const pushReadyToast = useCallback((orderNumber, tableNumber) => {
               </button>
             </div>
           </aside>
+        </div>
+      )}
+      {/* EXTRA ITEM PICKER — server catalog, quantity only */}
+      {extraOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-[#1E293B]/30 dark:bg-[#12131A]/70 backdrop-blur-sm px-3 py-4" role="dialog" aria-modal="true" aria-label={t('extraItemTitle')}>
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] shadow-[0_12px_30px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-3 border-b border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-4 py-3">
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-[#1E293B] dark:text-white">
+                  {t('extraItemTitle')}
+                  {extraTarget && cart[extraTarget] ? ` · ${localizedName(cart[extraTarget].item, lang)}` : ''}
+                </h2>
+                <p className="mt-0.5 text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">{t('extraItemHint')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeExtraPicker}
+                aria-label={t('close')}
+                className="shrink-0 rounded-full border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 py-1 text-sm font-bold text-[#64748B] dark:text-[#94A3B8]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 border-b border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] px-4 py-2">
+              <input
+                type="search"
+                value={extraQuery}
+                onChange={(e) => setExtraQuery(e.target.value)}
+                placeholder={t('extraItemSearch')}
+                aria-label={t('extraItemSearch')}
+                maxLength={60}
+                className="h-10 w-full rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 text-sm font-medium text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Quantity</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  step="1"
+                  value={extraQty}
+                  onChange={(e) => setExtraQty(e.target.value)}
+                  aria-label="Extra Item quantity"
+                  className="h-9 w-24 rounded-xl border border-[#E2E8F0] dark:border-[#2A2B36] bg-[#F4F5F9] dark:bg-[#12131A] px-3 text-center text-sm font-bold text-[#1E293B] dark:text-white outline-none focus:border-[#FFD600] dark:focus:border-[#FF5E00]"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+              {extraLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-16 animate-pulse rounded-2xl bg-white dark:bg-[#1C1D24] border border-[#E2E8F0]/60 dark:border-[#2A2B36]" />
+                  ))}
+                </div>
+              ) : extraError ? (
+                <div role="alert" className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm font-semibold text-[#DC2626]">
+                  {extraError}
+                </div>
+              ) : extraFiltered.length === 0 ? (
+                <p className="py-10 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">{t('extraItemEmpty')}</p>
+              ) : (
+                extraFiltered.map((cat) => (
+                  <div key={cat.extraItemId} className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[#1E293B] dark:text-white">{localizedName(cat, lang) || cat.nameText}</p>
+                      <p className="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{`${cat.price} ETB / ${cat.unit}`}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addExtraItem(cat)}
+                      className="shrink-0 rounded-xl bg-[#FFD600] dark:bg-[#FF5E00] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white"
+                    >
+                      {t('extraItemAdd')}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

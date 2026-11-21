@@ -58,7 +58,9 @@ describe('AUTH-ARCH-8A clear-orders canonical auth (DB-free)', () => {
     const s = route();
     assert.ok(s.includes('requireAuth(request, ["MANAGER"])'), 'one canonical MANAGER gate');
     assert.ok(s.includes('verifyStaffPinById(conn, auth.payload.staffId, currentManagerPin)'), 'own-PIN step-up on session staff');
-    assert.ok(s.includes('await Order.deleteMany({})'), 'business operation intact');
+    // Phase 2.2: the destructive delete now excludes financial/archive evidence
+    // instead of wiping the collection with an empty filter.
+    assert.ok(s.includes('Order.deleteMany({ status: { $nin: PRESERVED_ORDER_STATUSES } })'), 'business operation intact, evidence preserved');
     assert.ok(s.includes('{ _id: "order_seq" }'), 'counter reset intact');
     assert.ok(s.includes('ok({ clearedOrders:'), 'response contract intact');
   });
@@ -135,9 +137,10 @@ describe('AUTH-ARCH-8A clear-orders canonical auth (DB-free)', () => {
     assert.ok(s.includes('auth.payload.staffId'), 'identity comes from the canonical session only');
   });
 
-  test('16. clear-orders business behavior unchanged (destructive op intact)', () => {
+  test('16. clear-orders business behavior preserved (destructive op still present, evidence excluded)', () => {
     const s = route();
-    assert.ok(s.includes('await Order.deleteMany({})'), 'wipes orders');
+    assert.ok(s.includes('await Order.deleteMany({ status: { $nin: PRESERVED_ORDER_STATUSES } })'), 'destructive op present for non-evidence states');
+    assert.ok(s.includes('PRESERVED_ORDER_STATUSES = Object.freeze(["PAID", "ARCHIVED"])'), 'PAID/ARCHIVED preserved');
     assert.ok(s.includes('upsert: true'), 'counter upsert preserved');
     assert.ok(s.includes('RateLimit') || s.includes('checkRateLimit(request'), 'rate limit preserved');
     assert.ok(s.includes('Payload too large'), 'size guard preserved');

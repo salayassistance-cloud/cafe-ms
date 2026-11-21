@@ -95,6 +95,21 @@ export function proxy(request) {
   // Only force no-store for dynamic operational data (orders, manager, events, etc.).
   const CACHEABLE_API = /^\/(api\/menu|api\/brand|api\/payment-info)/;
   const response = NextResponse.next();
+
+  // Protected Hotel pages render session-specific content. Force no-store at
+  // the edge so a signed-out user cannot reopen an earlier authenticated page
+  // from an HTTP cache; the server layout gate must be re-evaluated on every
+  // load. (next.config headers alone are overridden by dynamic page headers.)
+  if (pathname === "/hotel" || pathname.startsWith("/hotel/")) {
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    return response;
+  }
+
   if (pathname.startsWith("/api/") && !CACHEABLE_API.test(pathname)) {
     // Only set no-store if handler hasn't already set a Cache-Control (e.g., menu's public s-maxage)
     const existingCC = response.headers.get("Cache-Control");
@@ -110,7 +125,7 @@ export function proxy(request) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/api/:path*", "/hotel/:path*"],
 };
 
 // Back-compat alias — Next.js 16 renames middleware → proxy. Some tooling still

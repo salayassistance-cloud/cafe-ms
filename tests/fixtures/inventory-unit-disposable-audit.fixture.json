@@ -1,0 +1,252 @@
+{
+  "meta": {
+    "label": "SYNTHETIC / DISPOSABLE — NOT PRODUCTION EVIDENCE",
+    "purpose": "Step 4 stored-unit audit methodology on a disposable local database",
+    "fixtureVersion": 1,
+    "generatedFor": "bono_unit_audit_disposable_20261115_a1",
+    "notes": [
+      "Every id, name, and value is synthetic and unrelated to real people or transactions.",
+      "Some documents intentionally violate schema requirements (null/missing/empty units) to exercise detection.",
+      "This fixture is not evidence about production or customer data."
+    ]
+  },
+  "collections": {
+    "inventoryitems": [
+      { "_id": "aa0000000000000000000001", "name": "Synthetic Rice", "category": "SYNTH-AUDIT", "unit": "g", "currentStock": 100000, "reservedStock": 0, "minimumStock": 0, "cost": 0.01, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000002", "name": "Synthetic Flour", "category": "SYNTH-AUDIT", "unit": "kg", "currentStock": 50, "reservedStock": 5, "minimumStock": 0, "cost": 2, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000003", "name": "Synthetic Milk", "category": "SYNTH-AUDIT", "unit": "ml", "currentStock": 20000, "reservedStock": 0, "minimumStock": 0, "cost": 0.05, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000004", "name": "Synthetic Oil", "category": "SYNTH-AUDIT", "unit": "L", "currentStock": 20, "reservedStock": 0, "minimumStock": 0, "cost": 3, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000005", "name": "Synthetic Eggs", "category": "SYNTH-AUDIT", "unit": "pcs", "currentStock": 300, "reservedStock": 0, "minimumStock": 0, "cost": 0.5, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000006", "name": "Synthetic Sugar", "category": "SYNTH-AUDIT", "unit": "KG", "currentStock": 25, "reservedStock": 0, "minimumStock": 0, "cost": 1.5, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000007", "name": "Synthetic Salt", "category": "SYNTH-AUDIT", "unit": " g ", "currentStock": 5000, "reservedStock": 0, "minimumStock": 0, "cost": 0.02, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000008", "name": "Synthetic Syrup", "category": "SYNTH-AUDIT", "unit": "", "currentStock": 10, "reservedStock": 0, "minimumStock": 0, "cost": 4, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000009", "name": "Synthetic Butter", "category": "SYNTH-AUDIT", "unit": null, "currentStock": 10, "reservedStock": 0, "minimumStock": 0, "cost": 6, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000010", "name": "Synthetic Water", "category": "SYNTH-AUDIT", "currentStock": 1000, "reservedStock": 0, "minimumStock": 0, "cost": 0, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000011", "name": "Synthetic Bottles", "category": "SYNTH-AUDIT", "unit": "bottle", "currentStock": 100, "reservedStock": 0, "minimumStock": 0, "cost": 0.4, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000012", "name": "Synthetic Cups", "category": "SYNTH-AUDIT", "unit": "cup", "currentStock": 100, "reservedStock": 0, "minimumStock": 0, "cost": 0.3, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000013", "name": "Synthetic Coffee", "category": "SYNTH-AUDIT", "unit": "g", "currentStock": 5000, "reservedStock": 0, "minimumStock": 0, "cost": 0.08, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000014", "name": "Synthetic Juice", "category": "SYNTH-AUDIT", "unit": "ml", "currentStock": 10000, "reservedStock": 0, "minimumStock": 0, "cost": 0.03, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000015", "name": "Synthetic Mystery", "category": "SYNTH-AUDIT", "unit": "oz", "currentStock": 10, "reservedStock": 0, "minimumStock": 0, "cost": 1, "supplier": null, "status": "In Stock" },
+      { "_id": "aa0000000000000000000016", "name": "Synthetic Spice", "category": "SYNTH-AUDIT", "unit": "pcs", "currentStock": 200, "reservedStock": 0, "minimumStock": 0, "cost": 0.2, "supplier": null, "status": "In Stock" }
+    ],
+    "recipes": [
+      {
+        "_id": "bb0000000000000000000001",
+        "menuItemId": "cc0000000000000000000001",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000002", "quantity": 1500, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000002", "quantity": 1.5, "unit": "kg" },
+          { "inventoryItemId": "aa0000000000000000000002", "quantity": 2, "unit": "KG" },
+          { "inventoryItemId": "aa0000000000000000000001", "quantity": 500, "unit": "g" }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000002",
+        "menuItemId": "cc0000000000000000000002",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000001", "quantity": 0.5, "unit": "kg" },
+          { "inventoryItemId": "aa0000000000000000000003", "quantity": 1.25, "unit": "L" },
+          { "inventoryItemId": "aa0000000000000000000004", "quantity": 1.25, "unit": "L" },
+          { "inventoryItemId": "aa0000000000000000000003", "quantity": 250, "unit": "ml" }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000003",
+        "menuItemId": "cc0000000000000000000003",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000002", "quantity": 0.5, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000002", "quantity": 0.0000001, "unit": "g" }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000004",
+        "menuItemId": "cc0000000000000000000004",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 6, "unit": "piece" },
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 1, "unit": "cup" },
+          { "inventoryItemId": "aa0000000000000000000011", "quantity": 1, "unit": "bottle" },
+          { "inventoryItemId": "aa0000000000000000000012", "quantity": 2, "unit": "cup" },
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 2, "unit": "dozen" },
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 1, "unit": "tbsp" }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000005",
+        "menuItemId": "cc0000000000000000000005",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000013", "quantity": 1, "unit": "oz" },
+          { "inventoryItemId": "aa0000000000000000000015", "quantity": 1, "unit": "oz" },
+          { "inventoryItemId": "aa0000000000000000000013", "quantity": 1, "unit": "lb" },
+          { "inventoryItemId": "aa0000000000000000000013", "quantity": 1, "unit": "gm" }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000006",
+        "menuItemId": "cc0000000000000000000006",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000008", "quantity": 1, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000009", "quantity": 1, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000010", "quantity": 1, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000007", "quantity": 100, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000001", "quantity": 1, "unit": "   " }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000007",
+        "menuItemId": "cc0000000000000000000007",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 1, "unit": "pack" },
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 1, "unit": "box" },
+          { "inventoryItemId": "aa0000000000000000000005", "quantity": 1, "unit": "bag" },
+          { "inventoryItemId": "aa0000000000000000000016", "quantity": 10, "unit": "each" }
+        ]
+      },
+      {
+        "_id": "bb0000000000000000000008",
+        "menuItemId": "cc0000000000000000000008",
+        "isActive": true,
+        "ingredients": [
+          { "inventoryItemId": "aa0000000000000000000001", "quantity": 100, "unit": "g" },
+          { "inventoryItemId": "aa0000000000000000000001", "quantity": 0.2, "unit": "kg" },
+          { "inventoryItemId": "aa0000000000000000000001", "quantity": 50, "unit": " g " }
+        ]
+      }
+    ],
+    "stockmovements": [
+      { "_id": "a30000000000000000000001", "item": "aa0000000000000000000001", "type": "IN", "quantity": 1000, "reason": "Purchase", "unit": "g", "unitCost": 0.01, "totalCost": 10, "notes": "synthetic" },
+      { "_id": "a30000000000000000000002", "item": "aa0000000000000000000002", "type": "OUT", "quantity": 1.5, "reason": "SaleDeduction", "unit": "kg", "notes": "synthetic" },
+      { "_id": "a30000000000000000000003", "item": "aa0000000000000000000006", "type": "ADJUSTMENT", "quantity": 2, "reason": "Correction", "unit": "KG", "notes": "synthetic" },
+      { "_id": "a30000000000000000000004", "item": "aa0000000000000000000003", "type": "IN", "quantity": 5000, "reason": "Purchase", "unit": "ml", "notes": "synthetic" },
+      { "_id": "a30000000000000000000005", "item": "aa0000000000000000000004", "type": "OUT", "quantity": 1.25, "reason": "SaleDeduction", "unit": "L", "notes": "synthetic" },
+      { "_id": "a30000000000000000000006", "item": "aa0000000000000000000005", "type": "OUT", "quantity": 6, "reason": "SaleDeduction", "unit": "pcs", "notes": "synthetic" },
+      { "_id": "a30000000000000000000007", "item": "aa0000000000000000000001", "type": "OUT", "quantity": 12, "reason": "Waste", "unit": null, "notes": "synthetic null unit" },
+      { "_id": "a30000000000000000000008", "item": "aa0000000000000000000002", "type": "OUT", "quantity": 0.5, "reason": "Waste", "unit": "", "notes": "synthetic empty unit" },
+      { "_id": "a30000000000000000000009", "item": "aa0000000000000000000003", "type": "OUT", "quantity": 0.25, "reason": "Waste", "unit": "   ", "notes": "synthetic whitespace unit" },
+      { "_id": "a3000000000000000000000a", "item": "aa0000000000000000000004", "type": "OUT", "quantity": 0.1, "reason": "Waste", "notes": "synthetic missing unit" },
+      { "_id": "a3000000000000000000000b", "item": "aa0000000000000000000011", "type": "OUT", "quantity": 1, "reason": "SaleDeduction", "unit": "bottle", "notes": "synthetic ambiguous unit" },
+      { "_id": "a3000000000000000000000c", "item": "aa0000000000000000000015", "type": "IN", "quantity": 1, "reason": "Purchase", "unit": "oz", "notes": "synthetic unsupported unit" }
+    ],
+    "inventoryaudits": [
+      { "_id": "a20000000000000000000001", "item": "aa0000000000000000000002", "action": "ITEM_UPDATED", "actorId": "ff0000000000000000000002", "actorRole": "MANAGER", "unit": "KG", "beforeStock": 10, "afterStock": 12, "reason": "synthetic unit edit", "beforeSnapshot": { "unit": "kg", "currentStock": 10 }, "afterSnapshot": { "unit": "KG", "currentStock": 12 } },
+      { "_id": "a20000000000000000000002", "item": "aa0000000000000000000001", "action": "WASTE", "actorId": "ff0000000000000000000002", "actorRole": "MANAGER", "unit": "g", "quantityDelta": -12, "reason": "synthetic waste", "beforeSnapshot": { "unit": "g", "currentStock": 1000 }, "afterSnapshot": { "unit": "g", "currentStock": 988 } },
+      { "_id": "a20000000000000000000003", "item": "aa0000000000000000000008", "action": "ITEM_CREATED", "actorId": "ff0000000000000000000002", "actorRole": "MANAGER", "unit": "", "reason": "synthetic empty unit", "afterSnapshot": { "unit": "", "currentStock": 10 } },
+      { "_id": "a20000000000000000000004", "item": "aa0000000000000000000009", "action": "ITEM_UPDATED", "actorRole": "MANAGER", "unit": null, "reason": "synthetic null unit", "beforeSnapshot": { "unit": null, "currentStock": 4 }, "afterSnapshot": { "unit": null, "currentStock": 10 } },
+      { "_id": "a20000000000000000000005", "item": "aa0000000000000000000010", "action": "PURCHASE_RECEIVED", "actorId": "ff0000000000000000000003", "actorRole": "MANAGER", "unit": "oz", "reason": "synthetic unsupported unit", "beforeSnapshot": { "unit": "oz", "currentStock": 0 }, "afterSnapshot": { "unit": "OZ", "currentStock": 10 } }
+    ],
+    "orders": [
+      {
+        "_id": "dd0000000000000000000001", "orderNumber": "SYN-0001", "tableNumber": 1, "waiterName": "Synthetic Waiter", "status": "PENDING", "totalAmount": 100,
+        "items": [{ "lineId": "d10000000000000000000001", "name": "Synthetic Dish A", "price": 100, "quantity": 1, "type": "FOOD", "components": [
+          { "componentId": "c10000000000000000000001", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Rice", "quantity": 2, "unitPrice": 10, "lineSum": 20, "inventoryItemId": "aa0000000000000000000001", "stockQuantity": 250, "stockUnit": "g", "costSnapshot": 0.01, "totalCost": 5 },
+          { "componentId": "c10000000000000000000002", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Flour", "quantity": 1, "unitPrice": 5, "lineSum": 5, "inventoryItemId": "aa0000000000000000000002", "stockQuantity": 1.5, "stockUnit": "kg", "costSnapshot": 2, "totalCost": 3 },
+          { "componentId": "c10000000000000000000003", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Flour Case", "quantity": 1, "unitPrice": 5, "lineSum": 5, "inventoryItemId": "aa0000000000000000000002", "stockQuantity": 2, "stockUnit": "KG", "costSnapshot": 2, "totalCost": 4 },
+          { "componentId": "c10000000000000000000004", "kind": "NOTE", "note": "synthetic note component" }
+        ] }]
+      },
+      {
+        "_id": "dd0000000000000000000002", "orderNumber": "SYN-0002", "tableNumber": 2, "waiterName": "Synthetic Waiter", "status": "PREPARING", "totalAmount": 80,
+        "items": [{ "lineId": "d10000000000000000000002", "name": "Synthetic Dish B", "price": 80, "quantity": 1, "type": "DRINK", "components": [
+          { "componentId": "c10000000000000000000005", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Milk", "quantity": 1, "unitPrice": 4, "lineSum": 4, "inventoryItemId": "aa0000000000000000000003", "stockQuantity": 1.25, "stockUnit": "L", "costSnapshot": 0.05 },
+          { "componentId": "c10000000000000000000006", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Flour Lossy", "quantity": 1, "unitPrice": 2, "lineSum": 2, "inventoryItemId": "aa0000000000000000000002", "stockQuantity": 0.5, "stockUnit": "g", "costSnapshot": 2 },
+          { "componentId": "c10000000000000000000007", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Coffee Unknown", "quantity": 1, "unitPrice": 3, "lineSum": 3, "inventoryItemId": "aa0000000000000000000013", "stockQuantity": 1, "stockUnit": "oz", "costSnapshot": 0.08 },
+          { "componentId": "c10000000000000000000008", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Oil", "quantity": 1, "unitPrice": 6, "lineSum": 6, "inventoryItemId": "aa0000000000000000000004", "stockQuantity": 1, "stockUnit": "L", "costSnapshot": 3 }
+        ] }]
+      },
+      {
+        "_id": "dd0000000000000000000003", "orderNumber": "SYN-0003", "tableNumber": 3, "waiterName": "Synthetic Waiter", "status": "READY", "totalAmount": 60,
+        "items": [{ "lineId": "d10000000000000000000003", "name": "Synthetic Dish C", "price": 60, "quantity": 1, "type": "FOOD", "components": [
+          { "componentId": "c10000000000000000000009", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Bottle", "quantity": 1, "unitPrice": 2, "lineSum": 2, "inventoryItemId": "aa0000000000000000000011", "stockQuantity": 1, "stockUnit": "bottle", "costSnapshot": 0.4 },
+          { "componentId": "c1000000000000000000000a", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Bottle As Pcs", "quantity": 1, "unitPrice": 2, "lineSum": 2, "inventoryItemId": "aa0000000000000000000011", "stockQuantity": 1, "stockUnit": "pcs", "costSnapshot": 0.4 },
+          { "componentId": "c1000000000000000000000b", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Cup", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000005", "stockQuantity": 1, "stockUnit": "cup", "costSnapshot": 0.5 },
+          { "componentId": "c1000000000000000000000c", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Spice", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000016", "stockQuantity": 10, "stockUnit": "each", "costSnapshot": 0.2 }
+        ] }]
+      },
+      {
+        "_id": "dd0000000000000000000004", "orderNumber": "SYN-0004", "tableNumber": 4, "waiterName": "Synthetic Waiter", "status": "SERVED", "totalAmount": 40,
+        "items": [{ "lineId": "d10000000000000000000004", "name": "Synthetic Dish D", "price": 40, "quantity": 1, "type": "FOOD", "components": [
+          { "componentId": "c1000000000000000000000d", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Empty Unit", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000001", "stockQuantity": 100, "stockUnit": "" },
+          { "componentId": "c1000000000000000000000e", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Null Unit", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000002", "stockQuantity": 1, "stockUnit": null },
+          { "componentId": "c1000000000000000000000f", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Missing Unit", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000003", "stockQuantity": 100 }
+        ] }]
+      },
+      {
+        "_id": "dd0000000000000000000005", "orderNumber": "SYN-0005", "tableNumber": 5, "waiterName": "Synthetic Waiter", "status": "PAID", "totalAmount": 30,
+        "items": [{ "lineId": "d10000000000000000000005", "name": "Synthetic Dish E", "price": 30, "quantity": 1, "type": "FOOD", "components": [
+          { "componentId": "c10000000000000000000010", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Rice A", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000001", "stockQuantity": 100, "stockUnit": "g" },
+          { "componentId": "c10000000000000000000011", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Rice B", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000001", "stockQuantity": 200, "stockUnit": "g" },
+          { "componentId": "c10000000000000000000012", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Eggs A", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000005", "stockQuantity": 3, "stockUnit": "pcs" },
+          { "componentId": "c10000000000000000000013", "kind": "PRICED_COMPONENT", "name": "Synthetic Component Eggs B", "quantity": 1, "unitPrice": 1, "lineSum": 1, "inventoryItemId": "aa0000000000000000000005", "stockQuantity": 4, "stockUnit": "PCS" }
+        ] }]
+      }
+    ],
+    "inventoryreservations": [
+      {
+        "_id": "ee0000000000000000000001", "orderId": "dd0000000000000000000001", "orderNumber": "SYN-0001", "status": "RESERVED",
+        "items": [
+          { "inventoryItemId": "aa0000000000000000000002", "unit": "kg", "requiredQuantity": 1.5, "reservedQuantity": 1.5, "shortageQuantity": 0, "availableAtDecision": 45, "consumedQuantity": 0 },
+          { "inventoryItemId": "aa0000000000000000000002", "unit": "KG", "requiredQuantity": 2, "reservedQuantity": 2, "shortageQuantity": 0, "availableAtDecision": 45, "consumedQuantity": 0 },
+          { "inventoryItemId": "aa0000000000000000000001", "unit": "g", "requiredQuantity": 250, "reservedQuantity": 250, "shortageQuantity": 0, "availableAtDecision": 100000, "consumedQuantity": 0 }
+        ],
+        "requirementFingerprint": "synthetic-reserved-fp", "shortageFingerprint": "synthetic-reserved-sfp"
+      },
+      {
+        "_id": "ee0000000000000000000002", "orderId": "dd0000000000000000000002", "orderNumber": "SYN-0002", "status": "APPROVAL_REQUIRED",
+        "items": [
+          { "inventoryItemId": "aa0000000000000000000003", "unit": "L", "requiredQuantity": 1.25, "reservedQuantity": 1.25, "shortageQuantity": 0, "availableAtDecision": 20000, "consumedQuantity": 0 },
+          { "inventoryItemId": "aa0000000000000000000002", "unit": "g", "requiredQuantity": 0.5, "reservedQuantity": 0, "shortageQuantity": 0.5, "availableAtDecision": 45, "consumedQuantity": 0 }
+        ],
+        "requirementFingerprint": "synthetic-approval-required-fp", "shortageFingerprint": "synthetic-approval-required-sfp", "approval": null
+      },
+      {
+        "_id": "ee0000000000000000000003", "orderId": "dd0000000000000000000003", "orderNumber": "SYN-0003", "status": "APPROVED",
+        "items": [
+          { "inventoryItemId": "aa0000000000000000000011", "unit": "bottle", "requiredQuantity": 1, "reservedQuantity": 0, "shortageQuantity": 1, "availableAtDecision": 0, "consumedQuantity": 0 }
+        ],
+        "requirementFingerprint": "synthetic-approved-stable-fp", "shortageFingerprint": "synthetic-approved-stable-sfp",
+        "approval": {
+          "managerId": "ff0000000000000000000001", "approvedAt": "2026-11-14T09:00:00.000Z", "reason": "Synthetic stable shortage",
+          "requirementFingerprint": "synthetic-approved-stable-fp", "shortageFingerprint": "synthetic-approved-stable-sfp",
+          "shortages": [{ "inventoryItemId": "aa0000000000000000000011", "unit": "bottle", "requiredQuantity": 1, "availableQuantity": 0, "shortageQuantity": 1 }]
+        }
+      },
+      {
+        "_id": "ee0000000000000000000004", "orderId": "dd0000000000000000000004", "orderNumber": "SYN-0004", "status": "APPROVED",
+        "items": [
+          { "inventoryItemId": "aa0000000000000000000002", "unit": "g", "requiredQuantity": 0.5, "reservedQuantity": 0, "shortageQuantity": 0.5, "availableAtDecision": 0, "consumedQuantity": 0 }
+        ],
+        "requirementFingerprint": "synthetic-approved-lossy-fp", "shortageFingerprint": "synthetic-approved-lossy-sfp",
+        "approval": {
+          "managerId": "ff0000000000000000000001", "approvedAt": "2026-11-14T09:30:00.000Z", "reason": "Synthetic lossy shortage",
+          "requirementFingerprint": "synthetic-approved-lossy-fp", "shortageFingerprint": "synthetic-approved-lossy-sfp",
+          "shortages": [{ "inventoryItemId": "aa0000000000000000000002", "unit": "g", "requiredQuantity": 0.5, "availableQuantity": 0, "shortageQuantity": 0.5 }]
+        }
+      },
+      {
+        "_id": "ee0000000000000000000005", "orderId": "dd0000000000000000000005", "orderNumber": "SYN-0005", "status": "CONSUMED",
+        "items": [
+          { "inventoryItemId": "aa0000000000000000000004", "unit": "L", "requiredQuantity": 1, "reservedQuantity": 1, "shortageQuantity": 0, "availableAtDecision": 20, "consumedQuantity": 1 },
+          { "inventoryItemId": "aa0000000000000000000003", "unit": "ml", "requiredQuantity": 100, "reservedQuantity": 100, "shortageQuantity": 0, "availableAtDecision": 20000, "consumedQuantity": 100 }
+        ],
+        "requirementFingerprint": "synthetic-consumed-fp", "shortageFingerprint": "synthetic-consumed-sfp",
+        "consumedAt": "2026-11-14T10:00:00.000Z", "consumedBy": "ff0000000000000000000002", "consumedTrigger": "PREPARING"
+      },
+      {
+        "_id": "ee0000000000000000000006", "orderId": "dd0000000000000000000005", "orderNumber": "SYN-0005-R", "status": "RELEASED",
+        "items": [],
+        "requirementFingerprint": "synthetic-released-fp", "shortageFingerprint": "synthetic-released-sfp",
+        "releasedAt": "2026-11-14T10:30:00.000Z", "releaseReason": "synthetic archive",
+        "voids": [{ "at": "2026-11-14T10:31:00.000Z", "by": "ff0000000000000000000002", "reason": "synthetic void", "phase": "BEFORE_PREPARATION", "source": "ORDER", "lineId": null, "station": "KITCHEN", "items": [
+          { "inventoryItemId": "aa0000000000000000000003", "unit": "ml", "quantity": 1000 },
+          { "inventoryItemId": "aa0000000000000000000002", "unit": "", "quantity": 0.5 }
+        ] }]
+      }
+    ]
+  }
+}

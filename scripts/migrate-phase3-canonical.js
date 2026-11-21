@@ -20,17 +20,217 @@
  *   - Never prints URI or secrets.
  *   - Repeatable / idempotent — safe to re-run.
  *   - Counts before/after, verifies refs, prints actionable report.
+ *   - Index handling is ADDITIVE ONLY (createIndexes): existing indexes are
+ *     never dropped, replaced, or synchronized destructively.
+ *   - Production-classified targets require --allow-production plus a non-empty
+ *     PHASE3_MIGRATION_APPROVAL reference, checked before any connection.
  *
  * Usage:
  *   node --env-file=.env.local scripts/migrate-phase3-canonical.js          # dry-run (no writes)
  *   node --env-file=.env.local scripts/migrate-phase3-canonical.js --apply  # live migration
  *   DRY_RUN=1 node --env-file=.env.local scripts/migrate-phase3-canonical.js # also dry-run
+ *   PHASE3_MIGRATION_ENV=production PHASE3_MIGRATION_APPROVAL=<ticket> \
+ *     node --env-file=.env.local scripts/migrate-phase3-canonical.js --apply --allow-production
+ *   node scripts/migrate-phase3-canonical.js --help
  */
 
-import mongoose from "mongoose";
+// ── 0. INVOCATION PARSING & FAIL-CLOSED PRODUCTION APPROVAL GATE ──
+// Everything in this section runs before MONGODB_URI is read, before the
+// database driver is loaded, and before any database connection is attempted.
 
-const APPLY = process.argv.includes("--apply");
-const DRY = !APPLY || ["1", "true", "yes"].includes(String(process.env.DRY_RUN || "").toLowerCase());
+const APPLY_FLAG = "--apply";
+const ALLOW_PRODUCTION_FLAG = "--allow-production";
+const HELP_FLAGS = Object.freeze(["--help", "-h"]);
+const APPROVAL_ENV = "PHASE3_MIGRATION_APPROVAL";
+
+// Environment markers used for classification. Fail closed: only an explicit,
+// recognized non-production value avoids the production approval gate.
+const ENV_MARKERS = Object.freeze([
+  "PHASE3_MIGRATION_ENV",
+  "BONO_OPERATION_ENV",
+  "NODE_ENV",
+  "APP_ENV",
+  "DEPLOY_ENV",
+  "ENVIRONMENT",
+  "VERCEL_ENV",
+  "CONTEXT",
+]);
+const PRODUCTION_VALUES = Object.freeze(["production", "prod", "live"]);
+const NON_PRODUCTION_VALUES = Object.freeze([
+  "development",
+  "dev",
+  "test",
+  "testing",
+  "staging",
+  "stage",
+  "preview",
+  "local",
+  "ci",
+  "deploy-preview",
+  "branch-deploy",
+]);
+const TRUTHY = Object.freeze(["1", "true", "yes", "on"]);
+
+const USAGE_TEXT = `
+Phase 3 canonical migration — arguments, modes, and production approval.
+
+Usage:
+  node --env-file=.env.local scripts/migrate-phase3-canonical.js            Dry run (no writes)
+  node --env-file=.env.local scripts/migrate-phase3-canonical.js --apply    Apply migration (writes)
+  node scripts/migrate-phase3-canonical.js --help
+
+Arguments:
+  --apply               Enable writes. DRY_RUN=1 still forces a dry run.
+  --allow-production    Required, together with PHASE3_MIGRATION_APPROVAL, when
+                        the target environment classifies as production.
+  --help, -h            Show this help.
+
+Environment classification:
+  Checked markers: PHASE3_MIGRATION_ENV, BONO_OPERATION_ENV, NODE_ENV, APP_ENV,
+  DEPLOY_ENV, ENVIRONMENT, VERCEL_ENV, CONTEXT.
+  Production-like, unrecognized, missing, or ambiguous classification is
+  treated as production. There is no way to skip the production gate.
+
+Production approval (checked before any database connection):
+  --allow-production + non-empty PHASE3_MIGRATION_APPROVAL ticket reference.
+
+Index safety:
+  Index maintenance is ADDITIVE ONLY (createIndexes). This script never drops,
+  replaces, or destructively re-synchronizes existing indexes.
+`.trim();
+
+function normalizeEnvValue(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+/**
+ * Classifies the target environment from well-known marker variables.
+ * Fail-closed rules:
+ *  - any production-like marker -> production
+ *  - any unrecognized non-empty marker -> production (ambiguous)
+ *  - no recognized non-production marker -> production (missing)
+ */
+function classifyMigrationEnvironment(env = process.env) {
+  const observations = [];
+  let productionMarker = false;
+  let recognizedNonProduction = false;
+  let unrecognizedMarker = false;
+
+  for (const name of ENV_MARKERS) {
+    const value = normalizeEnvValue(env?.[name]);
+    if (!value) continue;
+    observations.push(`${name}=${value}`);
+    if (PRODUCTION_VALUES.includes(value)) productionMarker = true;
+    else if (NON_PRODUCTION_VALUES.includes(value)) recognizedNonProduction = true;
+    else unrecognizedMarker = true;
+  }
+
+  if (productionMarker) {
+    return {
+      posture: "production",
+      production: true,
+      ambiguous: false,
+      reason: "a production environment marker is present",
+      observations,
+    };
+  }
+  if (unrecognizedMarker) {
+    return {
+      posture: "production",
+      production: true,
+      ambiguous: true,
+      reason: "an environment marker is unrecognized",
+      observations,
+    };
+  }
+  if (!recognizedNonProduction) {
+    return {
+      posture: "production",
+      production: true,
+      ambiguous: true,
+      reason: "no explicit non-production environment classification is present",
+      observations,
+    };
+  }
+  return {
+    posture: "non-production",
+    production: false,
+    ambiguous: false,
+    reason: "explicit non-production classification",
+    observations,
+  };
+}
+
+/**
+ * Strict argument parser. Malformed, unknown, or duplicated flags fail closed.
+ */
+function parseArgs(argv = []) {
+  const parsed = { ok: true, help: false, apply: false, allowProduction: false };
+  const seen = new Set();
+  const args = Array.isArray(argv) ? argv : [];
+  const fail = (error) => ({ ...parsed, ok: false, error });
+
+  for (const arg of args) {
+    if (HELP_FLAGS.includes(arg)) {
+      if (seen.has("help")) return fail("duplicate argument: --help");
+      seen.add("help");
+      parsed.help = true;
+      continue;
+    }
+    if (arg === APPLY_FLAG) {
+      if (seen.has(APPLY_FLAG)) return fail(`duplicate argument: ${APPLY_FLAG}`);
+      seen.add(APPLY_FLAG);
+      parsed.apply = true;
+      continue;
+    }
+    if (arg === ALLOW_PRODUCTION_FLAG) {
+      if (seen.has(ALLOW_PRODUCTION_FLAG)) return fail(`duplicate argument: ${ALLOW_PRODUCTION_FLAG}`);
+      seen.add(ALLOW_PRODUCTION_FLAG);
+      parsed.allowProduction = true;
+      continue;
+    }
+    return fail(`unknown argument: ${arg}`);
+  }
+
+  return parsed;
+}
+
+const parsedArgs = parseArgs(process.argv.slice(2));
+if (!parsedArgs.ok) {
+  console.error(USAGE_TEXT);
+  console.error(`REFUSED: ${parsedArgs.error}`);
+  console.error("No database connection was attempted and no data was modified.");
+  process.exit(2);
+}
+if (parsedArgs.help) {
+  console.log(USAGE_TEXT);
+  process.exit(0);
+}
+
+// Fail-closed production approval gate. Runs before MONGODB_URI is read.
+const environment = classifyMigrationEnvironment(process.env);
+if (environment.production) {
+  const approvalRef = String(process.env[APPROVAL_ENV] ?? "").trim();
+  const missing = [];
+  if (!parsedArgs.allowProduction) missing.push(`${ALLOW_PRODUCTION_FLAG} flag is missing`);
+  if (!approvalRef) missing.push(`${APPROVAL_ENV} ticket reference is missing or empty`);
+  if (missing.length) {
+    console.error(
+      `[phase3] Environment: production-classified (${environment.reason}: ${environment.observations.join(", ") || "no markers set"}).`
+    );
+    console.error(`[phase3] REFUSED — production execution requires explicit approval: ${missing.join("; ")}.`);
+    console.error("[phase3] Missing or ambiguous environment classification is treated as production. No override exists.");
+    console.error("[phase3] No database connection was attempted and no data was modified.");
+    process.exit(2);
+  }
+  console.log(`[phase3] Environment: production-classified (${environment.reason}).`);
+  console.log(`[phase3] Production approval: ${ALLOW_PRODUCTION_FLAG} present, ${APPROVAL_ENV} reference supplied (value hidden).`);
+} else {
+  console.log(`[phase3] Environment: ${environment.posture} (${environment.reason}).`);
+}
+
+const APPLY = parsedArgs.apply;
+const DRY = !APPLY || TRUTHY.includes(normalizeEnvValue(process.env.DRY_RUN));
 const DO_WRITE = APPLY && !DRY;
 
 if (!process.env.MONGODB_URI) {
@@ -73,11 +273,15 @@ if (!HOST.includes("9yut545.mongodb.net")) {
 console.log(`[phase3] Backup safety: ensure an Atlas continuous backup snapshot or mongodump exists before --apply.`);
 console.log(`[phase3]   Recommended: mongodump --uri="<redacted>" --db=hotel_management --out=./backup-YYYYMMDD`);
 console.log(`[phase3]   Or: Atlas UI → Backup → Take snapshot of hotel_management (verify completion).`);
-console.log(`[phase3]   This script never deletes documents; it only backfills canonical fields and syncs indexes.\n`);
+console.log(`[phase3]   This script never deletes documents; it only backfills canonical fields and creates missing indexes (additive only).\n`);
 
 function slugify(s) {
   return String(s).toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "category";
 }
+
+// The driver is loaded only after argument parsing, environment classification,
+// production approval, and the database/host checks have all passed.
+const { default: mongoose } = await import("mongoose");
 
 const conn = await mongoose.createConnection(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
@@ -365,11 +569,7 @@ console.log(`  orders indexes: ${orderIdx.map((i) => i.name).join(", ")}`);
 const hasLegacyCatIdIdx = menuIdx.some((i) => i.name === "categoryId_1_isAvailable_1");
 const hasCanonicalCatIdx = menuIdx.some((i) => i.name === "category_1_isAvailable_1" || i.name === "category_isAvailable");
 if (hasLegacyCatIdIdx && hasCanonicalCatIdx) {
-  console.log(`  [index] menuitems has redundant categoryId_1_isAvailable_1 (legacy) alongside canonical category_1_isAvailable_1 — plan to drop legacy after migration verified (DO_WRITE will not drop yet)`);
-  if (DO_WRITE) {
-    console.log(`  [index] SKIPPING drop in this phase — verification required that zero docs miss canonical 'category'. Run --apply again after confirming counts.`);
-    // To drop (manual after verify): await menuitemsCol.dropIndex("categoryId_1_isAvailable_1")
-  }
+  console.log(`  [index] menuitems has redundant categoryId_1_isAvailable_1 (legacy) alongside canonical category_1_isAvailable_1 — both are retained; this script never drops indexes.`);
 }
 
 // Check missing canonical indexes
@@ -378,9 +578,10 @@ console.log(`  categories slug unique: ${expectedCategorySlugUnique ? "OK" : "MI
 const hasOrderStatusCreated = orderIdx.some((i) => i.key.status === 1 && i.key.createdAt === -1);
 console.log(`  orders status+createdAt: ${hasOrderStatusCreated ? "OK" : "MISSING"}`);
 
-// Optionally sync via Mongoose (ensures schema indexes match DB)
+// Create any missing schema indexes. ADDITIVE ONLY: createIndexes() never drops
+// or replaces indexes that already exist on the collections.
 if (DO_WRITE) {
-  console.log(`\n[phase3] Syncing indexes via Mongoose (non-blocking) ...`);
+  console.log(`\n[phase3] Creating missing indexes via Mongoose (additive only, no drops) ...`);
   try {
     const { getCategoryModel } = await import("../lib/models/Category.js");
     const { getMenuItemModel } = await import("../lib/models/MenuItem.js");
@@ -389,18 +590,18 @@ if (DO_WRITE) {
     const { getBrandConfigModel } = await import("../lib/models/BrandConfig.js");
     const { getPaymentInfoModel } = await import("../lib/models/PaymentInfo.js");
     // Use raw connection
-    await getCategoryModel(conn).syncIndexes();
-    await getMenuItemModel(conn).syncIndexes();
-    await getOrderModel(conn).syncIndexes();
-    await getStaffModel(conn).syncIndexes();
-    await getBrandConfigModel(conn).syncIndexes();
-    await getPaymentInfoModel(conn).syncIndexes();
-    console.log(`  indexes synced`);
+    await getCategoryModel(conn).createIndexes();
+    await getMenuItemModel(conn).createIndexes();
+    await getOrderModel(conn).createIndexes();
+    await getStaffModel(conn).createIndexes();
+    await getBrandConfigModel(conn).createIndexes();
+    await getPaymentInfoModel(conn).createIndexes();
+    console.log(`  missing indexes created; existing indexes left untouched`);
   } catch (e) {
-    console.warn(`  index sync skipped: ${e.message}`);
+    console.warn(`  index creation skipped: ${e.message}`);
   }
 } else {
-  console.log(`  (dry-run) would sync indexes on --apply`);
+  console.log(`  (dry-run) would create missing indexes on --apply (additive only, no drops)`);
 }
 
 // ── 7. VERIFICATION AFTER ──
@@ -425,7 +626,7 @@ if (DO_WRITE) {
 
 console.log(`\n[phase3] ${ok ? "✅ VERIFICATION PASSED — no data loss detected." : "❌ VERIFICATION FAILED — review logs."}`);
 console.log(`[phase3] ${DO_WRITE ? "APPLY complete." : "DRY RUN complete — re-run with --apply to write."}`);
-console.log(`[phase3] Next: after verification, remove legacy fallbacks (oldField||newField) and drop redundant indexes; then harden schemas to strict:true.`);
+console.log(`[phase3] Next: after verification, remove legacy fallbacks (oldField||newField) and review remaining legacy indexes manually; then harden schemas to strict:true.`);
 
 await conn.close();
 process.exit(ok ? 0 : 1);

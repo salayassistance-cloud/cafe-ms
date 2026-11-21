@@ -1,5 +1,6 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import { getInventoryAuditModel } from "@/lib/models/InventoryAudit";
+import { getStaffModel } from "@/lib/models/Staff";
 import { requireAuth } from "@/lib/security";
 import { can } from "@/lib/policy";
 import { withApi } from "@/lib/withApi";
@@ -92,12 +93,32 @@ async function getHandler(request) {
       .limit(limit)
       .lean();
 
+    // Resolve only the staff display name. A failed lookup never hides the
+    // actor id (the UI must not relabel an identifiable actor as "System").
+    const actorNames = new Map();
+    const actorIds = [...new Set(docs.map((d) => d.actorId).filter(Boolean).map(String))];
+    if (actorIds.length) {
+      try {
+        const Staff = getStaffModel(conn);
+        const staff = await Staff.find({ _id: { $in: actorIds } })
+          .select("name")
+          .lean();
+        for (const s of staff || []) {
+          actorNames.set(String(s._id), String(s.name || "").trim());
+        }
+      } catch {
+        // Best-effort identity enrichment; actorId is still serialized below.
+      }
+    }
+
     const audits = docs.map((d) => ({
       _id: String(d._id),
       id: String(d._id),
       item: d.item ? String(d.item) : null,
       action: d.action,
       actorId: d.actorId ? String(d.actorId) : null,
+      actorName: d.actorId ? actorNames.get(String(d.actorId)) || null : null,
+      actor: d.actorId ? String(d.actorId) : null,
       actorRole: d.actorRole || null,
       quantityDelta: d.quantityDelta != null ? Number(d.quantityDelta) : null,
       beforeStock: d.beforeStock != null ? Number(d.beforeStock) : null,
@@ -109,6 +130,12 @@ async function getHandler(request) {
       totalCost: d.totalCost != null ? Number(d.totalCost) : null,
       supplier: d.supplier ? String(d.supplier) : null,
       reason: d.reason || "",
+      // Manager audit view reads `notes`. Keep other audit types unchanged.
+      notes: d.reason || "",
+      entity:
+        String(d.reason || "").startsWith("MENU_ITEM_INVENTORY_POLICY_CHANGE")
+          ? "MenuItem"
+          : "InventoryItem",
       correlationId: d.correlationId ? String(d.correlationId) : null,
       beforeSnapshot: d.beforeSnapshot || null,
       afterSnapshot: d.afterSnapshot || null,

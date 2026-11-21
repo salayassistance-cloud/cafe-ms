@@ -59,10 +59,10 @@ export default function ThemeToggleHome() {
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       aria-pressed={!isDark}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] text-[#FFD600] dark:text-[#FF5E00] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0]/60 dark:border-[#2A2B36] bg-white dark:bg-[#1C1D24] text-[#FFD600] dark:text-[#FF5E00] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner"
     >
       {isDark ? (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
           <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
           <line x1="12" y1="2" x2="12" y2="4" />
           <line x1="12" y1="20" x2="12" y2="22" />
@@ -74,7 +74,7 @@ export default function ThemeToggleHome() {
           <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
         </svg>
       ) : (
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5" aria-hidden>
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden>
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
       )}

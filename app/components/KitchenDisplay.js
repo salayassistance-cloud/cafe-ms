@@ -7,6 +7,7 @@ import { getLocalizedSingleString } from '@/lib/displayName';
 import { useOrderEvents } from '@/lib/orderEvents';
 import LanguageToggle from '@/app/components/LanguageToggle';
 import SettingsGear from '@/app/components/SettingsGear';
+import StationReportPanel from '@/app/components/StationReportPanel';
 import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import { useLanguage } from '@/app/components/LanguageProvider';
 import { formatEthiopianClock } from '@/lib/ethiopianCalendar';
@@ -67,10 +68,15 @@ function statusBadge(status, t) {
 
 function emptyStateFor(station, t) {
   const isBarista = station === 'DRINK';
+  const isHotDrink = station === 'HOT_DRINK';
   return {
     title: t('emptyTitle'),
-    sub: isBarista ? t('emptySubBarista') : t('emptySubKitchen'),
-    glyph: isBarista ? '☕' : '🍽️',
+    sub: isHotDrink
+      ? t('emptySubHotDrink')
+      : isBarista
+        ? t('emptySubBarista')
+        : t('emptySubKitchen'),
+    glyph: isHotDrink ? '☕' : isBarista ? '☕' : '🍽️',
   };
 }
 
@@ -123,7 +129,7 @@ export default function KitchenDisplay({
   const [confirmingId, setConfirmingId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('ALL');
   // Single source of in-flight station-action truth.
-  // Key: String(orderId) — value: { station: 'KITCHEN'|'BARISTA', action: 'START_PREP'|'MARK_READY'|'ARCHIVE', targetStatus }.
+  // Key: String(orderId) — value: { station: 'KITCHEN'|'BARISTA'|'HOT_DRINK', action: 'START_PREP'|'MARK_READY'|'ARCHIVE', targetStatus }.
   // Station is fixed per mount (view), so orderId implies the station, but the
   // meta preserves the exact station+action for deterministic pending labels and
   // to block only this order's station action (never the whole board, never the
@@ -147,6 +153,19 @@ export default function KitchenDisplay({
   const sessionEndedRef = useRef(false);
   const authGenRef = useRef(0);
 
+  // Single-flight request control for the station board. The station GET is the
+  // slow round trip, so a poll tick, an SSE event, a visibility change and an
+  // action refresh must never stack into concurrent identical requests.
+  // Exactly one request is allowed in flight; anything that arrives meanwhile is
+  // coalesced into ONE trailing refresh (never dropped, never a retry storm).
+  const fetchInFlightRef = useRef(false);
+  const fetchQueuedRef = useRef(false);
+  const queuedTimerRef = useRef(null);
+  const fetchOrdersRef = useRef(null);
+  const abortRef = useRef(null);
+  const mountedRef = useRef(true);
+  const [retrying, setRetrying] = useState(false);
+
   const enterSessionEnded = useCallback(() => {
     authGenRef.current += 1;
     sessionEndedRef.current = true;
@@ -163,7 +182,7 @@ export default function KitchenDisplay({
     authGenRef.current += 1;
     sessionEndedRef.current = false;
     setSessionEnded(false);
-    try { window.location.assign(view === 'DRINK' ? '/barista' : '/kds'); } catch {}
+    try { window.location.assign(view === 'DRINK' ? '/barista' : view === 'HOT_DRINK' ? '/jebena' : '/kds'); } catch {}
   }, [view]);
 
   const seenIdsRef = useRef(new Set());
@@ -176,13 +195,27 @@ export default function KitchenDisplay({
   const fetchOrders = useCallback(async () => {
     // Session ended: never fire authenticated refreshes (no retry storm).
     if (sessionEndedRef.current) return;
+    // Single-flight guard: if a station request is already in flight, remember
+    // that another refresh is wanted and let that request schedule one
+    // coalesced trailing fetch when it settles.
+    if (fetchInFlightRef.current) {
+      fetchQueuedRef.current = true;
+      return;
+    }
+    fetchInFlightRef.current = true;
     const gen = authGenRef.current;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    abortRef.current = controller;
     try {
-      // Station-specific fetch: FOOD=Kitchen, DRINK=Barista via dest param (server filters items.type)
-      // This prevents Kitchen seeing DRINK-only work and vice versa, and reduces payload.
-      const dest = view === 'DRINK' ? 'DRINK' : view === 'FOOD' ? 'FOOD' : 'ALL';
+      // Station-specific fetch: FOOD=Kitchen, DRINK=Barista, HOT_DRINK=Jebena
+      // via dest param (server filters items.type). This prevents one station
+      // seeing another's work and reduces payload.
+      const dest = view === 'DRINK' ? 'DRINK' : view === 'HOT_DRINK' ? 'HOT_DRINK' : view === 'FOOD' ? 'FOOD' : 'ALL';
       const url = dest === 'ALL' ? '/api/orders?status=ACTIVE' : `/api/orders?status=ACTIVE&dest=${dest}`;
-      const data = await safeFetchJson(url, { cache: 'no-store' });
+      const data = await safeFetchJson(url, {
+        cache: 'no-store',
+        ...(controller ? { signal: controller.signal } : {}),
+      });
       // Stale success after revocation must not repopulate the board.
       if (gen !== authGenRef.current) return;
       if (!data.success) throw new Error('bad body');
@@ -231,7 +264,14 @@ export default function KitchenDisplay({
           let merged = inc;
           const pending = pendingByOrderRef.current.get(pid) || pendingByOrderRef.current.get(inc._id);
           if (pending) {
-            const field = pending.station === 'BARISTA' ? 'baristaStatus' : pending.station === 'KITCHEN' ? 'kitchenStatus' : null;
+            const field =
+              pending.station === 'BARISTA'
+                ? 'baristaStatus'
+                : pending.station === 'HOT_DRINK'
+                  ? 'hotDrinkStatus'
+                  : pending.station === 'KITCHEN'
+                    ? 'kitchenStatus'
+                    : null;
             if (field && prevOrder[field] !== undefined && inc[field] !== prevOrder[field]) {
               merged = { ...merged, [field]: prevOrder[field] };
             }
@@ -259,6 +299,8 @@ export default function KitchenDisplay({
       });
       setConnError(false);
     } catch (err) {
+      // Aborted by unmount: no state writes, never a false "offline" badge.
+      if (err && (err.name === 'AbortError' || controller?.signal?.aborted)) return;
       if (gen !== authGenRef.current) return;
       // Explicit session end enters the re-login state (polling/SSE stop).
       // Transient failures (503/network) keep state and cadence.
@@ -276,9 +318,28 @@ export default function KitchenDisplay({
         setConnError(true);
       }
     } finally {
-      setInitialLoading(false);
+      if (abortRef.current === controller) abortRef.current = null;
+      fetchInFlightRef.current = false;
+      if (mountedRef.current) setInitialLoading(false);
+      // Exactly one coalesced trailing refresh for everything that arrived
+      // while this request was in flight (same 150ms debounce as SSE events).
+      if (fetchQueuedRef.current) {
+        fetchQueuedRef.current = false;
+        if (!sessionEndedRef.current && mountedRef.current) {
+          clearTimeout(queuedTimerRef.current);
+          queuedTimerRef.current = setTimeout(() => {
+            if (!sessionEndedRef.current && mountedRef.current) fetchOrdersRef.current?.();
+          }, 150);
+        }
+      }
     }
   }, [view, stationLabel, enterSessionEnded]);
+
+  // Point the trailing-refresh timer at the latest callback without making
+  // fetchOrders depend on scheduleRefresh (which already depends on it).
+  useEffect(() => {
+    fetchOrdersRef.current = fetchOrders;
+  }, [fetchOrders]);
 
   const refreshTimer = useRef(null);
   const scheduleRefresh = useCallback(() => {
@@ -314,6 +375,22 @@ export default function KitchenDisplay({
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [fetchOrders]);
+
+  // Unmount cleanup: stop every pending refresh timer and abort the in-flight
+  // station request so a torn-down board cannot keep hitting the API.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(queuedTimerRef.current);
+      clearTimeout(refreshTimer.current);
+      const controller = abortRef.current;
+      abortRef.current = null;
+      try {
+        controller?.abort();
+      } catch {}
+    };
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), TICK_MS);
@@ -364,6 +441,9 @@ export default function KitchenDisplay({
       if (updated) {
         setOrders((prev) => prev.map((o) => (o._id === orderId ? { ...o, ...updated } : o)));
       }
+      // Promptly reconcile the board after a CONFIRMED station transition
+      // (single-flight + coalesced, so this never stacks on an in-flight poll).
+      scheduleRefresh();
     } catch (err) {
       // Revert optimistic on failure
       if (prevOrdersRef.current) setOrders(prevOrdersRef.current);
@@ -454,7 +534,13 @@ export default function KitchenDisplay({
           items: (o.items || []).map((it) => {
             const lid = it.lineId ? String(it.lineId) : null;
             if (lid !== key) return it;
-            return { ...it, cancelled: true, cancelReason: reason || it.cancelReason, cancelledStation: view === "DRINK" ? "BARISTA" : "KITCHEN" };
+            return {
+              ...it,
+              cancelled: true,
+              cancelReason: reason || it.cancelReason,
+              cancelledStation:
+                view === "DRINK" ? "BARISTA" : view === "HOT_DRINK" ? "HOT_DRINK" : "KITCHEN",
+            };
           }),
         };
       });
@@ -516,11 +602,22 @@ export default function KitchenDisplay({
   // Also keep orders with only cancelled items of this station for history (faded) — but active view excludes fully cancelled
   const offline = connError;
 
+  // Explicit retry: reuses the single-flight fetch. It never clears the
+  // "reconnecting" badge before the server actually answers, so stale data is
+  // never presented as confirmed current data.
+  const retryNow = useCallback(() => {
+    if (retrying) return;
+    setRetrying(true);
+    Promise.resolve(fetchOrders()).finally(() => {
+      if (mountedRef.current) setRetrying(false);
+    });
+  }, [retrying, fetchOrders]);
+
   // stationLocked: this station already marked its lines READY (or the whole
   // order is READY) — finished lines cannot be cancelled (server enforces too).
   function renderItems(items, view, orderId, stationLocked) {
     if (!items || items.length === 0) return null;
-    // Only render items belonging to THIS station (FOOD=Kitchen, DRINK=Barista).
+    // Only render items belonging to THIS station (FOOD=Kitchen, DRINK=Barista, HOT_DRINK=Jebena).
     const relevant = items.filter((it) => it.type === view);
     if (relevant.length === 0) return null;
     return (
@@ -609,7 +706,8 @@ export default function KitchenDisplay({
     // pending map. Never array index / item name / table number.
     const pendingInfo = pendingByOrder.get(String(order._id));
     const isPending = !!pendingInfo;
-    const stationShort = stationKey === 'BARISTA' ? 'Barista' : 'Kitchen';
+    const stationShort =
+      stationKey === 'BARISTA' ? 'Barista' : stationKey === 'HOT_DRINK' ? 'Jebena Buna' : 'Kitchen';
     const pendingLabel = !pendingInfo
       ? null
       : pendingInfo.action === 'START_PREP'
@@ -761,6 +859,16 @@ export default function KitchenDisplay({
                 <span className={offline ? 'text-[#DC2626] dark:text-[#FF8A3D]' : 'text-[#15803D] dark:text-[#FF5E00]'}>
                   {offline ? t('reconnecting') : t('live')}
                 </span>
+                {offline && (
+                  <button
+                    type="button"
+                    onClick={retryNow}
+                    disabled={retrying}
+                    className="ml-2 rounded-lg border border-[#FECACA] bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#DC2626] shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-60"
+                  >
+                    {retrying ? '…' : t('retry')}
+                  </button>
+                )}
               </p>
             </div>
           </div>
@@ -786,7 +894,13 @@ export default function KitchenDisplay({
               aria-pressed="true"
               className="rounded-xl py-3 text-sm font-extrabold bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white shadow-sm transition-all duration-150 ease-out     active:shadow-inner"
             >
-              {t(station === 'DRINK' ? 'baristaOnly' : 'kitchenOnly')}
+              {t(
+                station === 'DRINK'
+                  ? 'baristaOnly'
+                  : station === 'HOT_DRINK'
+                    ? 'hotDrinkOnly'
+                    : 'kitchenOnly'
+              )}
             </button>
           ))}
         </nav>
@@ -840,9 +954,37 @@ export default function KitchenDisplay({
         );
       })()}
 
+      {/* Station menu-item performance — collapsible, independent of the
+          preparation board. It never polls and never reacts to SSE order
+          events; it fetches only when opened, when the preset changes, or on
+          explicit refresh. */}
+      <StationReportPanel itemType={station} stationName={title} />
+
       <main className="p-4">
         {initialLoading ? (
           <BoardSkeleton />
+        ) : offline && visibleOrders.length === 0 ? (
+          // Failed first/only load: never imply "no active orders" when the
+          // station actually could not reach the server. Explicit retry only.
+          <div className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] py-16 text-center text-sm text-[#991B1B] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05)] dark:border-[#7F1D1D] dark:bg-[#1C1D24] dark:text-[#FCA5A5]">
+            <span className="block text-3xl" aria-hidden="true">
+              ⚠️
+            </span>
+            <span className="mt-3 block font-bold text-[#991B1B] dark:text-[#FCA5A5]">
+              Can&apos;t load orders
+            </span>
+            <span className="mt-1 block text-xs text-[#991B1B]/80 dark:text-[#FCA5A5]/80">
+              The station is offline. No order state is shown as confirmed.
+            </span>
+            <button
+              type="button"
+              onClick={retryNow}
+              disabled={retrying}
+              className="mt-4 rounded-xl bg-[#DC2626] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm transition-all duration-150 ease-out active:shadow-inner disabled:opacity-60"
+            >
+              {retrying ? '…' : t('retry')}
+            </button>
+          </div>
         ) : filteredOrders.length === 0 ? (
           (() => {
             const empty = emptyStateFor(station, t);

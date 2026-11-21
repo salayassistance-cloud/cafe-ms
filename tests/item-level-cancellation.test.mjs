@@ -307,7 +307,7 @@ describe('Item-level cancellation - DB-free', () => {
       items: [
         { itemId: new mongoose.Types.ObjectId().toString(), quantity: 2, name: 'Burger', cancelled: false },
         { itemId: new mongoose.Types.ObjectId().toString(), quantity: 1, name: 'Cancelled Soup', cancelled: true },
-        { itemId: new mongoose.Types.ObjectId().toString(), quantity: 1, name: 'External Fries', isExternal: true, cancelled: false }
+        { quantity: 1, name: 'Legacy External Fries', isExternal: true, cancelled: false }
       ]
     };
     const recipeMap = new Map([
@@ -315,12 +315,9 @@ describe('Item-level cancellation - DB-free', () => {
       [order.items[1].itemId, { menuItemId: order.items[1].itemId, isActive: true, ingredients: [{ inventoryItemId: new mongoose.Types.ObjectId().toString(), quantity: 1, unit: 'kg' }] }],
     ]);
     const res = testCalculateDeductionFromRecipes(order, recipeMap);
-    // Should have skipped cancelled and external? calculateDeductionFromRecipes currently does not check cancelled - but prepareInventoryDeduction does.
-    // For prepareInventoryDeduction we mock DB-free via calculate helper extended? Here we test pure helper now skips cancelled only if implemented.
-    // Since calculateDeductionFromRecipes is pure and doesn't handle cancelled yet, we assert prepare logic would skip.
-    // Instead test that cancelled item is not in validItems for deduction
-    // Simulate prepareInventoryDeduction filtering:
-    const filtered = order.items.filter(it => !it.cancelled && !it.isExternal && it.itemId);
+    // New policy has no active isExternal skip. Historical external lines are
+    // identified by a missing catalog itemId, not by the legacy flag.
+    const filtered = order.items.filter(it => !it.cancelled && it.itemId);
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0].name, 'Burger');
   });

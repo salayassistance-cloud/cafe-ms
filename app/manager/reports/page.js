@@ -558,7 +558,10 @@ export default function ManagerReports() {
   const itemPerf = itemPerfCopy(lang);
   const menuItemPerformance = buildMenuItemPerformance(data?.completedItemsDetail);
   const foodMenuPerformance = menuItemPerformance.filter((item) => item.category === 'FOOD');
-  const drinkMenuPerformance = menuItemPerformance.filter((item) => item.category !== 'FOOD');
+  const drinkMenuPerformance = menuItemPerformance.filter(
+    (item) => item.category !== 'FOOD' && item.category !== 'HOT_DRINK'
+  );
+  const hotDrinkMenuPerformance = menuItemPerformance.filter((item) => item.category === 'HOT_DRINK');
   const selectedRangeLabel = activeRangeLabel(from, to, lang, t);
 
   return (
@@ -673,7 +676,7 @@ export default function ManagerReports() {
         {data && !loading && (
           <>
             {/* KPI CARDS — revenue distinguishable: base vs components, notes have 0 revenue */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <KpiCard
                 index={0}
                 label={t('totalRevenue')}
@@ -696,24 +699,30 @@ export default function ManagerReports() {
               />
               <KpiCard
                 index={3}
+                label={t('hotDrinkRevenue')}
+                value={fmtETB(kpis.hotDrinkRevenue ?? 0)}
+                sub={t('paid')}
+              />
+              <KpiCard
+                index={4}
                 label={t('completedOrders')}
                 value={kpis.completedOrders.toLocaleString()}
                 sub={`${kpis.cancelledOrders} ${t('cancelled')} ${kpis.activeOrders} ${t('active')}`}
               />
               <KpiCard
-                index={4}
+                index={5}
                 label={t('completedItems')}
                 value={(kpis.completedItems ?? 0).toLocaleString()}
                 sub={`${kpis.cancelledItems ?? 0} ${t('cancelledItems')}`}
               />
               <KpiCard
-                index={5}
+                index={6}
                 label={t('avgFulfillment')}
                 value={fmtDur(kpis.avgFulfillmentSec)}
                 sub={t('prepReady')}
               />
               <KpiCard
-                index={6}
+                index={7}
                 label={t('peakHour')}
                 value={toAMPM(kpis.peakHourLabel, lang)}
                 sub={fmtETB(kpis.peakHourRevenue)}
@@ -751,6 +760,17 @@ export default function ManagerReports() {
                     <MenuItemPerformanceList
                       items={drinkMenuPerformance}
                       offset={foodMenuPerformance.length}
+                      itemPerf={itemPerf}
+                      expandedKey={expandedMenuItem}
+                      onToggle={setExpandedMenuItem}
+                      t={t}
+                      lang={lang}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <MenuItemPerformanceList
+                      items={hotDrinkMenuPerformance}
+                      offset={foodMenuPerformance.length + drinkMenuPerformance.length}
                       itemPerf={itemPerf}
                       expandedKey={expandedMenuItem}
                       onToggle={setExpandedMenuItem}
@@ -949,16 +969,21 @@ export default function ManagerReports() {
               title={t('topSelling')}
               action={
                 <div className="flex gap-2">
-                  {['all', 'food', 'drink'].map((fk) => (
+                  {[
+                    { key: 'ALL', labelKey: 'all' },
+                    { key: 'FOOD', labelKey: 'food' },
+                    { key: 'DRINK', labelKey: 'drink' },
+                    { key: 'HOT_DRINK', labelKey: 'hotDrink' },
+                  ].map((fk) => (
                     <button
-                      key={`f-${fk}`}
+                      key={`f-${fk.key}`}
                       type="button"
-                      onClick={() => setItemFilter(fk.toUpperCase())}
+                      onClick={() => setItemFilter(fk.key)}
                       className={`flex h-8 items-center rounded-full px-3 text-xs font-bold transition-all ${
-                        itemFilter === fk.toUpperCase() ? PILL_ACTIVE : PILL_INACTIVE
+                        itemFilter === fk.key ? PILL_ACTIVE : PILL_INACTIVE
                       }`}
                     >
-                      {t(fk)}
+                      {t(fk.labelKey)}
                     </button>
                   ))}
                 </div>
@@ -1517,18 +1542,23 @@ const CategoryBreakdownChart = memo(function CategoryBreakdownChart({ topItems, 
 
   const FOOD_COLOR = isDark ? "#FF5500" : "#F59E0B";
   const DRINK_COLOR = isDark ? "#3B82F6" : "#06B6D4";
+  const HOT_DRINK_COLOR = isDark ? "#F97316" : "#EA580C";
 
   const categories = Object.entries(catMap).sort((a, b) => b[1].revenue - a[1].revenue);
   const foodEntry = categories.find(([c]) => c === 'FOOD');
   const drinkEntry = categories.find(([c]) => c === 'DRINK');
+  const hotDrinkEntry = categories.find(([c]) => c === 'HOT_DRINK');
   const foodSales = foodEntry ? foodEntry[1].revenue : 0;
   const drinkSales = drinkEntry ? drinkEntry[1].revenue : 0;
+  const hotDrinkSales = hotDrinkEntry ? hotDrinkEntry[1].revenue : 0;
   const foodCount = foodEntry ? foodEntry[1].count : 0;
   const drinkCount = drinkEntry ? drinkEntry[1].count : 0;
+  const hotDrinkCount = hotDrinkEntry ? hotDrinkEntry[1].count : 0;
 
   const chartData = [
     { name: 'Food', value: foodSales, count: foodCount, color: FOOD_COLOR },
     { name: 'Drink', value: drinkSales, count: drinkCount, color: DRINK_COLOR },
+    { name: 'Hot Drink', value: hotDrinkSales, count: hotDrinkCount, color: HOT_DRINK_COLOR },
   ].filter(d => d.value > 0);
 
   // Fallback to show empty donut if no Food/Drink but other categories exist

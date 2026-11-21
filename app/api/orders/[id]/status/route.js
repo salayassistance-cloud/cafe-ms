@@ -15,6 +15,11 @@ export const dynamic = "force-dynamic";
 function mapServiceError(err) {
   if (isDbError(err)) return fail("Database connection error. Please retry shortly.", 503);
   const msg = err?.message ? String(err.message) : "";
+  // Inventory reservation failures carry an explicit HTTP status/code
+  // (409 approval required, 503 check unavailable, etc.).
+  if (Number.isInteger(err?.status) && err.status >= 400 && err.status <= 599) {
+    return fail(msg, err.status, err.code);
+  }
   if (/not found/i.test(msg)) return fail(msg, 404);
   // Idempotent repeat cancellation is not a server failure — report conflict, never generic 500.
   if (/already cancelled/i.test(msg)) return fail(msg, 409);
@@ -47,7 +52,7 @@ async function patchHandler(request, { params }) {
   const raw = validated.data.status;
   if (!raw) return fail("status is required", 400);
 
-  if (!canTransition(auth.payload.role, raw)) return fail(`Forbidden: ${raw} requires ${raw==="PREPARING"||raw==="READY"?"KITCHEN/BARISTA/MANAGER":raw==="SERVED"||raw==="PAYMENT_PENDING"?"WAITER/MANAGER":raw==="PAID"?"CASHIER/MANAGER":"authorized role"}`,403);
+  if (!canTransition(auth.payload.role, raw)) return fail(`Forbidden: ${raw} requires ${raw==="PREPARING"||raw==="READY"?"KITCHEN/BARISTA/HOT_DRINK/MANAGER":raw==="SERVED"||raw==="PAYMENT_PENDING"?"WAITER/MANAGER":raw==="PAID"?"CASHIER/MANAGER":"authorized role"}`,403);
   // Canonical payment-confirm authorization (policy: orders:payment:confirm =
   // [CASHIER, MANAGER]). The legacy WAITER/MANAGER check below rejected every
   // CASHIER unconditionally, contradicting the canonical matrix.
@@ -90,26 +95,41 @@ async function patchHandler(request, { params }) {
       if (!existingForPay) return fail("Order not found", 404);
       if (existingForPay.status === "PAYMENT_PENDING") {
         doc = await confirmPayment(conn, sanitizedId, { actorId: auth.payload.staffId });
+      } else if (existingForPay.status === "PAID") {
+        // Idempotent PAID retry — same frozen-identity semantics as PATCH
+        // /api/orders/[id]. Authorization (orders:payment:confirm) was
+        // enforced above; no verification bypass is added here.
+        doc = await payOrder(conn, sanitizedId, {
+          paymentMethod: validated.data.paymentMethod,
+          paymentAccountId: validated.data.paymentAccountId,
+          actorId: auth.payload.staffId,
+        });
       } else if (String(auth.payload.role || "").toUpperCase() === "MANAGER" && existingForPay.status === "SERVED") {
         const pm = validated.data.paymentMethod;
+        // Parity with PATCH /api/orders/[id]: a direct settlement must name a
+        // method, otherwise the order freezes as paymentMethod:"NONE".
+        if (!pm) return fail("paymentMethod is required to settle a served order", 400);
         doc = await payOrder(conn, sanitizedId, { paymentMethod: pm, actorId: auth.payload.staffId });
       } else {
         return fail("Order must be submitted for verification before payment", 400);
       }
     } else {
       const opts = {};
-      if (s === "READY" && sessionStaff) {
+      if ((s === "READY" || s === "PREPARING") && sessionStaff) {
         const sid = sessionStaff.staffId || null;
         const role = String(sessionStaff.role || "").toUpperCase();
         if (sid) {
           opts.staffId = sid;
           opts.staffRole = role;
-          if (role === "KITCHEN") opts.kitchenStaffId = sid;
-          if (role === "BARISTA") opts.baristaStaffId = sid;
+          if (s === "READY") {
+            if (role === "KITCHEN") opts.kitchenStaffId = sid;
+            if (role === "BARISTA") opts.baristaStaffId = sid;
+            if (role === "HOT_DRINK") opts.hotDrinkStaffId = sid;
+          }
         }
         // AUTH-ARCH-4: READY attribution is the authenticated session only.
-        // Client-supplied kitchenStaffId/baristaStaffId/staffId are ignored
-        // (no client sends them; accepting them would poison audit fields).
+        // Client-supplied kitchenStaffId/baristaStaffId/hotDrinkStaffId/staffId
+        // are ignored (no client sends them; accepting them would poison audit fields).
       }
       doc = (await updateOrderStatus(conn, sanitizedId, s, opts)).doc;
     }
@@ -161,7 +181,7 @@ async function getHandler(request, { params }) {
     }
     const Order = getOrderModel(conn);
     const q = mongoose.isValidObjectId(sanitizedId) ? { $or: [{ orderNumber: sanitizedId }, { _id: sanitizedId }] } : { orderNumber: sanitizedId };
-    const order = await Order.findOne(q).select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal").lean();
+    const order = await Order.findOne(q).select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId hotDrinkStaffId items status kitchenStatus baristaStatus hotDrinkStatus totalAmount paymentMethod createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt hotDrinkPreparingAt hotDrinkReadyAt isExternal").lean();
     if (!order) return fail("Order not found", 404);
     if (auth.payload.role === "WAITER" && String(order.waiterId || "") !== String(auth.payload.staffId || "")) {
       return fail("Forbidden: not your order", 403);

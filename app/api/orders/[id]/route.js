@@ -42,6 +42,11 @@ function mapServiceError(err) {
     return fail("Database connection error. Please retry shortly.", 503);
   }
   const msg = err && err.message ? String(err.message) : "";
+  // Inventory reservation failures carry an explicit HTTP status/code
+  // (409 approval required, 503 check unavailable, etc.).
+  if (Number.isInteger(err?.status) && err.status >= 400 && err.status <= 599) {
+    return fail(msg, err.status, err.code);
+  }
   if (/not found/i.test(msg)) return fail(msg, 404);
   // Idempotent repeat cancellation is not a server failure — report conflict, never generic 500.
   if (/already cancelled/i.test(msg)) return fail(msg, 409);
@@ -71,7 +76,7 @@ async function getHandler(request, { params }) {
     const conn = await connectToDatabase();
     const Order = getOrderModel(conn);
     const order = await Order.findOne(buildQuery(sanitizedId))
-      .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId items status kitchenStatus baristaStatus totalAmount paymentMethod paymentAccountId paymentAccountSnapshot paymentSubmittedAt paymentSubmittedBy paymentVerifiedAt paymentVerifiedBy paymentRejectedAt paymentRejectedBy paymentRejectionReason createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt isExternal")
+      .select("orderNumber tableNumber waiterName waiterId waiterNumber waiterInfo kitchenStaffId baristaStaffId hotDrinkStaffId items status kitchenStatus baristaStatus hotDrinkStatus totalAmount paymentMethod paymentAccountId paymentAccountSnapshot paymentSubmittedAt paymentSubmittedBy paymentVerifiedAt paymentVerifiedBy paymentRejectedAt paymentRejectedBy paymentRejectionReason createdAt updatedAt preparingAt readyAt servedAt paidAt completedAt kitchenPreparingAt kitchenReadyAt baristaPreparingAt baristaReadyAt hotDrinkPreparingAt hotDrinkReadyAt isExternal")
       .lean();
     if (!order) return fail("Order not found", 404);
     if (auth.payload.role === "WAITER" && String(order.waiterId || "") !== String(auth.payload.staffId || "")) {
@@ -129,18 +134,18 @@ async function patchHandler(request, { params }) {
   const isCancel = !isCancelItem && !isRejectPayment && String(action || status || "").toUpperCase() === "CANCELLED";
 
   // Authorization per transition — never trust client status
-  if (isCancelItem && !can(auth.payload.role, "orders:cancel:item")) return fail("Forbidden: CANCEL_ITEM requires KITCHEN/BARISTA/MANAGER", 403);
+  if (isCancelItem && !can(auth.payload.role, "orders:cancel:item")) return fail("Forbidden: CANCEL_ITEM requires KITCHEN/BARISTA/HOT_DRINK/MANAGER", 403);
   if (isWaiterCancel && String(auth.payload.role || "").toUpperCase() !== "WAITER") return fail("Forbidden: CANCEL_ORDER requires WAITER role", 403);
   // Pre-preparation editing is WAITER (own orders, enforced server-side) + MANAGER.
   // No policy-matrix change: role gate here mirrors existing inline role checks.
   if (isEditItems && !["WAITER", "MANAGER"].includes(String(auth.payload.role || "").toUpperCase())) return fail("Forbidden: EDIT_ITEMS requires WAITER/MANAGER", 403);
   if (isRejectPayment && !can(auth.payload.role, "orders:payment:confirm")) return fail("Forbidden: REJECT_PAYMENT requires CASHIER/MANAGER", 403);
   if (isCancel && !canTransition(auth.payload.role, "CANCELLED")) return fail("Forbidden: CANCELLED requires MANAGER", 403);
-  if (isArchive && !canTransition(auth.payload.role, "ARCHIVED")) return fail("Forbidden: ARCHIVED requires KITCHEN/BARISTA/MANAGER", 403);
+  if (isArchive && !canTransition(auth.payload.role, "ARCHIVED")) return fail("Forbidden: ARCHIVED requires KITCHEN/BARISTA/HOT_DRINK/MANAGER", 403);
   if (status && !isArchive && !isCancel && !isCancelItem && !isRejectPayment) {
     const sUpper = String(status).toUpperCase();
     if (["PENDING","PREPARING","READY","SERVED","PAYMENT_PENDING","PAID"].includes(sUpper) && !canTransition(auth.payload.role, sUpper)) {
-      return fail(`Forbidden: ${sUpper} requires ${sUpper==="PREPARING"||sUpper==="READY" ? "KITCHEN/BARISTA/MANAGER" : sUpper==="SERVED"||sUpper==="PAYMENT_PENDING" ? "WAITER/MANAGER" : sUpper==="PAID" ? "CASHIER/MANAGER" : "authorized role"}`, 403);
+      return fail(`Forbidden: ${sUpper} requires ${sUpper==="PREPARING"||sUpper==="READY" ? "KITCHEN/BARISTA/HOT_DRINK/MANAGER" : sUpper==="SERVED"||sUpper==="PAYMENT_PENDING" ? "WAITER/MANAGER" : sUpper==="PAID" ? "CASHIER/MANAGER" : "authorized role"}`, 403);
     }
     if (sUpper === "PAYMENT_PENDING" && !can(auth.payload.role, "orders:payment:submit")) return fail("Forbidden: payment submit requires WAITER/MANAGER", 403);
     if (sUpper === "PAID" && !can(auth.payload.role, "orders:payment:confirm")) return fail("Forbidden: payment confirm requires CASHIER/MANAGER", 403);
@@ -163,7 +168,7 @@ async function patchHandler(request, { params }) {
     // Session already verified — use for auditable READY attribution
     const sessionStaff = auth.payload;
 
-    // --- Item-level cancel (Kitchen/Barista own station only, never whole order) ---
+    // --- Item-level cancel (Kitchen/Barista/Jebena own station only, never whole order) ---
     if (isCancelItem) {
       const { lineId, reason } = validated.data;
       const doc = await cancelOrderItem(conn, sanitizedId, lineId, {
@@ -230,7 +235,10 @@ async function patchHandler(request, { params }) {
 
     // --- CANCEL the whole order -------------------------------------------
     if (isCancel) {
-      const doc = await cancelOrder(conn, sanitizedId);
+      const doc = await cancelOrder(conn, sanitizedId, {
+        staffId: auth.payload.staffId,
+        reason: validated.data.reason || "MANAGER_CANCELLED",
+      });
 
       publish({
         type: "orders-changed",
@@ -275,26 +283,41 @@ async function patchHandler(request, { params }) {
         if (!existingForPay) return fail("Order not found", 404);
         if (existingForPay.status === "PAYMENT_PENDING") {
           doc = await confirmPayment(conn, sanitizedId, { actorId: auth.payload.staffId });
+        } else if (existingForPay.status === "PAID") {
+          // Idempotent PAID retry (lost response / double click): reach the
+          // frozen-identity service instead of a premature 400. Same method is
+          // a 200 no-op; a different method keeps the stored identity. Auth and
+          // payment-confirm permission were already enforced above.
+          doc = await payOrder(conn, sanitizedId, { paymentMethod, paymentAccountId, actorId: auth.payload.staffId });
         } else if (roleUpper === "MANAGER" && existingForPay.status === "SERVED") {
+          // Direct settlement must name a payment method. Without one the order
+          // was frozen as paymentMethod:"NONE", silently polluting revenue
+          // attribution (reports map it to UNKNOWN).
+          if (!paymentMethod) {
+            return fail("paymentMethod is required to settle a served order", 400);
+          }
           doc = await payOrder(conn, sanitizedId, { paymentMethod, paymentAccountId, actorId: auth.payload.staffId });
         } else {
           return fail("Order must be submitted for verification before payment", 400);
         }
       } else {
-        // PREPARING / READY — auditable: record who marked ready
+        // PREPARING / READY — auditable: record who started/ready
         const opts = {};
-        if (s === "READY" && sessionStaff) {
+        if ((s === "READY" || s === "PREPARING") && sessionStaff) {
           const sid = sessionStaff.staffId || null;
           const role = String(sessionStaff.role || "").toUpperCase();
           if (sid) {
             opts.staffId = sid;
             opts.staffRole = role;
-            if (role === "KITCHEN") opts.kitchenStaffId = sid;
-            if (role === "BARISTA") opts.baristaStaffId = sid;
+            if (s === "READY") {
+              if (role === "KITCHEN") opts.kitchenStaffId = sid;
+              if (role === "BARISTA") opts.baristaStaffId = sid;
+              if (role === "HOT_DRINK") opts.hotDrinkStaffId = sid;
+            }
           }
           // AUTH-ARCH-4: READY attribution is the authenticated session only.
-          // Client-supplied kitchenStaffId/baristaStaffId/staffId are ignored
-          // (no client sends them; accepting them would poison audit fields).
+          // Client-supplied kitchenStaffId/baristaStaffId/hotDrinkStaffId/staffId
+          // are ignored (no client sends them; accepting them would poison audit fields).
         }
         doc = (await updateOrderStatus(conn, sanitizedId, s, opts)).doc;
       }
@@ -305,7 +328,7 @@ async function patchHandler(request, { params }) {
         if (!existing) return fail("Order not found", 404);
         if (String(existing.waiterId || "") !== String(auth.payload.staffId || "")) return fail("Forbidden: not your order", 403);
       }
-      doc = await updatePayment(conn, sanitizedId, { paymentMethod });
+      doc = await updatePayment(conn, sanitizedId, { paymentMethod, actorId: auth.payload.staffId });
     }
 
     if (!doc) {

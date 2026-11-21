@@ -1,9 +1,11 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { connectToDatabase } from "@/lib/mongodb";
 import { withApi } from "@/lib/withApi";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validatePin, validateRole } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
+import { isRejectedDefaultCredential } from "@/lib/config/security";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,9 @@ export const dynamic = "force-dynamic";
 // it survives across warm requests (memoizes repeat terminal sign-ins).
 const MAX_DERIVED = 256;
 const staffDerivedCache = new Map();
+// Process-local salt so cache keys are HMAC digests. The submitted PIN must
+// never appear as a plaintext Map key (heap dump / diagnostic exposure).
+const DERIVED_CACHE_SALT = randomBytes(32);
 
 // POST /api/auth/verify-pin
 // Kitchen / Barista / Manager sign-in — CANONICAL Staff-based.
@@ -89,18 +94,23 @@ async function handler(request) {
     const { getStaffModel } = await import("@/lib/models/Staff");
     const { verifyPin, isHashedPin } = await import("@/lib/pinCrypto");
     const Staff = getStaffModel(conn);
-    candidates = await Staff.find({ role }).lean();
+    // Phase 2.2: disabled accounts can never authenticate, for every role.
+    // Previously only WAITER (via verifyStaffPin) checked isActive; a disabled
+    // KITCHEN/BARISTA/HOT_DRINK/MANAGER/CASHIER row could still sign in here.
+    candidates = await Staff.find({ role, isActive: { $ne: false } }).lean();
 
     // ---- Hot-path derived-key cache (scrypt memoization per stored hash) ----
     // scrypt (~70-90ms per call) dominates the per-request cost when a role has
     // several staff (e.g. WAITER has many). Memoize the verification result per
-    // `${storedHash}:${pin}` so a terminal's repeat sign-in is a constant-time
-    // memory compare instead of another KDF. The key combines the stored hash
-    // (which embeds its salt) and the submitted PIN, so a wrong attempt can
-    // never shadow the derived key of the correct PIN. No plaintext is stored
-    // and the underlying scrypt + timingSafeEqual verification is unchanged.
+    // (stored hash, submitted PIN) so a terminal's repeat sign-in is a
+    // constant-time memory compare instead of another KDF. The key is an
+    // HMAC-SHA256 digest of both values, so the plaintext PIN is never retained
+    // as a Map key and a wrong attempt can never shadow the correct PIN's
+    // entry. The underlying scrypt + timingSafeEqual verification is unchanged.
     const cachedVerifyPin = (p, storedHash) => {
-      const key = `${storedHash}:${p}`;
+      const key = createHmac("sha256", DERIVED_CACHE_SALT)
+        .update(`${storedHash}\u0000${p}`)
+        .digest("hex");
       const cached = staffDerivedCache.get(key);
       if (cached !== undefined) return cached;
       const result = verifyPin(p, storedHash);
@@ -113,6 +123,9 @@ async function handler(request) {
       let ok = false;
       if (isHashedPin(s.pinHash)) ok = cachedVerifyPin(pin, s.pinHash);
       else ok = String(s.pinHash) === String(pin);
+      // Phase 2.2: a correct but known default PIN is rejected in production,
+      // exactly like a wrong PIN (no account-enumeration signal).
+      if (ok && isRejectedDefaultCredential(pin)) ok = false;
       if (ok) {
         staffPayload = { role, staffId: String(s._id), name: s.name, staffName: s.name };
         break;

@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { useLanguage } from "@/app/components/LanguageProvider";
 import { fetchWithTimeout, setTabCredential, startTabHeartbeat, navigateAfterAuth } from "@/lib/clientFetch";
 import { setLocalStaff } from "@/lib/sessionClient";
+import { sanitizeInternalRedirect } from "@/lib/safeNavigation";
 import PinKeypad from "@/app/components/PinKeypad";
 
 const ROLE_LABEL = {
   WAITER: "Waiter Portal",
   KITCHEN: "Kitchen Display",
   BARISTA: "Barista Display",
+  HOT_DRINK: "Jebena Buna Display",
   MANAGER: "Manager Dashboard",
 };
 
@@ -18,13 +20,15 @@ export default function PinGuard({ role, next }) {
   const { t } = useLanguage();
   const router = useRouter();
 
-  const target =
+  // Defense in depth: even though every in-app caller passes a literal, the
+  // /login compatibility page forwards a query parameter. Never navigate to a
+  // non-internal target after a successful sign-in.
+  const fallbackTarget =
+    role === "MANAGER" ? "/manager/reports" : `/${role.toLowerCase()}`;
+  const requestedTarget =
     next ||
-    (typeof window !== "undefined"
-      ? window.location.pathname
-      : role === "MANAGER"
-      ? "/manager/reports"
-      : `/${role.toLowerCase()}`);
+    (typeof window !== "undefined" ? window.location.pathname : fallbackTarget);
+  const target = sanitizeInternalRedirect(requestedTarget, fallbackTarget);
 
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");

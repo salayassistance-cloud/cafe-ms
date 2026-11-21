@@ -105,10 +105,24 @@ describe('AUTH-ARCH-8C canonical Staff PIN model (DB-free)', () => {
 
   test('11. CASHIER remains independent (per-person reset, no MANAGER sync)', () => {
     const s = codeOnly('app/api/manager/staff/route.js');
-    assert.ok(s.includes('["KITCHEN", "BARISTA", "MANAGER"]'), 'role-wide list excludes CASHIER (per-person branch handles it)');
+    assert.ok(s.includes('isRoleWidePinRole(targetRole)'), 'shared station roles use the role-wide branch');
+    assert.ok(!/\["KITCHEN", "BARISTA", "HOT_DRINK", "MANAGER"\]/.test(s), 'role-wide list no longer includes MANAGER (Phase 2.2)');
     assert.ok(s.includes('staff.save()'), 'per-person Staff write preserved');
     assert.ok(!s.includes('cashierPin'), 'no SystemAuth cashier PIN exists or is written');
     assert.ok(!/CASHIER.{0,60}MANAGER|MANAGER.{0,60}CASHIER/.test(s.replace(/never|independent|separate/gi, '')), 'no CASHIER↔MANAGER mapping in reset flow');
+  });
+
+  test('11b. MANAGER PIN reset is personal, never role-wide', () => {
+    // Source contract: the MANAGER branch must take the personal `staff.save()`
+    // path, and only KITCHEN/BARISTA/HOT_DRINK may use `Staff.updateMany`.
+    const s = codeOnly('app/api/manager/staff/route.js');
+    const policy = codeOnly('lib/staffPinPolicy.js');
+    assert.ok(policy.includes('ROLE_WIDE_PIN_ROLES = Object.freeze(["KITCHEN", "BARISTA", "HOT_DRINK"])'), 'only station roles are shared');
+    assert.ok(policy.includes('"WAITER", "CASHIER", "MANAGER"') || policy.includes('"WAITER", "CASHIER", "MANAGER"'), 'MANAGER is listed as personal');
+    assert.ok(s.includes('if (isRoleWidePinRole(targetRole))'), 'role-wide write is gated by policy');
+    assert.ok(s.includes('staff.save()'), 'personal branch saves only the addressed row');
+    assert.ok(s.includes('revokeAllStaffSessions(conn, staffId, "PIN_RESET")'), 'affected staff sessions revoked');
+    assert.ok(s.includes('if (isRoleWidePinRole(targetRole))') && s.includes('revokeRoleSessions(conn, targetRole, "PIN_RESET")'), 'role revocation only for shared station roles');
   });
 
   test('12. WAITER remains username + personal PIN (no shared waiter PIN)', () => {

@@ -41,6 +41,20 @@ const nextConfig = {
         ],
       },
       {
+        // Protected Hotel pages render live, session-specific content. Prevent
+        // browser/CDN caching so a signed-out user cannot reopen an earlier
+        // authenticated page from cache (refresh/back must re-hit the server
+        // layout gate, which is the authority).
+        source: "/hotel/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
+          { key: "Pragma", value: "no-cache" },
+        ],
+      },
+      {
         // Operational APIs must never be cached — active POS state (orders, manager, events, auth).
         // /api/menu is EXCLUDED here on purpose: the menu route OWNS its own Cache-Control so that
         // a real-time (SSE) refresh can respond no-store while normal loads stay public,s-maxage=60.

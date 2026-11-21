@@ -1,5 +1,6 @@
 import PinGuard from "@/app/components/PinGuard";
 import Link from "next/link";
+import { sanitizeInternalRedirect } from "@/lib/safeNavigation";
 
 export const dynamic = "force-dynamic";
 
@@ -7,12 +8,15 @@ function roleFromNext(next) {
   if (next.startsWith("/waiter")) return "WAITER";
   if (next.startsWith("/kds") || next.startsWith("/kitchen")) return "KITCHEN";
   if (next.startsWith("/barista")) return "BARISTA";
+  if (next.startsWith("/jebena")) return "HOT_DRINK";
   return "MANAGER";
 }
 
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams;
-  const next = String(params?.next || "/waiter");
+  // `next` is user-controlled. Only a same-origin internal path may be used as
+  // the post-login destination (prevents /login?next=https://evil open redirect).
+  const next = sanitizeInternalRedirect(params?.next, "/waiter");
   const role = roleFromNext(next);
 
   return (
