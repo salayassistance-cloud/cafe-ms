@@ -594,6 +594,7 @@ export default function StaffManagement() {
                   <input type="password" inputMode="numeric" maxLength={4} value={addForm.confirmPin} onChange={(e) => setAddForm({ ...addForm, confirmPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                 </label>
               </div>
+              <p className="sm:col-span-2 text-[11px] font-medium text-[var(--c-muted)]">Choose a 4-digit PIN (known default PINs such as 1111, 2222, 3333, 4444, 5555 are not permitted in production).</p>
               <div className="sm:col-span-2 flex items-center gap-2">
                 <button type="submit" disabled={addBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{addBusy ? t('staffLoading') : t('staffCreateAccount')}</button>
                 <button type="button" onClick={() => { setShowAdd(false); setAddError(''); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">{t('staffCancel')}</button>
@@ -968,7 +969,7 @@ export default function StaffManagement() {
             <form onSubmit={handlePinReset} className="w-full max-w-md rounded-2xl border border-[var(--c-border-soft)] bg-white dark:bg-[#1C1D24] p-5 shadow-[0_12px_30px_rgba(0,0,0,0.15)]">
               <h3 className="text-base font-black text-[var(--c-text)]">{t('staffResetPin')} {pinTarget.name}</h3>
               <p className="mt-1 text-xs font-medium text-[var(--c-muted)]">
-                {['KITCHEN','BARISTA','HOT_DRINK','MANAGER'].includes(pinTarget.role)
+                {['KITCHEN','BARISTA','HOT_DRINK'].includes(pinTarget.role)
                   ? `${t('staffRolePinNoteA')} ${roleLabel(pinTarget.role)} ${t('staffRolePinNoteB')}`
                   : `${t('staffIndividualPinNoteA')} ${pinTarget.username}. ${t('staffIndividualPinNoteB')}`}
               </p>
@@ -986,6 +987,7 @@ export default function StaffManagement() {
                   <input type="password" inputMode="numeric" maxLength={4} value={pinForm.confirmPin} onChange={(e) => setPinForm({ ...pinForm, confirmPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                 </label>
               </div>
+              <p className="mt-2 text-[11px] font-medium text-[var(--c-muted)]">Choose a 4-digit PIN (known default PINs such as 1111, 2222, 3333, 4444, 5555 are not permitted in production).</p>
               {pinError && <p className="mt-3 text-xs font-semibold text-[#DC2626]">{pinError}</p>}
               <div className="mt-4 flex gap-2">
                 <button type="submit" disabled={pinBusy} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{pinBusy ? t('staffLoading') : t('staffResetPin')}</button>

@@ -53,7 +53,14 @@ async function handler(request) {
 
   const result = await verifyStaffPin(conn, name, pin, role);
   if (!result.ok) {
-    return NextResponse.json({ success: false, message: result.error || "Invalid Name or PIN" }, { status: 401 });
+    return NextResponse.json(
+      {
+        success: false,
+        message: result.error || "Invalid Name or PIN",
+        ...(result.code ? { code: result.code } : {}),
+      },
+      { status: 401 }
+    );
   }
 
   const staff = result.staff;
