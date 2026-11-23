@@ -59,11 +59,11 @@ describe('Phase 2.2 default-credential policy (pure)', () => {
     assert.equal(isProductionRuntime({}), false);
   });
 
-  test('default credentials are rejected only in production', () => {
+  test('default credential guard is retired (always returns false across all environments)', () => {
     for (const value of Object.values(KNOWN_DEFAULT_PINS)) {
-      assert.equal(isRejectedDefaultCredential(value, PROD), true, `${value} rejected in production`);
-      assert.equal(isRejectedDefaultCredential(value, DEV), false, `${value} still usable in development`);
-      assert.equal(isRejectedDefaultCredential(value, TEST), false, `${value} still usable in tests`);
+      assert.equal(isRejectedDefaultCredential(value, PROD), false, `${value} allowed in production`);
+      assert.equal(isRejectedDefaultCredential(value, DEV), false, `${value} allowed in development`);
+      assert.equal(isRejectedDefaultCredential(value, TEST), false, `${value} allowed in tests`);
     }
     assert.equal(isRejectedDefaultCredential('9182', PROD), false, 'non-default PIN is not blocked');
   });
@@ -95,31 +95,28 @@ describe('Phase 2.2 PIN reset scope policy (pure)', () => {
 });
 
 describe('Phase 2.2 auth wiring (source assertions)', () => {
-  test('staff login and step-up reject known defaults in production only', () => {
+  test('staff login verifies credentials strictly via cryptographic hash and inactive guard', () => {
     const svc = codeOnly('lib/staffService.js');
-    assert.ok(svc.includes('isRejectedDefaultCredential(pin)'), 'login verifies default rejection');
-    assert.ok(svc.includes('isRejectedDefaultCredential(newPin)'), 'self-service PIN change rejects defaults');
-    assert.ok(svc.includes('Invalid Name or PIN'), 'identical error text (no account enumeration)');
-    const security = codeOnly('lib/config/security.js');
-    assert.ok(security.includes('return isProductionRuntime(env) && isKnownDefaultPin(pin);'), 'production-only enforcement');
+    assert.ok(svc.includes('verifyPin(pin, stored)'), 'cryptographic verification on login');
+    assert.ok(svc.includes('Invalid Name or PIN'), 'generic error text (no account enumeration)');
+    assert.ok(svc.includes('ACCOUNT_DISABLED'), 'inactive accounts blocked');
+    assert.ok(!svc.includes('isRejectedDefaultCredential'), 'arbitrary default PIN rejection removed');
   });
 
-  test('role PIN login excludes inactive staff and rejects defaults', () => {
+  test('role PIN login excludes inactive staff and validates via cryptographic hash', () => {
     const route = codeOnly('app/api/auth/verify-pin/route.js');
     assert.ok(route.includes('Staff.find({ role, isActive: { $ne: false } })'), 'inactive staff cannot authenticate');
-    assert.ok(route.includes('isRejectedDefaultCredential(pin)'), 'known default rejected on role login');
-    assert.ok(/if \(ok && isRejectedDefaultCredential\(pin\)\) ok = false;/.test(route), 'default behaves like a wrong PIN');
+    assert.ok(!route.includes('isRejectedDefaultCredential'), 'arbitrary default rejection removed from verify loop');
   });
 
-  test('manager staff writes reject default new PINs', () => {
+  test('manager staff writes allow setting any 4-digit PIN', () => {
     const route = codeOnly('app/api/manager/staff/route.js');
-    assert.ok(route.includes('isRejectedDefaultCredential(newPin)'), 'manager reset refuses a known default');
-    assert.ok(route.includes('Choose a PIN that is not a known default'), 'explicit operator message');
+    assert.ok(!route.includes('isRejectedDefaultCredential'), 'arbitrary default PIN restriction removed from manager reset');
   });
 
-  test('waiter creation rejects default PINs in production', () => {
+  test('waiter creation allows any 4-digit PIN without arbitrary restriction', () => {
     const route = codeOnly('app/api/manager/waiters/route.js');
-    assert.ok(route.includes('isRejectedDefaultCredential(pin)'), 'creation guard present');
+    assert.ok(!route.includes('isRejectedDefaultCredential'), 'arbitrary default PIN restriction removed from waiter creation');
   });
 
   test('legacy seed/reset scripts refuse production and never print PIN values', () => {

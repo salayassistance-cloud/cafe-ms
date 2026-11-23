@@ -28,7 +28,6 @@ import {
   HOTEL_SESSION_COOKIE_OPTS,
 } from "@/lib/hotel/auth/cookies";
 import {
-  getHotelUserModel,
   toSafeHotelUser,
 } from "@/lib/hotel/models/hotelUser";
 import {
@@ -127,10 +126,9 @@ async function handler(request) {
     request,
   });
 
-  await resetHotelPinFailures(connection, result.user._id).catch(() => {});
-  await getHotelUserModel(connection)
-    .updateOne({ _id: result.user._id }, { $set: { lastLoginAt: new Date() } })
-    .catch(() => {});
+  await resetHotelPinFailures(connection, result.user._id, {
+    additionalSet: { lastLoginAt: new Date() },
+  }).catch(() => {});
   await safeRecordHotelAudit(connection, {
     action: HOTEL_AUDIT_ACTIONS.AUTH_LOGIN_SUCCEEDED,
     outcome: "SUCCESS",

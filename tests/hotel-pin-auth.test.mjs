@@ -135,8 +135,9 @@ describe("Login rate limiting and account lockout", () => {
     resetHotelRateLimitStore();
   });
 
-  test("reads only the trusted platform IP; spoofed forwarding headers are ignored", () => {
-    const request = {
+  test("extracts trusted client IP from platform (Netlify) and reverse-proxy (Render) headers", () => {
+    // 1. Netlify platform header takes precedence
+    const netlifyRequest = {
       headers: {
         get: (name) => {
           if (String(name).toLowerCase() === "x-nf-client-connection-ip") return "203.0.113.7";
@@ -146,9 +147,10 @@ describe("Login rate limiting and account lockout", () => {
         },
       },
     };
-    assert.equal(hotelClientIp(request), "203.0.113.7");
+    assert.equal(hotelClientIp(netlifyRequest), "203.0.113.7");
 
-    const spoofed = {
+    // 2. Render reverse-proxy: x-forwarded-for (takes leftmost client IP)
+    const renderFwdRequest = {
       headers: {
         get: (name) =>
           String(name).toLowerCase() === "x-forwarded-for"
@@ -156,13 +158,30 @@ describe("Login rate limiting and account lockout", () => {
             : null,
       },
     };
-    assert.equal(hotelClientIp(spoofed), null);
-    // Fail-closed fallback: requests without a trusted IP share a bounded
-    // bucket instead of bypassing throttling.
+    assert.equal(hotelClientIp(renderFwdRequest), "203.0.113.7");
+
+    // 3. Render reverse-proxy: x-real-ip fallback
+    const renderRealRequest = {
+      headers: {
+        get: (name) =>
+          String(name).toLowerCase() === "x-real-ip" ? "198.51.100.2" : null,
+      },
+    };
+    assert.equal(hotelClientIp(renderRealRequest), "198.51.100.2");
+
+    // 4. Fail-closed fallback: requests without a trusted proxy IP return null
+    // and share a bounded bucket instead of bypassing throttling.
+    const untrustedRequest = {
+      headers: {
+        get: () => null,
+      },
+    };
+    assert.equal(hotelClientIp(untrustedRequest), null);
+
     resetHotelRateLimitStore();
     for (let i = 0; i < HOTEL_RATE_LIMITS.LOGIN.untrustedLimit; i += 1) {
       assert.equal(
-        checkHotelRateLimit(spoofed, {
+        checkHotelRateLimit(untrustedRequest, {
           key: "hotel_auth_login",
           ...HOTEL_RATE_LIMITS.LOGIN,
           now: 2000,
@@ -171,7 +190,7 @@ describe("Login rate limiting and account lockout", () => {
       );
     }
     assert.equal(
-      checkHotelRateLimit(spoofed, {
+      checkHotelRateLimit(untrustedRequest, {
         key: "hotel_auth_login",
         ...HOTEL_RATE_LIMITS.LOGIN,
         now: 2000,

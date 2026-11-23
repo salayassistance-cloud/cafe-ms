@@ -8,7 +8,6 @@ import { validatePin, validateObjectId, sanitizeName } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
 import { ok, fail } from "@/lib/apiResponse";
 import { requireAuth } from "@/lib/security";
-import { isRejectedDefaultCredential } from "@/lib/config/security";
 import { isRoleWidePinRole } from "@/lib/staffPinPolicy";
 
 export const dynamic = "force-dynamic";
@@ -238,10 +237,6 @@ async function handler(request) {
   }
   if (!newPin) {
     return NextResponse.json({ success: false, message: "newPin must be 4 digits" }, { status: 400 });
-  }
-  // Phase 2.2: a production PIN reset must not reintroduce a known default.
-  if (isRejectedDefaultCredential(newPin)) {
-    return NextResponse.json({ success: false, message: "Choose a PIN that is not a known default" }, { status: 400 });
   }
 
   // Verify manager session via the canonical resolver (AUTH-ARCH-4):

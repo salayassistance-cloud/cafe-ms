@@ -26,23 +26,17 @@ const DEV_ENV = { NODE_ENV: "development" };
 const TEST_ENV = { NODE_ENV: "test" };
 
 describe("Staff Authentication — Production Policy and Default PIN Protections", () => {
-  test("all 5 documented default PINs are strictly banned in production", () => {
+  test("documented default PINs are recognized for identification but not arbitrarily blocked", () => {
     const defaults = ["1111", "2222", "3333", "4444", "5555"];
     for (const pin of defaults) {
       assert.equal(isKnownDefaultPin(pin), true, `${pin} must be recognized as default`);
-      assert.equal(isRejectedDefaultCredential(pin, PROD_ENV), true, `${pin} must be rejected in production`);
-    }
-  });
-
-  test("default PINs are allowed in development and testing environments", () => {
-    const defaults = ["1111", "2222", "3333", "4444", "5555"];
-    for (const pin of defaults) {
+      assert.equal(isRejectedDefaultCredential(pin, PROD_ENV), false, `${pin} must not be rejected in production`);
       assert.equal(isRejectedDefaultCredential(pin, DEV_ENV), false, `${pin} usable in dev`);
       assert.equal(isRejectedDefaultCredential(pin, TEST_ENV), false, `${pin} usable in test`);
     }
   });
 
-  test("non-default PINs are not rejected by the production default-credential guard", () => {
+  test("non-default PINs are not rejected by the credential policy", () => {
     const nonDefaults = ["7391", "8245", "9182", "5629", "1357"];
     for (const pin of nonDefaults) {
       assert.equal(isKnownDefaultPin(pin), false, `${pin} must not be known default`);
@@ -168,5 +162,22 @@ describe("Staff Verification and Account Status Enforcement", () => {
     const res = await verifyStaffPin(conn, "Desta", "7391", "WAITER");
     assert.equal(res.ok, true);
     assert.equal(res.staff.name, "Desta");
+  });
+
+  test("active account with matching hash authenticates successfully even for historical default PINs", async () => {
+    for (const pin of ["1111", "2222", "3333", "4444", "5555"]) {
+      const activeStaff = {
+        _id: "660000000000000000000004",
+        name: "Abebe",
+        username: "abebe",
+        role: "WAITER",
+        pinHash: hashPin(pin),
+        isActive: true,
+      };
+      const conn = createStubConnection([activeStaff]);
+      const res = await verifyStaffPin(conn, "Abebe", pin, "WAITER");
+      assert.equal(res.ok, true, `PIN ${pin} authenticates when hash matches`);
+      assert.equal(res.staff.name, "Abebe");
+    }
   });
 });

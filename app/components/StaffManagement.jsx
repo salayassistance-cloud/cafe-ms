@@ -594,7 +594,7 @@ export default function StaffManagement() {
                   <input type="password" inputMode="numeric" maxLength={4} value={addForm.confirmPin} onChange={(e) => setAddForm({ ...addForm, confirmPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                 </label>
               </div>
-              <p className="sm:col-span-2 text-[11px] font-medium text-[var(--c-muted)]">Choose a 4-digit PIN (known default PINs such as 1111, 2222, 3333, 4444, 5555 are not permitted in production).</p>
+              <p className="sm:col-span-2 text-[11px] font-medium text-[var(--c-muted)]">Choose a 4-digit numeric PIN.</p>
               <div className="sm:col-span-2 flex items-center gap-2">
                 <button type="submit" disabled={addBusy} className="inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{addBusy ? t('staffLoading') : t('staffCreateAccount')}</button>
                 <button type="button" onClick={() => { setShowAdd(false); setAddError(''); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-4 text-xs font-bold text-[var(--c-muted)]">{t('staffCancel')}</button>
@@ -987,7 +987,7 @@ export default function StaffManagement() {
                   <input type="password" inputMode="numeric" maxLength={4} value={pinForm.confirmPin} onChange={(e) => setPinForm({ ...pinForm, confirmPin: e.target.value })} placeholder="••••" className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30" />
                 </label>
               </div>
-              <p className="mt-2 text-[11px] font-medium text-[var(--c-muted)]">Choose a 4-digit PIN (known default PINs such as 1111, 2222, 3333, 4444, 5555 are not permitted in production).</p>
+              <p className="mt-2 text-[11px] font-medium text-[var(--c-muted)]">Choose a 4-digit numeric PIN.</p>
               {pinError && <p className="mt-3 text-xs font-semibold text-[#DC2626]">{pinError}</p>}
               <div className="mt-4 flex gap-2">
                 <button type="submit" disabled={pinBusy} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl bg-[var(--c-accent)] px-4 text-xs font-black uppercase tracking-wide text-[#1E293B] dark:text-white shadow-sm disabled:opacity-50">{pinBusy ? t('staffLoading') : t('staffResetPin')}</button>

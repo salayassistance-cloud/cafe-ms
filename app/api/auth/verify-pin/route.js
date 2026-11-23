@@ -5,7 +5,6 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validatePin, validateRole } from "@/lib/validate";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
-import { isRejectedDefaultCredential } from "@/lib/config/security";
 
 export const dynamic = "force-dynamic";
 
@@ -123,9 +122,6 @@ async function handler(request) {
       let ok = false;
       if (isHashedPin(s.pinHash)) ok = cachedVerifyPin(pin, s.pinHash);
       else ok = String(s.pinHash) === String(pin);
-      // Phase 2.2: a correct but known default PIN is rejected in production,
-      // exactly like a wrong PIN (no account-enumeration signal).
-      if (ok && isRejectedDefaultCredential(pin)) ok = false;
       if (ok) {
         staffPayload = { role, staffId: String(s._id), name: s.name, staffName: s.name };
         break;

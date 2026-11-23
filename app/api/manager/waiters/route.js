@@ -6,7 +6,6 @@ import { requireAuth } from "@/lib/security";
 import { sanitizeName, validatePin } from "@/lib/validate";
 import { hashPin } from "@/lib/pinCrypto";
 import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit";
-import { isRejectedDefaultCredential } from "@/lib/config/security";
 
 export const dynamic = "force-dynamic";
 
@@ -108,8 +107,6 @@ async function postHandler(request) {
     const username = usernameRaw.toLowerCase();
     const pin = validatePin(rawPin);
     if (!pin) return fail("PIN must be exactly 4 digits", 400);
-    // Phase 2.2: never create a production account on a publicly known default.
-    if (isRejectedDefaultCredential(pin)) return fail("Choose a PIN that is not a known default", 400);
     const confirm = String(rawConfirm || "").trim();
     if (pin !== confirm) return fail("PIN and Confirm PIN do not match", 400);
 
