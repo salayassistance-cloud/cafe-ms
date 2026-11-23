@@ -21,6 +21,7 @@
 
 import process from "node:process";
 import readline from "node:readline";
+import { pathToFileURL } from "node:url";
 
 const PIN_ENV = "HOTEL_RESET_MANAGER_PIN";
 const PIN_RE = /^\d{4}$/;
@@ -379,7 +380,11 @@ export async function runHotelResetManagerPinCli(argv = process.argv.slice(2), d
 }
 
 // Auto-run when executed directly
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
+const isDirectRun =
+  typeof process.argv[1] === "string" &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
   const code = await runHotelResetManagerPinCli();
   process.exit(code);
 }
