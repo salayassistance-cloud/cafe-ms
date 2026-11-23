@@ -21,18 +21,42 @@
 
 import process from "node:process";
 import readline from "node:readline";
+import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const PIN_ENV = "HOTEL_RESET_MANAGER_PIN";
 const PIN_RE = /^\d{4}$/;
 
+export function isPredictablePin(pin) {
+  const s = String(pin || "");
+  if (!/^\d{4}$/.test(s)) return true;
+  if (/^(\d)\1{3}$/.test(s)) return true; // 1111, 2222, etc.
+  const predictable = [
+    "0123", "1234", "2345", "3456", "4567", "5678", "6789",
+    "9876", "8765", "7654", "6543", "5432", "4321", "3210",
+    "7391", "1111", "2222", "3333", "4444", "5555", "1212", "6969", "2580"
+  ];
+  return predictable.includes(s);
+}
+
+export function generateSecureRandomPin() {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const pin = String(crypto.randomInt(1000, 10000));
+    if (!isPredictablePin(pin)) {
+      return pin;
+    }
+  }
+  return "8462";
+}
+
 const USAGE = `Usage:
   node --env-file=.env.local scripts/hotel-reset-manager-pin.mjs \\
-    [--email <email>] [--dry-run] --confirm
+    [--email <email>] [--generate-pin] [--dry-run] --confirm
 
 Options:
   --email <email>     Target Hotel Manager email (case-insensitive).
                       If omitted and only one Manager exists, targets that Manager.
+  --generate-pin      Generate a cryptographically secure random non-predictable 4-digit PIN.
   --dry-run           Inspect target, validate PIN format and scrypt hash preview
                       without performing any database writes.
   --confirm           Explicit confirmation required to write PIN update to database.
@@ -54,6 +78,7 @@ export function parseResetManagerPinArgs(argv = []) {
     email: "",
     confirm: false,
     dryRun: false,
+    generatePin: false,
     help: false,
   };
 
@@ -79,6 +104,10 @@ export function parseResetManagerPinArgs(argv = []) {
     }
     if (arg === "--dry-run") {
       parsed.dryRun = true;
+      continue;
+    }
+    if (arg === "--generate-pin") {
+      parsed.generatePin = true;
       continue;
     }
     if (arg === "--email" || arg.startsWith("--email=")) {
@@ -281,13 +310,15 @@ export async function runHotelResetManagerPinCli(argv = process.argv.slice(2), d
     // Resolve and validate PIN
     let validated = null;
     let newHash = null;
-    const canPromptOrReadPin = deps.resolvePin || process.env[PIN_ENV] || process.stdin.isTTY;
-    if (canPromptOrReadPin) {
-      const rawPin = deps.resolvePin ? await deps.resolvePin() : await resolvePin();
-      validated = validateResetManagerPinInput({ email: manager.email, pin: rawPin });
-      if (!isValidHotelPin(validated.pin)) {
-        throw new CliError("PIN must be exactly 4 digits");
+    let generatedPinValue = null;
+
+    if (parsed.generatePin) {
+      const generated = generateSecureRandomPin();
+      validated = validateResetManagerPinInput({ email: manager.email, pin: generated });
+      if (!isValidHotelPin(validated.pin) || isPredictablePin(validated.pin)) {
+        throw new CliError("Generated PIN failed security validation");
       }
+      generatedPinValue = validated.pin;
       newHash = hashHotelPin(validated.pin);
       if (!isHashedHotelPin(newHash)) {
         throw new CliError("Generated PIN hash failed format verification");
@@ -295,11 +326,32 @@ export async function runHotelResetManagerPinCli(argv = process.argv.slice(2), d
       if (!verifyHotelPin(validated.pin, newHash)) {
         throw new CliError("Cryptographic roundtrip verification failed");
       }
-    } else if (parsed.dryRun) {
-      // Non-interactive dry run preview: verify scrypt implementation with sample verification
-      newHash = hashHotelPin("0000");
     } else {
-      throw new CliError(`Set ${PIN_ENV} environment variable or run in an interactive terminal.`);
+      const canPromptOrReadPin = deps.resolvePin || process.env[PIN_ENV] || process.stdin.isTTY;
+      if (canPromptOrReadPin) {
+        const rawPin = deps.resolvePin ? await deps.resolvePin() : await resolvePin();
+        validated = validateResetManagerPinInput({ email: manager.email, pin: rawPin });
+        if (!isValidHotelPin(validated.pin)) {
+          throw new CliError("PIN must be exactly 4 digits");
+        }
+        if (isPredictablePin(validated.pin)) {
+          throw new CliError("PIN is too predictable. Choose a non-sequential, non-repeating PIN.");
+        }
+        newHash = hashHotelPin(validated.pin);
+        if (!isHashedHotelPin(newHash)) {
+          throw new CliError("Generated PIN hash failed format verification");
+        }
+        if (!verifyHotelPin(validated.pin, newHash)) {
+          throw new CliError("Cryptographic roundtrip verification failed");
+        }
+      } else if (parsed.dryRun) {
+        // Non-interactive dry run preview: verify scrypt implementation with sample verification
+        newHash = hashHotelPin("0000");
+      } else {
+        throw new CliError(
+          `Set ${PIN_ENV} environment variable, pass --generate-pin, or run in an interactive terminal.`
+        );
+      }
     }
 
     const activeSessionsCount = await HotelSession.countDocuments({
@@ -318,7 +370,15 @@ export async function runHotelResetManagerPinCli(argv = process.argv.slice(2), d
       console.log(`Active Sessions:         ${activeSessionsCount} (would be revoked)`);
       console.log(`Lockout State:           ${manager.pinLockedUntil ? "LOCKED" : "CLEAR"}`);
       console.log(`Failed Attempts:         ${manager.pinFailedAttempts || 0}`);
-      console.log(`PIN Validation:          ${validated ? "4 digits (VALID)" : "SKIPPED (non-interactive preview)"}`);
+      console.log(
+        `PIN Validation:          ${
+          validated
+            ? generatedPinValue
+              ? "CSPRNG 4 digits (VALID)"
+              : "4 digits (VALID)"
+            : "SKIPPED (non-interactive preview)"
+        }`
+      );
       console.log("Hash Algorithm:          scrypt MCF (VERIFIED)");
       console.log("Database Modifications:  NONE (Dry Run mode)");
       console.log("=========================================");
@@ -357,6 +417,7 @@ export async function runHotelResetManagerPinCli(argv = process.argv.slice(2), d
       metadata: {
         resetVia: "OPERATOR_CLI",
         revokedSessions: revokedCount,
+        pinGenerated: Boolean(generatedPinValue),
       },
     }).catch(() => {});
 
@@ -366,9 +427,13 @@ export async function runHotelResetManagerPinCli(argv = process.argv.slice(2), d
     console.log(
       `[hotel:reset-pin] Revoked ${revokedCount} active session(s). Audit record created.`
     );
-    console.log(
-      "[hotel:reset-pin] Database updated. No credential value was printed."
-    );
+    if (generatedPinValue) {
+      console.log(`[hotel:reset-pin] NEW_HOTEL_MANAGER_PIN: ${generatedPinValue}`);
+    } else {
+      console.log(
+        "[hotel:reset-pin] Database updated. No credential value was printed."
+      );
+    }
 
     if (connection?.close) await connection.close().catch(() => {});
     return 0;

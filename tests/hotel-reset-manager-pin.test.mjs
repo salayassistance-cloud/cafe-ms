@@ -4,20 +4,24 @@ import {
   parseResetManagerPinArgs,
   validateResetManagerPinInput,
   runHotelResetManagerPinCli,
+  isPredictablePin,
+  generateSecureRandomPin,
   CliError,
 } from "../scripts/hotel-reset-manager-pin.mjs";
 import { hashHotelPin, isHashedHotelPin, verifyHotelPin } from "../lib/hotel/auth/pin.js";
 
 describe("Hotel Manager Reset PIN CLI — Pure Argument & Input Validation", () => {
-  test("parses --email, --dry-run, --confirm, and --help", () => {
+  test("parses --email, --dry-run, --confirm, --generate-pin, and --help", () => {
     const parsed = parseResetManagerPinArgs([
       "--email",
       "manager@example.com",
       "--dry-run",
+      "--generate-pin",
     ]);
     assert.equal(parsed.email, "manager@example.com");
     assert.equal(parsed.dryRun, true);
     assert.equal(parsed.confirm, false);
+    assert.equal(parsed.generatePin, true);
     assert.equal(parsed.help, false);
 
     const parsedConfirm = parseResetManagerPinArgs([
@@ -27,6 +31,7 @@ describe("Hotel Manager Reset PIN CLI — Pure Argument & Input Validation", () 
     assert.equal(parsedConfirm.email, "manager@example.com");
     assert.equal(parsedConfirm.confirm, true);
     assert.equal(parsedConfirm.dryRun, false);
+    assert.equal(parsedConfirm.generatePin, false);
   });
 
   test("rejects --pin argument to prevent secret exposure in process listings", () => {
@@ -214,5 +219,50 @@ describe("Hotel Manager Reset PIN CLI — Execution Workflow", () => {
     assert.equal(results.auditRecord.entityType, "HotelUser");
     assert.equal(results.auditRecord.outcome, "SUCCESS");
     assert.equal(results.connectionClosed, true);
+  });
+
+  test("confirmed execution with --generate-pin creates random non-predictable PIN and hashes it", async () => {
+    const { deps, getResults } = createMockDeps();
+    const code = await runHotelResetManagerPinCli(
+      ["--email", "manager@bonohotel.com", "--generate-pin", "--confirm"],
+      deps
+    );
+    assert.equal(code, 0);
+    const results = getResults();
+    assert.ok(results.updateOneCalled, "HotelUser updateOne was called");
+    assert.equal(results.updateOneCalled.filter._id, "661111111111111111111111");
+    assert.equal(results.updateOneCalled.update.$set.pinFailedAttempts, 0);
+    assert.equal(results.updateOneCalled.update.$set.pinLockedUntil, null);
+    assert.ok(results.updateOneCalled.update.$set.pinSetAt instanceof Date);
+    assert.ok(isHashedHotelPin(results.updateOneCalled.update.$set.pinHash));
+    assert.equal(results.revokedUserId.userId, "661111111111111111111111");
+    assert.equal(results.auditRecord.action, "STAFF_PIN_RESET");
+    assert.equal(results.auditRecord.metadata.pinGenerated, true);
+    assert.equal(results.connectionClosed, true);
+  });
+});
+
+describe("Hotel Manager Reset PIN CLI — CSPRNG PIN Security", () => {
+  test("identifies predictable PINs (repeating, sequential, known defaults)", () => {
+    assert.equal(isPredictablePin("1111"), true);
+    assert.equal(isPredictablePin("2222"), true);
+    assert.equal(isPredictablePin("1234"), true);
+    assert.equal(isPredictablePin("4321"), true);
+    assert.equal(isPredictablePin("7391"), true);
+    assert.equal(isPredictablePin("0123"), true);
+    assert.equal(isPredictablePin("12"), true);
+    assert.equal(isPredictablePin("abcd"), true);
+
+    assert.equal(isPredictablePin("8462"), false);
+    assert.equal(isPredictablePin("9274"), false);
+    assert.equal(isPredictablePin("5813"), false);
+  });
+
+  test("generateSecureRandomPin returns valid non-predictable 4-digit PIN", () => {
+    for (let i = 0; i < 20; i += 1) {
+      const pin = generateSecureRandomPin();
+      assert.match(pin, /^\d{4}$/);
+      assert.equal(isPredictablePin(pin), false);
+    }
   });
 });
