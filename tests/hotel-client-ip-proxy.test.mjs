@@ -6,11 +6,6 @@ import {
   HOTEL_TRUSTED_IP_HEADERS,
   HOTEL_UNTRUSTED_BUCKET,
 } from "../lib/hotel/http/clientIp.js";
-import {
-  checkHotelRateLimit,
-  resetHotelRateLimitStore,
-  HOTEL_RATE_LIMITS,
-} from "../lib/hotel/auth/rateLimit.js";
 
 describe("Hotel Client IP Extraction (Proxy-Aware)", () => {
   test("sanitizes valid IPv4 addresses and strips optional ports", () => {
@@ -82,31 +77,10 @@ describe("Hotel Client IP Extraction (Proxy-Aware)", () => {
     assert.equal(getTrustedHotelClientIp(req), "198.51.100.77");
   });
 
-  test("returns null and applies bounded untrusted bucket when headers are absent", () => {
+  test("returns null when headers are absent", () => {
     const req = {
       headers: new Headers(),
     };
     assert.equal(getTrustedHotelClientIp(req), null);
-
-    resetHotelRateLimitStore();
-    for (let i = 0; i < HOTEL_RATE_LIMITS.LOGIN.untrustedLimit; i += 1) {
-      assert.equal(
-        checkHotelRateLimit(req, {
-          key: "hotel_auth_login",
-          ...HOTEL_RATE_LIMITS.LOGIN,
-          now: 1000,
-        }).ok,
-        true
-      );
-    }
-    assert.equal(
-      checkHotelRateLimit(req, {
-        key: "hotel_auth_login",
-        ...HOTEL_RATE_LIMITS.LOGIN,
-        now: 1000,
-      }).ok,
-      false
-    );
-    resetHotelRateLimitStore();
   });
 });

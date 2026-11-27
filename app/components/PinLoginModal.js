@@ -14,6 +14,7 @@ import {
   IconDashboardFilled,
   IconBookFilled,
   IconCashRegister,
+  IconDoor,
 } from "@tabler/icons-react";
 
 export default function PinLoginModal({ open, portal, onClose }) {
@@ -124,6 +125,7 @@ export default function PinLoginModal({ open, portal, onClose }) {
       MANAGER: <IconDashboardFilled {...props} className="h-7 w-7" />,
       MENU: <IconBookFilled {...props} className="h-7 w-7" />,
       CASHIER: <IconCashRegister {...props} className="h-7 w-7" />,
+      RECEPTION: <IconDoor {...props} className="h-7 w-7" />,
     };
     if (portal.icon) {
       if (typeof portal.icon === "string") return map[portal.role] || portal.icon;

@@ -46,6 +46,8 @@ export function PortalIcon({ role }) {
       return <IconDashboardFilled {...ICON_PROPS} />;
     case "CASHIER":
       return <IconCashRegister {...ICON_PROPS} />;
+    case "RECEPTION":
+      return <IconDoor {...ICON_PROPS} />;
     case "INVENTORY":
       return <IconArchiveFilled {...ICON_PROPS} />;
     case "STAFF":
@@ -133,6 +135,66 @@ export const ROOM_PORTALS = [
     titleKey: "roomReportsPortal",
     subtitleKey: "roomReportsDesc",
     route: "/hotel/reports",
+  },
+];
+
+// Unified seven staff portals for the main homepage.
+export const UNIFIED_PORTALS = [
+  {
+    role: "MANAGER",
+    titleKey: "managerPortal",
+    subtitleKey: "managerDesc",
+    route: "/manager/reports",
+    fallbackTitle: "Manager Reports",
+    fallbackDesc: "Sales & analytics",
+  },
+  {
+    role: "CASHIER",
+    titleKey: "cashierPortal",
+    subtitleKey: "cashierDesc",
+    route: "/cashier",
+    fallbackTitle: "Cashier Portal",
+    fallbackDesc: "Billing & payments",
+  },
+  {
+    role: "RECEPTION",
+    titleKey: "receptionPortal",
+    subtitleKey: "receptionDesc",
+    route: "/hotel/reception",
+    fallbackTitle: "Reception",
+    fallbackDesc: "Reservations & check-in",
+  },
+  {
+    role: "WAITER",
+    titleKey: "waiterPortal",
+    subtitleKey: "waiterDesc",
+    route: "/waiter",
+    fallbackTitle: "Waiter Portal",
+    fallbackDesc: "Order entry & payments",
+  },
+  {
+    role: "KITCHEN",
+    titleKey: "kitchenPortal",
+    subtitleKey: "kitchenDesc",
+    route: "/kds",
+    fallbackTitle: "Kitchen Display",
+    fallbackDesc: "Live prep board",
+  },
+  {
+    role: "BARISTA",
+    titleKey: "baristaPortal",
+    subtitleKey: "baristaDesc",
+    route: "/barista",
+    fallbackTitle: "Barista Display",
+    fallbackDesc: "Drinks prep board",
+  },
+  {
+    role: "HOT_DRINK",
+    titleKey: "hotDrinkPortal",
+    subtitleKey: "hotDrinkDesc",
+    route: "/jebena",
+    fallbackTitle: "JEBENA BUNA",
+    fallbackDesc: "Coffee & hot drinks board",
   },
 ];
 

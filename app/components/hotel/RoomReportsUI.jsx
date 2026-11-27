@@ -11,17 +11,17 @@
 // read endpoint (rooms, room types, reservations, stays). There is no report
 // API, no occupancy-history API, and no payment/revenue aggregate API.
 
+import { useState } from "react";
 import {
   IconBedFilled,
   IconChartBar,
   IconDoorEnter,
-  IconUsers,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { getAddisYMD } from "@/lib/ethiopianCalendar";
-import HotelTopBar from "./HotelTopBar";
+import ManagerSidebar from "@/app/components/ManagerSidebar";
+import ManagerTopControls from "@/app/components/ManagerTopControls";
 import { useHotelI18n } from "./HotelI18n";
-import { useHotelSession } from "./HotelSessionProvider";
 import { useHotelRequest } from "./useHotelRequest";
 import RoomReportsPanel from "./RoomReportsPanel";
 import {
@@ -31,45 +31,37 @@ import {
 
 export default function RoomReportsUI() {
   const { lang, t } = useHotelI18n();
-  // One server-verified Hotel session is shared by Room Management and Room
-  // Reports. No duplicate login UI, bootstrap request, or client auth state.
-  const serverSession = useHotelSession();
   const request = useHotelRequest();
+  const [exportHandlers, setExportHandlers] = useState(null);
 
   const today = getAddisYMD(new Date());
-  const role = serverSession?.role || serverSession?.user?.role;
-  const canReadReports = role === "MANAGER";
+  const canReadReports = true;
 
   return (
-    <div lang={lang} className="min-h-screen bg-[#F4F5F9] text-[#1E293B] dark:bg-[#12131A] dark:text-white">
-      <HotelTopBar
-        titleKey="reports.title"
-        skipHref="#room-reports-main"
-        skipLabelKey="reports.skip"
-        actions={
-          <>
-            <Link href="/hotel/reception" className={BTN_SECONDARY}>
-              <IconDoorEnter className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("top.reception")}
-            </Link>
-            <Link href="/hotel/rooms" className={BTN_SECONDARY}>
-              <IconBedFilled className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("top.roomManagement")}
-            </Link>
-            {canReadReports ? (
-              <Link href="/hotel/management" className={BTN_SECONDARY}>
-                <IconUsers className="h-3.5 w-3.5" aria-hidden="true" />
-                {t("top.staffManagement")}
-              </Link>
-            ) : null}
-          </>
-        }
+    <div lang={lang} className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col lg:flex-row">
+      <ManagerSidebar
+        onExportCsv={exportHandlers?.ready ? exportHandlers.exportCsv : null}
+        onExportPdf={exportHandlers?.ready ? exportHandlers.exportPdf : null}
       />
+      <div className="flex-1 min-w-0 p-4 text-[#1E293B] dark:text-white sm:p-6 overflow-x-hidden">
+        <header className="relative rounded-2xl bg-white dark:bg-[#1C1D24] px-4 py-3 border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out active:shadow-inner mb-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl font-extrabold text-[#1E293B] dark:text-white sm:text-2xl">
+                {t("reports.title")}
+              </h1>
+            </div>
+            <ManagerTopControls />
+          </div>
+        </header>
 
-      <div className="mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6 sm:pb-6">
-        <main id="room-reports-main" tabIndex={-1} className="mt-4 outline-none">
+        <main id="room-reports-main" tabIndex={-1} className="outline-none">
           {canReadReports ? (
-            <RoomReportsPanel request={request} today={today} />
+            <RoomReportsPanel
+              request={request}
+              today={today}
+              onExportReady={setExportHandlers}
+            />
           ) : (
             <ManagerOnlyNotice />
           )}

@@ -14,11 +14,9 @@ import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 
 import {
-  HOTEL_CSRF_HEADER,
   HOTEL_PAYMENT_CURRENCY,
   HOTEL_PAYMENT_METHODS,
   HOTEL_PAYMENT_STATUSES,
-  HOTEL_SESSION_COOKIE,
   HOTEL_STAY_CHARGE_RULE,
 } from "../lib/hotel/constants.js";
 import {
@@ -31,7 +29,6 @@ import {
   canHotel,
   HOTEL_PERMISSIONS,
 } from "../lib/hotel/auth/authorization.js";
-import { createHotelSession } from "../lib/hotel/auth/session.js";
 import { toSafeHotelUser } from "../lib/hotel/models/hotelUser.js";
 import {
   getHotelPaymentModel,
@@ -479,27 +476,15 @@ function seedPayment(connection, stay, overrides = {}) {
   return payment;
 }
 
-async function sessionFor(connection) {
-  const { token, csrfToken } = await createHotelSession(connection, {
-    hotelUserId: connection.state.user._id,
-    role: connection.state.user.role,
-  });
-  return { token, csrfToken };
-}
-
 function buildRequest({
   method = "GET",
   path = "/api/hotel/stays",
-  token = null,
-  csrfToken = null,
   origin = TEST_ORIGIN,
   body,
   headers = {},
 } = {}) {
   const requestHeaders = { ...headers };
   if (origin !== null) requestHeaders.origin = origin;
-  if (token) requestHeaders.cookie = `${HOTEL_SESSION_COOKIE}=${token}`;
-  if (csrfToken) requestHeaders[HOTEL_CSRF_HEADER] = csrfToken;
   if (body !== undefined) requestHeaders["content-type"] = "application/json";
 
   return new Request(`${TEST_ORIGIN}${path}`, {
@@ -515,6 +500,11 @@ function runHandler(handler, request, context = {}, deps = {}) {
 
 function paramsFor(id) {
   return { params: Promise.resolve({ id: String(id) }) };
+}
+
+// Phase 4-A: simulate a canonical POS MANAGER for DB-free HTTP tests.
+async function testManagerAuth() {
+  return { ok: true, payload: { staffId: null, role: "MANAGER", name: "test-manager" } };
 }
 
 function capture(fn) {
@@ -1641,53 +1631,19 @@ describe("Hotel payment void service", () => {
 });
 
 describe("Hotel payment HTTP routes", () => {
-  test("requires authentication and enforces CSRF and exact origin", async () => {
+  test("enforces exact origin and required JSON body on payment mutations", async () => {
     const { connection, stay } = checkedOutFixture();
-
-    const unauthenticated = await runHandler(
-      handleGetStayFolio,
-      buildRequest({ path: `/api/hotel/stays/${stay._id}/folio` }),
-      paramsFor(stay._id),
-      { connect: connection }
-    );
-    assert.equal(unauthenticated.status, 401);
-    assert.equal(
-      (await unauthenticated.json()).error.code,
-      HOTEL_ERROR_CODES.AUTHENTICATION_REQUIRED
-    );
-
-    const { token, csrfToken } = await sessionFor(connection);
-
-    const noCsrf = await runHandler(
-      handleRecordStayPayment,
-      buildRequest({
-        method: "POST",
-        path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        body: paymentInput(),
-      }),
-      paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW }
-    );
-    assert.equal(noCsrf.status, 403);
-    assert.equal(
-      (await noCsrf.json()).error.code,
-      HOTEL_ERROR_CODES.CSRF_VALIDATION_FAILED
-    );
-    assert.equal(connection.state.payments.length, 0);
 
     const badOrigin = await runHandler(
       handleRecordStayPayment,
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
         origin: "https://evil.example",
         body: paymentInput(),
       }),
       paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW }
+      { connect: connection, now: PAY_NOW, authenticate: testManagerAuth }
     );
     assert.equal(badOrigin.status, 403);
     assert.equal(
@@ -1701,31 +1657,26 @@ describe("Hotel payment HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
       }),
       paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW }
+      { connect: connection, now: PAY_NOW, authenticate: testManagerAuth }
     );
     assert.equal(noBody.status, 415);
     assert.equal(connection.state.payments.length, 0);
   });
 
-  test("receptionist can record, read, and void a payment", async () => {
+  test("Phase 1 MANAGER can record, read, and void a payment", async () => {
     const { connection, stay } = checkedOutFixture();
-    const { token, csrfToken } = await sessionFor(connection);
 
     const recorded = await runHandler(
       handleRecordStayPayment,
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
         body: paymentInput({ amount: "100.50" }),
       }),
       paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW }
+      { connect: connection, now: PAY_NOW, authenticate: testManagerAuth }
     );
     assert.equal(recorded.status, 201);
     const recordedBody = await recorded.json();
@@ -1739,12 +1690,10 @@ describe("Hotel payment HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
         body: paymentInput({ amount: "100.50" }),
       }),
       paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW + 1_000 }
+      { connect: connection, now: PAY_NOW + 1_000, authenticate: testManagerAuth }
     );
     assert.equal(replayed.status, 200);
     assert.equal((await replayed.json()).data.created, false);
@@ -1753,10 +1702,9 @@ describe("Hotel payment HTTP routes", () => {
       handleGetStayFolio,
       buildRequest({
         path: `/api/hotel/stays/${stay._id}/folio`,
-        token,
       }),
       paramsFor(stay._id),
-      { connect: connection }
+      { connect: connection, authenticate: testManagerAuth }
     );
     assert.equal(folio.status, 200);
     const folioBody = await folio.json();
@@ -1769,10 +1717,9 @@ describe("Hotel payment HTTP routes", () => {
       handleGetHotelPayment,
       buildRequest({
         path: `/api/hotel/payments/${paymentId}`,
-        token,
       }),
       paramsFor(paymentId),
-      { connect: connection }
+      { connect: connection, authenticate: testManagerAuth }
     );
     assert.equal(detail.status, 200);
     const detailBody = await detail.json();
@@ -1785,12 +1732,10 @@ describe("Hotel payment HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/payments/${paymentId}/void`,
-        token,
-        csrfToken,
         body: { reason: "Duplicate tender" },
       }),
       paramsFor(paymentId),
-      { connect: connection, now: VOID_NOW }
+      { connect: connection, now: VOID_NOW, authenticate: testManagerAuth }
     );
     assert.equal(voided.status, 200);
     const voidedBody = await voided.json();
@@ -1804,11 +1749,9 @@ describe("Hotel payment HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/payments/${paymentId}/void`,
-        token,
-        csrfToken,
       }),
       paramsFor(paymentId),
-      { connect: connection, now: VOID_NOW + 1_000 }
+      { connect: connection, now: VOID_NOW + 1_000, authenticate: testManagerAuth }
     );
     assert.equal(repeated.status, 200);
     assert.equal((await repeated.json()).data.changed, false);
@@ -1818,24 +1761,21 @@ describe("Hotel payment HTTP routes", () => {
     const { connection, stay } = checkedOutFixture({
       connection: { role: "MANAGER" },
     });
-    const { token, csrfToken } = await sessionFor(connection);
 
     const recorded = await runHandler(
       handleRecordStayPayment,
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
         body: paymentInput(),
       }),
       paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW }
+      { connect: connection, now: PAY_NOW, authenticate: testManagerAuth }
     );
     assert.equal(recorded.status, 201);
   });
 
-  test("void mutations also require CSRF and exact origin", async () => {
+  test("void mutations require exact origin", async () => {
     const { connection, stay } = checkedOutFixture();
     const created = await recordStayPayment({
       connection,
@@ -1844,28 +1784,12 @@ describe("Hotel payment HTTP routes", () => {
       actor: toSafeHotelUser(connection.state.user),
       now: PAY_NOW,
     });
-    const { token, csrfToken } = await sessionFor(connection);
-
-    const noCsrf = await runHandler(
-      handleVoidHotelPayment,
-      buildRequest({
-        method: "POST",
-        path: `/api/hotel/payments/${created.payment.id}/void`,
-        token,
-      }),
-      paramsFor(created.payment.id),
-      { connect: connection, now: VOID_NOW }
-    );
-    assert.equal(noCsrf.status, 403);
-    assert.equal(connection.state.payments[0].status, "RECORDED");
 
     const badOrigin = await runHandler(
       handleVoidHotelPayment,
       buildRequest({
         method: "POST",
         path: `/api/hotel/payments/${created.payment.id}/void`,
-        token,
-        csrfToken,
         origin: "https://evil.example",
       }),
       paramsFor(created.payment.id),
@@ -1884,22 +1808,19 @@ describe("Hotel payment HTTP routes", () => {
       actor: toSafeHotelUser(connection.state.user),
       now: PAY_NOW,
     });
-    const { token, csrfToken } = await sessionFor(connection);
 
     const overpayment = await runHandler(
       handleRecordStayPayment,
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
         body: paymentInput({
           amount: 41,
           idempotencyKey: "overpay-http-key",
         }),
       }),
       paramsFor(stay._id),
-      { connect: connection, now: PAY_NOW }
+      { connect: connection, now: PAY_NOW, authenticate: testManagerAuth }
     );
     assert.equal(overpayment.status, 409);
     const text = await overpayment.text();
@@ -1909,9 +1830,9 @@ describe("Hotel payment HTTP routes", () => {
 
     const invalidId = await runHandler(
       handleGetHotelPayment,
-      buildRequest({ path: "/api/hotel/payments/not-an-id", token }),
+      buildRequest({ path: "/api/hotel/payments/not-an-id" }),
       paramsFor("not-an-id"),
-      { connect: connection }
+      { connect: connection, authenticate: testManagerAuth }
     );
     assert.equal(invalidId.status, 422);
     assert.ok(
@@ -1921,7 +1842,6 @@ describe("Hotel payment HTTP routes", () => {
 
   test("unavailable payment records produce a generic 503", async () => {
     const { connection, stay } = checkedOutFixture();
-    const { token, csrfToken } = await sessionFor(connection);
     connection.models.HotelPayment.find = () => {
       throw new Error("mongodb://127.0.0.1:27017/bono_hotel unavailable");
     };
@@ -1931,8 +1851,6 @@ describe("Hotel payment HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stay._id}/payments`,
-        token,
-        csrfToken,
         body: paymentInput(),
       }),
       paramsFor(stay._id),

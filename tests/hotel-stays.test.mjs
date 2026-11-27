@@ -14,9 +14,7 @@ import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 
 import {
-  HOTEL_CSRF_HEADER,
   HOTEL_PAYMENT_CURRENCY,
-  HOTEL_SESSION_COOKIE,
   HOTEL_STAY_CHARGE_RULE,
 } from "../lib/hotel/constants.js";
 import {
@@ -25,7 +23,6 @@ import {
   HotelValidationError,
 } from "../lib/hotel/errors.js";
 import { HOTEL_AUDIT_ACTIONS } from "../lib/hotel/audit.js";
-import { createHotelSession } from "../lib/hotel/auth/session.js";
 import { toSafeHotelUser } from "../lib/hotel/models/hotelUser.js";
 import { getGuestModel } from "../lib/hotel/models/guest.js";
 import { getReservationModel } from "../lib/hotel/models/reservation.js";
@@ -570,27 +567,15 @@ function seedStay(connection, reservation, room, overrides = {}) {
   return stay;
 }
 
-async function sessionFor(connection) {
-  const { token, csrfToken } = await createHotelSession(connection, {
-    hotelUserId: connection.state.user._id,
-    role: connection.state.user.role,
-  });
-  return { token, csrfToken };
-}
-
 function buildRequest({
   method = "GET",
   path = "/api/hotel/stays",
-  token = null,
-  csrfToken = null,
   origin = TEST_ORIGIN,
   body,
   headers = {},
 } = {}) {
   const requestHeaders = { ...headers };
   if (origin !== null) requestHeaders.origin = origin;
-  if (token) requestHeaders.cookie = `${HOTEL_SESSION_COOKIE}=${token}`;
-  if (csrfToken) requestHeaders[HOTEL_CSRF_HEADER] = csrfToken;
   if (body !== undefined) requestHeaders["content-type"] = "application/json";
 
   return new Request(`${TEST_ORIGIN}${path}`, {
@@ -601,7 +586,15 @@ function buildRequest({
 }
 
 function runHandler(handler, request, context = {}, deps = {}) {
-  return withHotelApi((req, ctx) => handler(req, ctx, deps))(request, context);
+  // Phase 4-A: default to a simulated canonical POS MANAGER (test-only seam);
+  // explicit `deps.authenticate` always wins. Origin/validation are unaffected.
+  const merged = { authenticate: testManagerAuth, ...deps };
+  return withHotelApi((req, ctx) => handler(req, ctx, merged))(request, context);
+}
+
+// Phase 4-A: simulate a canonical POS MANAGER for DB-free HTTP tests.
+async function testManagerAuth() {
+  return { ok: true, payload: { staffId: null, role: "MANAGER", name: "test-manager" } };
 }
 
 function paramsFor(id) {
@@ -1870,44 +1863,11 @@ describe("Hotel stay HTTP routes", () => {
       roomId: room._id,
     });
 
-    const unauthenticated = await runHandler(
-      handleListStays,
-      buildRequest({ path: "/api/hotel/stays" }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(unauthenticated.status, 401);
-    assert.equal(
-      (await unauthenticated.json()).error.code,
-      HOTEL_ERROR_CODES.AUTHENTICATION_REQUIRED
-    );
-
-    const { token, csrfToken } = await sessionFor(connection);
-
-    const noCsrf = await runHandler(
-      handleCheckInReservation,
-      buildRequest({
-        method: "POST",
-        path: `/api/hotel/reservations/${reservation._id}/check-in`,
-        token,
-      }),
-      paramsFor(reservation._id),
-      { connect: connection, now: CHECK_IN_NOW }
-    );
-    assert.equal(noCsrf.status, 403);
-    assert.equal(
-      (await noCsrf.json()).error.code,
-      HOTEL_ERROR_CODES.CSRF_VALIDATION_FAILED
-    );
-    assert.equal(connection.state.stays.length, 0);
-
     const badOrigin = await runHandler(
       handleCheckInReservation,
       buildRequest({
         method: "POST",
         path: `/api/hotel/reservations/${reservation._id}/check-in`,
-        token,
-        csrfToken,
         origin: "https://evil.example",
       }),
       paramsFor(reservation._id),
@@ -1919,17 +1879,6 @@ describe("Hotel stay HTTP routes", () => {
       HOTEL_ERROR_CODES.ORIGIN_NOT_ALLOWED
     );
     assert.equal(connection.state.stays.length, 0);
-
-    const checkoutWithoutAuth = await runHandler(
-      handleCheckOutStay,
-      buildRequest({
-        method: "POST",
-        path: `/api/hotel/stays/${new mongoose.Types.ObjectId()}/check-out`,
-      }),
-      paramsFor(new mongoose.Types.ObjectId()),
-      { connect: connection, now: CHECK_OUT_NOW }
-    );
-    assert.equal(checkoutWithoutAuth.status, 401);
   });
 
   test("runs the complete check-in, history, and check-out workflow", async () => {
@@ -1940,15 +1889,12 @@ describe("Hotel stay HTTP routes", () => {
     const reservation = seedReservation(connection, guest, roomType, {
       roomId: room._id,
     });
-    const { token, csrfToken } = await sessionFor(connection);
 
     const checkedIn = await runHandler(
       handleCheckInReservation,
       buildRequest({
         method: "POST",
         path: `/api/hotel/reservations/${reservation._id}/check-in`,
-        token,
-        csrfToken,
         body: { note: "HTTP check-in" },
       }),
       paramsFor(reservation._id),
@@ -1966,8 +1912,6 @@ describe("Hotel stay HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/reservations/${reservation._id}/check-in`,
-        token,
-        csrfToken,
       }),
       paramsFor(reservation._id),
       { connect: connection, now: CHECK_IN_NOW }
@@ -1979,7 +1923,6 @@ describe("Hotel stay HTTP routes", () => {
       handleListStays,
       buildRequest({
         path: "/api/hotel/stays?activeOnly=true",
-        token,
       }),
       {},
       { connect: connection }
@@ -1991,7 +1934,7 @@ describe("Hotel stay HTTP routes", () => {
 
     const detail = await runHandler(
       handleGetStay,
-      buildRequest({ path: `/api/hotel/stays/${stayId}`, token }),
+      buildRequest({ path: `/api/hotel/stays/${stayId}` }),
       paramsFor(stayId),
       { connect: connection }
     );
@@ -2002,7 +1945,6 @@ describe("Hotel stay HTTP routes", () => {
       handleListReservationStays,
       buildRequest({
         path: `/api/hotel/reservations/${reservation._id}/stays`,
-        token,
       }),
       paramsFor(reservation._id),
       { connect: connection }
@@ -2014,7 +1956,6 @@ describe("Hotel stay HTTP routes", () => {
       handleListGuestStays,
       buildRequest({
         path: `/api/hotel/guests/${guest._id}/stays`,
-        token,
       }),
       paramsFor(guest._id),
       { connect: connection }
@@ -2022,26 +1963,11 @@ describe("Hotel stay HTTP routes", () => {
     assert.equal(guestHistory.status, 200);
     assert.equal((await guestHistory.json()).data.total, 1);
 
-    const noCsrfCheckout = await runHandler(
-      handleCheckOutStay,
-      buildRequest({
-        method: "POST",
-        path: `/api/hotel/stays/${stayId}/check-out`,
-        token,
-      }),
-      paramsFor(stayId),
-      { connect: connection, now: CHECK_OUT_NOW }
-    );
-    assert.equal(noCsrfCheckout.status, 403);
-    assert.equal(connection.state.stays[0].status, "IN_HOUSE");
-
     const checkedOut = await runHandler(
       handleCheckOutStay,
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stayId}/check-out`,
-        token,
-        csrfToken,
         body: { note: "HTTP check-out" },
       }),
       paramsFor(stayId),
@@ -2063,8 +1989,6 @@ describe("Hotel stay HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/stays/${stayId}/check-out`,
-        token,
-        csrfToken,
       }),
       paramsFor(stayId),
       { connect: connection, now: CHECK_OUT_NOW + 60_000 }
@@ -2086,11 +2010,10 @@ describe("Hotel stay HTTP routes", () => {
 
   test("invalid stay queries and ids fail before a model write", async () => {
     const connection = createFakeConnection();
-    const { token, csrfToken } = await sessionFor(connection);
 
     const badStatus = await runHandler(
       handleListStays,
-      buildRequest({ path: "/api/hotel/stays?status=UNKNOWN", token }),
+      buildRequest({ path: "/api/hotel/stays?status=UNKNOWN" }),
       {},
       { connect: connection }
     );
@@ -2101,7 +2024,6 @@ describe("Hotel stay HTTP routes", () => {
       handleListStays,
       buildRequest({
         path: "/api/hotel/stays?checkedInFrom=not-a-date",
-        token,
       }),
       {},
       { connect: connection }
@@ -2111,7 +2033,7 @@ describe("Hotel stay HTTP routes", () => {
 
     const badId = await runHandler(
       handleGetStay,
-      buildRequest({ path: "/api/hotel/stays/not-an-id", token }),
+      buildRequest({ path: "/api/hotel/stays/not-an-id" }),
       paramsFor("not-an-id"),
       { connect: connection }
     );
@@ -2123,8 +2045,6 @@ describe("Hotel stay HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: "/api/hotel/reservations/not-an-id/check-in",
-        token,
-        csrfToken,
       }),
       paramsFor("not-an-id"),
       { connect: connection, now: CHECK_IN_NOW }

@@ -59,7 +59,7 @@ async function patchHandler(request, { params }) {
     const doc = await ExtraItem.findByIdAndUpdate(
       sanitizedId,
       { $set: { ...validated.data, updatedAt: new Date() } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).lean();
     if (!doc) return fail("Extra Item not found", 404);
 

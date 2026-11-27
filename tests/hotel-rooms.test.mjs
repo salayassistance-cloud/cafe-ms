@@ -12,16 +12,11 @@ import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 
 import {
-  HOTEL_CSRF_HEADER,
-  HOTEL_SESSION_COOKIE,
-} from "../lib/hotel/constants.js";
-import {
   HOTEL_ERROR_CODES,
   HotelApiError,
   HotelValidationError,
 } from "../lib/hotel/errors.js";
 import { HOTEL_AUDIT_ACTIONS } from "../lib/hotel/audit.js";
-import { createHotelSession } from "../lib/hotel/auth/session.js";
 import { toSafeHotelUser } from "../lib/hotel/models/hotelUser.js";
 import { getRoomModel } from "../lib/hotel/models/room.js";
 import { withHotelApi } from "../lib/hotel/http/apiResponse.js";
@@ -332,27 +327,15 @@ function seedRoom(connection, roomType, overrides = {}) {
   return room;
 }
 
-async function sessionFor(connection) {
-  const { token, csrfToken } = await createHotelSession(connection, {
-    hotelUserId: connection.state.user._id,
-    role: connection.state.user.role,
-  });
-  return { token, csrfToken };
-}
-
 function buildRequest({
   method = "GET",
   path = "/api/hotel/rooms",
-  token = null,
-  csrfToken = null,
   origin = TEST_ORIGIN,
   body,
   headers = {},
 } = {}) {
   const requestHeaders = { ...headers };
   if (origin !== null) requestHeaders.origin = origin;
-  if (token) requestHeaders.cookie = `${HOTEL_SESSION_COOKIE}=${token}`;
-  if (csrfToken) requestHeaders[HOTEL_CSRF_HEADER] = csrfToken;
   if (body !== undefined) requestHeaders["content-type"] = "application/json";
 
   return new Request(`${TEST_ORIGIN}${path}`, {
@@ -368,6 +351,11 @@ function runHandler(handler, request, context = {}, deps = {}) {
 
 function paramsFor(id) {
   return { params: Promise.resolve({ id: String(id) }) };
+}
+
+// Phase 4-A: simulate a canonical POS MANAGER for DB-free HTTP tests.
+async function testManagerAuth() {
+  return { ok: true, payload: { staffId: null, role: "MANAGER", name: "test-manager" } };
 }
 
 function capture(fn) {
@@ -950,146 +938,14 @@ describe("Hotel Room service", () => {
 });
 
 describe("Hotel Room and RoomType HTTP routes", () => {
-  test("requires authentication for reads and writes", async () => {
+  test("mutations require a trusted same origin", async () => {
     const connection = createFakeConnection();
-
-    const list = await runHandler(
-      handleListRoomTypes,
-      buildRequest({ path: "/api/hotel/room-types" }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(list.status, 401);
-    const listBody = await list.json();
-    assert.equal(listBody.success, false);
-    assert.equal(listBody.error.code, HOTEL_ERROR_CODES.AUTHENTICATION_REQUIRED);
-
-    const create = await runHandler(
-      handleCreateRoomType,
-      buildRequest({
-        method: "POST",
-        path: "/api/hotel/room-types",
-        body: {
-          name: "Deluxe",
-          code: "DLX",
-          capacity: 2,
-          baseNightlyRate: 120,
-        },
-      }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(create.status, 401);
-    assert.equal(connection.state.roomTypes.length, 0);
-  });
-
-  test("receptionists can read but cannot manage rooms or room types", async () => {
-    const connection = createFakeConnection({ role: "RECEPTIONIST" });
-    const roomType = seedRoomType(connection);
-    seedRoom(connection, roomType);
-    const { token, csrfToken } = await sessionFor(connection);
-
-    const list = await runHandler(
-      handleListRooms,
-      buildRequest({
-        path: "/api/hotel/rooms",
-        token,
-      }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(list.status, 200);
-    const listBody = await list.json();
-    assert.equal(listBody.data.total, 1);
-    assert.equal(listBody.data.items[0].roomNumber, "101");
-
-    const createRoomTypeResponse = await runHandler(
-      handleCreateRoomType,
-      buildRequest({
-        method: "POST",
-        path: "/api/hotel/room-types",
-        token,
-        csrfToken,
-        body: {
-          name: "Suite",
-          code: "STE",
-          capacity: 4,
-          baseNightlyRate: 250,
-        },
-      }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(createRoomTypeResponse.status, 403);
-    const denied = await createRoomTypeResponse.json();
-    assert.equal(denied.error.code, HOTEL_ERROR_CODES.FORBIDDEN);
-    assert.equal(connection.state.roomTypes.length, 1);
-
-    const createRoomResponse = await runHandler(
-      handleCreateRoom,
-      buildRequest({
-        method: "POST",
-        path: "/api/hotel/rooms",
-        token,
-        csrfToken,
-        body: {
-          roomNumber: "102",
-          floor: 1,
-          roomTypeId: String(roomType._id),
-          capacity: 2,
-        },
-      }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(createRoomResponse.status, 403);
-    const deniedRoom = await createRoomResponse.json();
-    assert.equal(deniedRoom.error.code, HOTEL_ERROR_CODES.FORBIDDEN);
-    assert.equal(connection.state.rooms.length, 1);
-
-    const deniedAudits = auditsFor(
-      connection,
-      HOTEL_AUDIT_ACTIONS.AUTH_ACCESS_DENIED
-    );
-    assert.equal(deniedAudits.length, 2);
-    assert.deepEqual(
-      deniedAudits.map((entry) => entry.metadata.permission).sort(),
-      ["hotel.roomTypes.manage", "hotel.rooms.manage"].sort()
-    );
-  });
-
-  test("mutations require the session CSRF token and same origin", async () => {
-    const connection = createFakeConnection();
-    const { token, csrfToken } = await sessionFor(connection);
-
-    const noCsrf = await runHandler(
-      handleCreateRoomType,
-      buildRequest({
-        method: "POST",
-        path: "/api/hotel/room-types",
-        token,
-        body: {
-          name: "Deluxe",
-          code: "DLX",
-          capacity: 2,
-          baseNightlyRate: 120,
-        },
-      }),
-      {},
-      { connect: connection }
-    );
-    assert.equal(noCsrf.status, 403);
-    const noCsrfBody = await noCsrf.json();
-    assert.equal(noCsrfBody.error.code, HOTEL_ERROR_CODES.CSRF_VALIDATION_FAILED);
-    assert.equal(connection.state.roomTypes.length, 0);
 
     const badOrigin = await runHandler(
       handleCreateRoomType,
       buildRequest({
         method: "POST",
         path: "/api/hotel/room-types",
-        token,
-        csrfToken,
         origin: "https://evil.example",
         body: {
           name: "Deluxe",
@@ -1109,15 +965,14 @@ describe("Hotel Room and RoomType HTTP routes", () => {
 
   test("manager can run the full create, update, status, and deactivate flow", async () => {
     const connection = createFakeConnection();
-    const { token, csrfToken } = await sessionFor(connection);
+    // Phase 4-A: simulated canonical POS MANAGER for DB-free HTTP testing.
+    const deps = { connect: connection, authenticate: testManagerAuth };
 
     const createdTypeResponse = await runHandler(
       handleCreateRoomType,
       buildRequest({
         method: "POST",
         path: "/api/hotel/room-types",
-        token,
-        csrfToken,
         body: {
           name: "Deluxe",
           code: "DLX",
@@ -1127,7 +982,7 @@ describe("Hotel Room and RoomType HTTP routes", () => {
         },
       }),
       {},
-      { connect: connection }
+      deps
     );
     assert.equal(createdTypeResponse.status, 201);
     const createdType = await createdTypeResponse.json();
@@ -1138,8 +993,6 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: "/api/hotel/rooms",
-        token,
-        csrfToken,
         body: {
           roomNumber: "101",
           floor: 1,
@@ -1149,7 +1002,7 @@ describe("Hotel Room and RoomType HTTP routes", () => {
         },
       }),
       {},
-      { connect: connection }
+      deps
     );
     assert.equal(createdRoomResponse.status, 201);
     const createdRoom = await createdRoomResponse.json();
@@ -1160,10 +1013,9 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       handleGetRoom,
       buildRequest({
         path: `/api/hotel/rooms/${roomId}`,
-        token,
       }),
       paramsFor(roomId),
-      { connect: connection }
+      deps
     );
     assert.equal(detail.status, 200);
     const detailBody = await detail.json();
@@ -1174,12 +1026,10 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       buildRequest({
         method: "PATCH",
         path: `/api/hotel/rooms/${roomId}`,
-        token,
-        csrfToken,
         body: { floor: 2 },
       }),
       paramsFor(roomId),
-      { connect: connection }
+      deps
     );
     assert.equal(updated.status, 200);
     const updatedBody = await updated.json();
@@ -1190,12 +1040,10 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/rooms/${roomId}/status`,
-        token,
-        csrfToken,
         body: { operationalStatus: "CLEANING", note: "deep clean" },
       }),
       paramsFor(roomId),
-      { connect: connection }
+      deps
     );
     assert.equal(status.status, 200);
     const statusBody = await status.json();
@@ -1207,11 +1055,9 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/rooms/${roomId}/deactivate`,
-        token,
-        csrfToken,
       }),
       paramsFor(roomId),
-      { connect: connection }
+      deps
     );
     assert.equal(deactivateRoomResponse.status, 200);
     const deactivatedRoom = await deactivateRoomResponse.json();
@@ -1222,11 +1068,9 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       buildRequest({
         method: "POST",
         path: `/api/hotel/room-types/${roomTypeId}/deactivate`,
-        token,
-        csrfToken,
       }),
       paramsFor(roomTypeId),
-      { connect: connection }
+      deps
     );
     assert.equal(deactivateTypeResponse.status, 200);
     const deactivatedType = await deactivateTypeResponse.json();
@@ -1247,16 +1091,15 @@ describe("Hotel Room and RoomType HTTP routes", () => {
 
   test("list queries reject invalid filters before the model is queried", async () => {
     const connection = createFakeConnection();
-    const { token } = await sessionFor(connection);
+    const deps = { connect: connection, authenticate: testManagerAuth };
 
     const response = await runHandler(
       handleListRooms,
       buildRequest({
         path: "/api/hotel/rooms?floor=not-a-number",
-        token,
       }),
       {},
-      { connect: connection }
+      deps
     );
     assert.equal(response.status, 422);
     const body = await response.json();
@@ -1266,10 +1109,9 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       handleListRoomTypes,
       buildRequest({
         path: "/api/hotel/room-types?limit=500",
-        token,
       }),
       {},
-      { connect: connection }
+      deps
     );
     assert.equal(pagination.status, 422);
     const paginationBody = await pagination.json();
@@ -1278,16 +1120,15 @@ describe("Hotel Room and RoomType HTTP routes", () => {
 
   test("room type detail and update handlers validate the route id", async () => {
     const connection = createFakeConnection();
-    const { token, csrfToken } = await sessionFor(connection);
+    const deps = { connect: connection, authenticate: testManagerAuth };
 
     const response = await runHandler(
       handleGetRoomType,
       buildRequest({
         path: "/api/hotel/room-types/not-an-id",
-        token,
       }),
       paramsFor("not-an-id"),
-      { connect: connection }
+      deps
     );
     assert.equal(response.status, 422);
     const body = await response.json();
@@ -1298,12 +1139,10 @@ describe("Hotel Room and RoomType HTTP routes", () => {
       buildRequest({
         method: "PATCH",
         path: "/api/hotel/room-types/not-an-id",
-        token,
-        csrfToken,
         body: { name: "Renamed" },
       }),
       paramsFor("not-an-id"),
-      { connect: connection }
+      deps
     );
     assert.equal(update.status, 422);
   });

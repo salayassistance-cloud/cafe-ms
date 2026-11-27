@@ -289,32 +289,30 @@ describe("Hotel index deployment argument and environment guards", () => {
 });
 
 describe("Hotel index plan and verification", () => {
-  test("the real schemas define 37 indexes across 10 Hotel collections", () => {
+  test("the real schemas define 33 indexes across 9 Hotel collections", () => {
     const { connection } = createFakeConnection();
     const plan = buildIndexPlan(connection);
 
-    assert.equal(plan.length, 10);
+    assert.equal(plan.length, 9);
     assert.equal(
       plan.reduce((sum, entry) => sum + entry.indexes.length, 0),
-      37
+      33
     );
 
     const byCollection = Object.fromEntries(
       plan.map((entry) => [entry.collection, entry.indexes])
     );
-    const usernameIndex = byCollection.hotel_users.find(
-      (index) => index.name === "username_1"
+    assert.equal(byCollection.hotel_sessions, undefined);
+    assert.equal(
+      byCollection.hotel_users.find((index) => index.name === "username_1"),
+      undefined
     );
-    assert.ok(usernameIndex);
-    assert.equal(usernameIndex.options.unique, true);
-    assert.deepEqual(usernameIndex.options.partialFilterExpression, {
-      username: { $type: "string" },
-    });
     assert.ok(byCollection.roomtypes);
     assert.equal(
-      byCollection.hotel_sessions.find(
-        (index) => index.name === "expiresAt_1"
-      ).options.expireAfterSeconds,
+      Object.values(byCollection)
+        .flat()
+        .find((index) => index.options?.expireAfterSeconds === 0).options
+        .expireAfterSeconds,
       0
     );
     assert.equal(
@@ -359,10 +357,10 @@ describe("Hotel index plan and verification", () => {
     const created = [...state.values()]
       .flat()
       .filter((index) => index.name !== "_id_");
-    assert.equal(created.length, 37);
+    assert.equal(created.length, 33);
     assert.ok(
       output.logs.some((line) =>
-        line.includes("Verified 37 schema indexes")
+        line.includes("Verified 33 schema indexes")
       )
     );
     assert.ok(output.logs.some((line) => line.includes("roomtypes")));
@@ -405,11 +403,11 @@ describe("Hotel index plan and verification", () => {
   test("index option mismatches block all writes", async () => {
     const { connection, state } = createFakeConnection({
       extraIndexes: {
-        hotel_sessions: [
+        hotel_users: [
           {
-            name: "expiresAt_1",
-            key: { expiresAt: 1 },
-            expireAfterSeconds: 3600,
+            name: "email_1",
+            key: { email: 1 },
+            unique: false,
           },
         ],
       },
@@ -427,13 +425,13 @@ describe("Hotel index plan and verification", () => {
     assert.equal(code, 1);
     assert.ok(
       output.errors.some((line) =>
-        line.includes("OPTIONS_MISMATCH hotel_sessions expiresAt_1")
+        line.includes("OPTIONS_MISMATCH hotel_users email_1")
       )
     );
     assert.equal(
       state
-        .get("hotel_sessions")
-        .some((index) => index.name === "tokenHash_1"),
+        .get("hotel_users")
+        .some((index) => index.name === "role_1_isActive_1"),
       false
     );
   });

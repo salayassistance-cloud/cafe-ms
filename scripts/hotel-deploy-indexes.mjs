@@ -29,7 +29,6 @@ import {
 } from "../lib/hotel/db/connection.js";
 import { getHotelAuditLogModel } from "../lib/hotel/models/hotelAuditLog.js";
 import { getHotelPaymentModel } from "../lib/hotel/models/hotelPayment.js";
-import { getHotelSessionModel } from "../lib/hotel/models/hotelSession.js";
 import { getHotelUserModel } from "../lib/hotel/models/hotelUser.js";
 import { getGuestModel } from "../lib/hotel/models/guest.js";
 import { getReservationModel } from "../lib/hotel/models/reservation.js";
@@ -81,7 +80,6 @@ const OPTION_KEYS = Object.freeze([
 export const HOTEL_INDEX_MODELS = Object.freeze([
   { label: "HotelAuditLog", getModel: getHotelAuditLogModel },
   { label: "HotelPayment", getModel: getHotelPaymentModel },
-  { label: "HotelSession", getModel: getHotelSessionModel },
   { label: "HotelUser", getModel: getHotelUserModel },
   { label: "Guest", getModel: getGuestModel },
   { label: "Reservation", getModel: getReservationModel },

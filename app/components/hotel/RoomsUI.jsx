@@ -8,24 +8,15 @@
 // mutations require a MANAGER session and the server enforces that independently.
 
 import { useCallback, useEffect, useState } from "react";
-import { IconBedFilled, IconDoorEnter, IconUsers } from "@tabler/icons-react";
-import Link from "next/link";
-import HotelTopBar from "./HotelTopBar";
+import ManagerSidebar from "@/app/components/ManagerSidebar";
+import ManagerTopControls from "@/app/components/ManagerTopControls";
 import { useHotelI18n } from "./HotelI18n";
-import { useHotelSession } from "./HotelSessionProvider";
 import { useHotelRequest } from "./useHotelRequest";
 import RoomsPanel from "./RoomsPanel";
-import {
-  Banner,
-  BTN_SECONDARY,
-} from "./ui";
+import { Banner } from "./ui";
 
 export default function RoomsUI() {
   const { lang, t } = useHotelI18n();
-  // Authentication is owned by the /hotel server layout. The verified session
-  // is reused for role display and the shared request wrapper handles CSRF and
-  // expired-session refresh, so this screen has no second login or bootstrap.
-  const serverSession = useHotelSession();
   const request = useHotelRequest();
   const [notice, setNotice] = useState(null);
 
@@ -39,32 +30,24 @@ export default function RoomsUI() {
     setNotice({ ...next, id: Date.now() });
   }, []);
 
-  const role = serverSession?.role || serverSession?.user?.role;
+  const role = "MANAGER";
 
   return (
-    <div lang={lang} className="min-h-screen bg-[#F4F5F9] text-[#1E293B] dark:bg-[#12131A] dark:text-white">
-      <HotelTopBar
-        titleKey="top.roomManagement"
-        skipHref="#rooms-main"
-        skipLabelKey="rooms.skip"
-        actions={
-          <>
-            <Link href="/hotel/reception" className={BTN_SECONDARY}>
-              <IconDoorEnter className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("top.reception")}
-            </Link>
-            {role === "MANAGER" ? (
-              <Link href="/hotel/management" className={BTN_SECONDARY}>
-                <IconUsers className="h-3.5 w-3.5" aria-hidden="true" />
-                {t("top.staffManagement")}
-              </Link>
-            ) : null}
-          </>
-        }
-      />
+    <div lang={lang} className="min-h-screen bg-[#F4F5F9] dark:bg-[#12131A] flex flex-col lg:flex-row">
+      <ManagerSidebar />
+      <div className="flex-1 min-w-0 p-4 text-[#1E293B] dark:text-white sm:p-6 overflow-x-hidden">
+        <header className="relative rounded-2xl bg-white dark:bg-[#1C1D24] px-4 py-3 border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out active:shadow-inner mb-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl font-extrabold text-[#1E293B] dark:text-white sm:text-2xl">
+                {t("top.roomManagement")}
+              </h1>
+            </div>
+            <ManagerTopControls />
+          </div>
+        </header>
 
-      <div className="mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6 sm:pb-6">
-        <main id="rooms-main" tabIndex={-1} className="mt-4 outline-none">
+        <main id="rooms-main" tabIndex={-1} className="outline-none">
           {notice ? (
             <Banner
               tone={notice.tone || "info"}

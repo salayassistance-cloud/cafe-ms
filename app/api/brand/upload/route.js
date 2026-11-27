@@ -98,7 +98,7 @@ async function postHandler(request) {
     const doc = await BrandConfig.findOneAndUpdate(
       {},
       { logoPath },
-      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
     );
 
     return ok(

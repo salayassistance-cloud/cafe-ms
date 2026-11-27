@@ -13,8 +13,6 @@ import mongoose from "mongoose";
 
 import {
   HOTEL_REPORT_MAX_WINDOW_DAYS,
-  HOTEL_SESSION_COOKIE,
-  HOTEL_CSRF_HEADER,
   HOTEL_STAY_CHARGE_RULE,
 } from "../lib/hotel/constants.js";
 import { HOTEL_ROOM_OPERATIONAL_STATUSES } from "../lib/hotel/constants.js";
@@ -39,7 +37,6 @@ import {
   HOTEL_REPORT_PDF_PAGE,
   renderHotelReportsSummaryPdf,
 } from "../lib/hotel/services/reportsPdf.js";
-import { createHotelSession } from "../lib/hotel/auth/session.js";
 import {
   addHotelLocalDays,
   formatHotelLocalDate,
@@ -872,56 +869,28 @@ describe("Null-coverage and zero-denominator reporting", () => {
 
 // ————————————————————————————————————————————————————————— handler contracts
 
-function buildRequest(path, { token = null, extraHeaders = {} } = {}) {
+function buildRequest(path, { extraHeaders = {} } = {}) {
   const headers = { ...extraHeaders };
-  if (token) headers.cookie = `${HOTEL_SESSION_COOKIE}=${token}`;
   return new Request(`${TEST_ORIGIN}${path}`, { headers });
 }
 
-async function sessionFor(connection) {
-  const { token } = await createHotelSession(connection, {
-    hotelUserId: connection.state.user._id,
-    role: connection.state.user.role,
-  });
-  return token;
-}
-
 function runHandler(handler, request, deps = {}) {
-  return withHotelApi((req, ctx) => handler(req, ctx, deps))(request, {});
+  // Phase 4-A: default to a simulated canonical POS MANAGER (test-only seam).
+  const merged = { authenticate: testManagerAuth, ...deps };
+  return withHotelApi((req, ctx) => handler(req, ctx, merged))(request, {});
 }
 
-describe("Report handlers: auth, envelope, and query limits", () => {
-  test("anonymous requests are rejected with 401", async () => {
+// Phase 4-A: simulate a canonical POS MANAGER for DB-free HTTP tests.
+async function testManagerAuth() {
+  return { ok: true, payload: { staffId: null, role: "MANAGER", name: "test-manager" } };
+}
+
+describe("Report handlers: envelope and query limits", () => {
+  test("summary handler returns the documented envelope", async () => {
     const connection = createFakeConnection("MANAGER");
     const response = await runHandler(
       handleHotelReportsSummary,
       buildRequest("/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02"),
-      { connect: connection, now: REPORT_NOW }
-    );
-    assert.equal(response.status, 401);
-  });
-
-  test("receptionist sessions are rejected with 403", async () => {
-    const connection = createFakeConnection("RECEPTIONIST");
-    const token = await sessionFor(connection);
-    const response = await runHandler(
-      handleHotelReportsSummary,
-      buildRequest("/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02", {
-        token,
-      }),
-      { connect: connection, now: REPORT_NOW }
-    );
-    assert.equal(response.status, 403);
-  });
-
-  test("manager sessions receive the documented envelope", async () => {
-    const connection = createFakeConnection("MANAGER");
-    const token = await sessionFor(connection);
-    const response = await runHandler(
-      handleHotelReportsSummary,
-      buildRequest("/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02", {
-        token,
-      }),
       { connect: connection, now: REPORT_NOW }
     );
     assert.equal(response.status, 200);
@@ -937,12 +906,10 @@ describe("Report handlers: auth, envelope, and query limits", () => {
 
   test("unknown and duplicate query fields are rejected", async () => {
     const connection = createFakeConnection("MANAGER");
-    const token = await sessionFor(connection);
     const response = await runHandler(
       handleHotelReportsSummary,
       buildRequest(
-        "/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02&guestId=5",
-        { token }
+        "/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02&guestId=5"
       ),
       { connect: connection, now: REPORT_NOW }
     );
@@ -952,7 +919,7 @@ describe("Report handlers: auth, envelope, and query limits", () => {
 
     const missing = await runHandler(
       handleHotelReportsSummary,
-      buildRequest("/api/hotel/reports/summary", { token }),
+      buildRequest("/api/hotel/reports/summary"),
       { connect: connection, now: REPORT_NOW }
     );
     const missingBody = await missing.json();
@@ -963,12 +930,9 @@ describe("Report handlers: auth, envelope, and query limits", () => {
 
   test("future windows vanish at the handler boundary too", async () => {
     const connection = createFakeConnection("MANAGER");
-    const token = await sessionFor(connection);
     const response = await runHandler(
       handleHotelReportsSummary,
-      buildRequest("/api/hotel/reports/summary?from=2030-06-05&to=2030-06-06", {
-        token,
-      }),
+      buildRequest("/api/hotel/reports/summary?from=2030-06-05&to=2030-06-06"),
       { connect: connection, now: REPORT_NOW }
     );
     assert.equal(response.status, 422);
@@ -1003,12 +967,9 @@ describe("CSV export handler", () => {
       chargeRule: HOTEL_STAY_CHARGE_RULE,
     });
 
-    const token = await sessionFor(connection);
     const response = await runHandler(
       handleHotelReportsSummaryExport,
-      buildRequest("/api/hotel/reports/summary/export?from=2030-06-01&to=2030-06-02", {
-        token,
-      }),
+      buildRequest("/api/hotel/reports/summary/export?from=2030-06-01&to=2030-06-02"),
       { connect: connection, now: REPORT_NOW }
     );
 
@@ -1036,22 +997,10 @@ describe("CSV export handler", () => {
     // The export reconciles with the JSON summary through the same service.
     const json = await runHandler(
       handleHotelReportsSummary,
-      buildRequest("/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02", {
-        token,
-      }),
+      buildRequest("/api/hotel/reports/summary?from=2030-06-01&to=2030-06-02"),
       { connect: connection, now: REPORT_NOW }
     ).then((res) => res.json());
     assert.equal(json.data.totals.postedRoomChargesMinor, 12000);
-  });
-
-  test("anonymous export requests are rejected", async () => {
-    const connection = createFakeConnection("MANAGER");
-    const response = await runHandler(
-      handleHotelReportsSummaryExport,
-      buildRequest("/api/hotel/reports/summary/export?from=2030-06-01&to=2030-06-02"),
-      { connect: connection, now: REPORT_NOW }
-    );
-    assert.equal(response.status, 401);
   });
 
   test("uses the documented user-facing columns in a stable order", () => {
@@ -1436,40 +1385,12 @@ describe("PDF export renderer", () => {
 });
 
 describe("PDF export handler", () => {
-  test("anonymous requests are rejected with 401", async () => {
+  test("exports a PDF with safe headers and a dated filename", async () => {
     const connection = createFakeConnection("MANAGER");
     const response = await runHandler(
       handleHotelReportsSummaryExportPdf,
       buildRequest(
         "/api/hotel/reports/summary/export/pdf?from=2030-06-01&to=2030-06-02"
-      ),
-      { connect: connection, now: REPORT_NOW }
-    );
-    assert.equal(response.status, 401);
-  });
-
-  test("receptionist sessions are rejected with 403", async () => {
-    const connection = createFakeConnection("RECEPTIONIST");
-    const token = await sessionFor(connection);
-    const response = await runHandler(
-      handleHotelReportsSummaryExportPdf,
-      buildRequest(
-        "/api/hotel/reports/summary/export/pdf?from=2030-06-01&to=2030-06-02",
-        { token }
-      ),
-      { connect: connection, now: REPORT_NOW }
-    );
-    assert.equal(response.status, 403);
-  });
-
-  test("managers receive a PDF with safe headers and a dated filename", async () => {
-    const connection = createFakeConnection("MANAGER");
-    const token = await sessionFor(connection);
-    const response = await runHandler(
-      handleHotelReportsSummaryExportPdf,
-      buildRequest(
-        "/api/hotel/reports/summary/export/pdf?from=2030-06-01&to=2030-06-02",
-        { token }
       ),
       { connect: connection, now: REPORT_NOW }
     );
@@ -1496,11 +1417,10 @@ describe("PDF export handler", () => {
 
   test("date validation matches the JSON and CSV endpoints", async () => {
     const connection = createFakeConnection("MANAGER");
-    const token = await sessionFor(connection);
 
     const missing = await runHandler(
       handleHotelReportsSummaryExportPdf,
-      buildRequest("/api/hotel/reports/summary/export/pdf", { token }),
+      buildRequest("/api/hotel/reports/summary/export/pdf"),
       { connect: connection, now: REPORT_NOW }
     );
     assert.equal(missing.status, 422);
@@ -1511,8 +1431,7 @@ describe("PDF export handler", () => {
     const future = await runHandler(
       handleHotelReportsSummaryExportPdf,
       buildRequest(
-        "/api/hotel/reports/summary/export/pdf?from=2030-06-05&to=2030-06-06",
-        { token }
+        "/api/hotel/reports/summary/export/pdf?from=2030-06-05&to=2030-06-06"
       ),
       { connect: connection, now: REPORT_NOW }
     );
@@ -1523,8 +1442,7 @@ describe("PDF export handler", () => {
     const unknown = await runHandler(
       handleHotelReportsSummaryExportPdf,
       buildRequest(
-        "/api/hotel/reports/summary/export/pdf?from=2030-06-01&to=2030-06-02&guestId=5",
-        { token }
+        "/api/hotel/reports/summary/export/pdf?from=2030-06-01&to=2030-06-02&guestId=5"
       ),
       { connect: connection, now: REPORT_NOW }
     );

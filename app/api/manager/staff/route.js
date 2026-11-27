@@ -160,9 +160,9 @@ async function patchHandler(request) {
     } else if (typeof rawActive === "number") wantActive = !!rawActive;
     else wantActive = !!rawActive;
 
-    // Only WAITER/CASHIER individual accounts can be toggled; shared roles (KITCHEN/BARISTA/HOT_DRINK/MANAGER) are not individual and must not be disabled via this UI
-    if (!["WAITER", "CASHIER"].includes(staff.role)) {
-      return fail("Only WAITER or CASHIER accounts can be enabled/disabled individually", 400);
+    // Only WAITER/CASHIER/RECEPTION individual accounts can be toggled; shared roles (KITCHEN/BARISTA/HOT_DRINK/MANAGER) are not individual and must not be disabled via this UI
+    if (!["WAITER", "CASHIER", "RECEPTION"].includes(staff.role)) {
+      return fail("Only WAITER, CASHIER, or RECEPTION accounts can be enabled/disabled individually", 400);
     }
     if ((staff.isActive !== false) === wantActive) {
       // No change — treat as success idempotently
@@ -174,7 +174,7 @@ async function patchHandler(request) {
   if (Object.keys(updates).length === 0) return fail("No updatable fields provided (name, username, isActive)", 400);
 
   try {
-    const updated = await Staff.findByIdAndUpdate(staffId, { $set: updates }, { new: true, runValidators: true });
+    const updated = await Staff.findByIdAndUpdate(staffId, { $set: updates }, { returnDocument: 'after', runValidators: true });
     if (!updated) return fail("Staff not found", 404);
     // AUTH-ARCH-3: disabling an account revokes its server-side sessions.
     // Best-effort — the disable itself already succeeded.

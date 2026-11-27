@@ -30,7 +30,6 @@ const translatedSources = [
   "app/components/hotel/ReceptionUI.jsx",
   "app/components/hotel/RoomsUI.jsx",
   "app/components/hotel/RoomReportsUI.jsx",
-  "app/components/hotel/HotelSessionGate.jsx",
   "app/components/hotel/ReservationsPanel.jsx",
   "app/components/hotel/InHousePanel.jsx",
   "app/components/hotel/GuestsPanel.jsx",

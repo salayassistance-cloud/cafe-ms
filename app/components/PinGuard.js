@@ -13,6 +13,7 @@ const ROLE_LABEL = {
   KITCHEN: "Kitchen Display",
   BARISTA: "Barista Display",
   HOT_DRINK: "Jebena Buna Display",
+  RECEPTION: "Reception Portal",
   MANAGER: "Manager Dashboard",
 };
 
@@ -24,7 +25,11 @@ export default function PinGuard({ role, next }) {
   // /login compatibility page forwards a query parameter. Never navigate to a
   // non-internal target after a successful sign-in.
   const fallbackTarget =
-    role === "MANAGER" ? "/manager/reports" : `/${role.toLowerCase()}`;
+    role === "MANAGER"
+      ? "/manager/reports"
+      : role === "RECEPTION"
+        ? "/hotel/reception"
+        : `/${role.toLowerCase()}`;
   const requestedTarget =
     next ||
     (typeof window !== "undefined" ? window.location.pathname : fallbackTarget);

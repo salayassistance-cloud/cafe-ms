@@ -1,15 +1,5 @@
-// Hotel-only client transport for the Reception UI.
-//
-// The Hotel session lives in an HttpOnly cookie, so every request uses
-// `credentials: "include"`. The CSRF token is held only in React memory by the
-// caller and forwarded on state-changing requests. This module never writes a
-// token to storage, a URL, the DOM, or a log.
-//
+// Hotel-only client transport.
 // It intentionally does not import POS fetch/auth helpers.
-
-import { HOTEL_CSRF_HEADER } from "@/lib/hotel/constants";
-
-const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export class HotelRequestError extends Error {
   constructor({
@@ -51,9 +41,6 @@ export async function hotelRequest(path, options = {}) {
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(options.body);
-  }
-  if (MUTATION_METHODS.has(method) && options.csrfToken) {
-    headers[HOTEL_CSRF_HEADER] = options.csrfToken;
   }
 
   let response;

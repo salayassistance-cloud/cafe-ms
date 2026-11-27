@@ -37,7 +37,6 @@ import {
 import { getGuestModel } from "../lib/hotel/models/guest.js";
 import { getHotelAuditLogModel } from "../lib/hotel/models/hotelAuditLog.js";
 import { getHotelPaymentModel } from "../lib/hotel/models/hotelPayment.js";
-import { getHotelSessionModel } from "../lib/hotel/models/hotelSession.js";
 import { getHotelUserModel } from "../lib/hotel/models/hotelUser.js";
 import { getReservationModel } from "../lib/hotel/models/reservation.js";
 import { getRoomModel } from "../lib/hotel/models/room.js";
@@ -273,7 +272,6 @@ function integrationModels() {
   return [
     getHotelAuditLogModel(connection),
     getHotelPaymentModel(connection),
-    getHotelSessionModel(connection),
     getHotelUserModel(connection),
     getGuestModel(connection),
     getReservationModel(connection),

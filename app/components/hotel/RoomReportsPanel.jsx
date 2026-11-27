@@ -148,7 +148,7 @@ function LocalDateCell({ ymd }) {
   );
 }
 
-export default function RoomReportsPanel({ request, today }) {
+export default function RoomReportsPanel({ request, today, onExportReady }) {
   const { t, lang } = useHotelI18n();
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
@@ -301,7 +301,20 @@ export default function RoomReportsPanel({ request, today }) {
     setPdfError(null);
   }
 
-  async function downloadPdf() {
+  const downloadCsv = useCallback(() => {
+    if (!from || !to || from > to) return;
+    const link = document.createElement("a");
+    link.href = `/api/hotel/reports/summary/export?from=${encodeURIComponent(
+      from
+    )}&to=${encodeURIComponent(to)}`;
+    link.download = `hotel-report-${from}-to-${to}.csv`;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }, [from, to]);
+
+  const downloadPdf = useCallback(async () => {
     if (pdfBusy || !from || !to || from > to) return;
     setPdfBusy(true);
     setPdfError(null);
@@ -324,7 +337,7 @@ export default function RoomReportsPanel({ request, today }) {
     } finally {
       setPdfBusy(false);
     }
-  }
+  }, [pdfBusy, from, to, t]);
 
   const resetDisabled = from === today && to === today;
   const exportHref = `/api/hotel/reports/summary/export?from=${encodeURIComponent(
@@ -349,6 +362,16 @@ export default function RoomReportsPanel({ request, today }) {
         })
       : null;
 
+  useEffect(() => {
+    if (typeof onExportReady === "function") {
+      onExportReady({
+        exportCsv: downloadCsv,
+        exportPdf: downloadPdf,
+        ready: showsReport && !rangeInvalid && !loading,
+      });
+    }
+  }, [onExportReady, downloadCsv, downloadPdf, showsReport, rangeInvalid, loading]);
+
   return (
     <div className="space-y-4">
       {dataNotice ? (
@@ -372,35 +395,6 @@ export default function RoomReportsPanel({ request, today }) {
         <Card className="p-4 sm:p-5">
           <SectionHeader
             title={t("reports.reportDates")}
-            action={
-              showsReport && !rangeInvalid ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <a
-                    href={exportHref}
-                    className={BTN_SECONDARY}
-                    aria-label={t("reports.exportCsvLabel")}
-                  >
-                    <IconFileDownload className="h-3.5 w-3.5" aria-hidden="true" />
-                    {t("reports.exportCsv")}
-                  </a>
-                  <button
-                    type="button"
-                    className={BTN_SECONDARY}
-                    onClick={downloadPdf}
-                    disabled={pdfBusy || loading}
-                    aria-label={t("reports.downloadPdfLabel")}
-                    aria-busy={pdfBusy}
-                  >
-                    {pdfBusy ? (
-                      <Spinner className="h-3.5 w-3.5" />
-                    ) : (
-                      <IconFileTypePdf className="h-3.5 w-3.5" aria-hidden="true" />
-                    )}
-                    {pdfBusy ? t("reports.preparingPdf") : t("reports.downloadPdf")}
-                  </button>
-                </div>
-              ) : null
-            }
           />
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <div>

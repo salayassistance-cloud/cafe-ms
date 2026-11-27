@@ -8,9 +8,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createCategory, updateCategory, deleteCategory, createMenuItem, updateMenuItem, deleteMenuItem, setMenuItemInventoryPolicy } from './actions';
 import { appendTabCredential } from '@/lib/clientFetch';
-import LanguageToggle from '@/app/components/LanguageToggle';
+import ManagerTopControls from '@/app/components/ManagerTopControls';
 import { useLanguage } from '@/app/components/LanguageProvider';
-import ThemeToggleHome from '@/app/components/ThemeToggleHome';
 import { getLocalizedSingleString } from '@/lib/displayName';
 import MenuItemImage, { MENU_IMAGE_FALLBACK } from '@/app/components/MenuItemImage';
 
@@ -905,20 +904,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
               <button type="button" onClick={() => handleTabChange('BARISTA')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'BARISTA' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]'}`}>{t('drink')}</button>
               <button type="button" onClick={() => handleTabChange('HOT_DRINK')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'HOT_DRINK' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36] hover:bg-[#F8FAFC] dark:hover:bg-[#252631]'}`}>{t('hotDrinkPortal')}</button>
             </div>
-            <LanguageToggle includeOromia={false} />
-            <div className="flex items-center gap-2">
-              <ThemeToggleHome />
-              <Link
-                href="/"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.01)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition-all duration-150 ease-out     active:shadow-inner hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
-                title={t('home')}
-                aria-label={t('home')}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
-                </svg>
-              </Link>
-            </div>
+            <ManagerTopControls />
           </div>
         </div>
         {/* MOBILE */}
@@ -927,10 +913,7 @@ export default function MenuCrudClient({ initialCategories, initialItems, source
             <h1 className="text-base font-extrabold text-[#1E293B] dark:text-white">
               {t('menuManagement')}
             </h1>
-            <div className="flex items-center gap-2">
-              <LanguageToggle includeOromia={false} />
-              <ThemeToggleHome />
-            </div>
+            <ManagerTopControls />
           </div>
           <div className="flex items-center justify-center gap-1 rounded-full bg-[#F4F5F9] dark:bg-[#12131A] p-1 border border-[#E2E8F0]/60 dark:border-[#2A2B36] self-center">
             <button type="button" onClick={() => handleTabChange('KITCHEN')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'KITCHEN' ? 'bg-[#FFD600] dark:bg-[#FF5E00] text-[#1E293B] dark:text-white border border-[#E2E8F0]/60 dark:border-[#2A2B36] shadow-sm' : 'bg-white dark:bg-[#1C1D24] text-[#1E293B] dark:text-white/80 border border-[#E2E8F0]/60 dark:border-[#2A2B36]'}`}>{t('food')}</button>

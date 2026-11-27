@@ -61,7 +61,7 @@ async function saveHandler(request) {
     const doc = await BrandConfig.findOneAndUpdate(
       {},
       { name, logoPath },
-      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
     );
     return ok({ brand: serialize(doc) }, 200);
   } catch (e) {

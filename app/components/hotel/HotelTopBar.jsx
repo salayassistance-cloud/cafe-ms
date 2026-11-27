@@ -1,14 +1,7 @@
 "use client";
 
-// Shared top bar for the Hotel pages: page title and Ethiopian date on the
-// left, page actions, the language toggle and the existing theme toggle on the
-// right. It deliberately reuses the app-wide language and theme controls.
-
-import { useState } from "react";
 import { getAddisYMD } from "@/lib/ethiopianCalendar";
 import HotelLanguageToggle from "./HotelLanguageToggle";
-import HotelLogoutButton from "./HotelLogoutButton";
-import HotelChangePinModal from "./HotelChangePinModal";
 import ThemeToggleHome from "@/app/components/ThemeToggleHome";
 import { useHotelI18n } from "./HotelI18n";
 import { formatEthiopianLocalDate } from "./ui";
@@ -25,7 +18,6 @@ export default function HotelTopBar({
 }) {
   const { lang, t } = useHotelI18n();
   const today = getAddisYMD(new Date());
-  const [changePinOpen, setChangePinOpen] = useState(false);
 
   return (
     <>
@@ -47,14 +39,6 @@ export default function HotelTopBar({
 
             <div className="flex flex-wrap items-center justify-end gap-2">
               {actions}
-              <button
-                type="button"
-                onClick={() => setChangePinOpen(true)}
-                className="tactile inline-flex h-9 items-center justify-center rounded-full border border-[#E2E8F0] bg-white px-4 text-xs font-bold text-[#1E293B] hover:bg-[#F8FAFC] disabled:opacity-50 dark:border-[#2A2B36] dark:bg-[#1C1D24] dark:text-white dark:hover:bg-[#252631]"
-              >
-                {t("session.changePin")}
-              </button>
-              <HotelLogoutButton />
               <HotelLanguageToggle />
               <ThemeToggleHome />
             </div>
@@ -63,7 +47,6 @@ export default function HotelTopBar({
           {children ? <div className="mt-3">{children}</div> : null}
         </header>
       </div>
-      <HotelChangePinModal open={changePinOpen} onClose={() => setChangePinOpen(false)} />
     </>
   );
 }

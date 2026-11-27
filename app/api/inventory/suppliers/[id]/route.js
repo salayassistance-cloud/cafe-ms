@@ -37,7 +37,7 @@ async function patchHandler(request, { params }) {
     const doc = await Supplier.findOneAndUpdate(
       { _id: sanitizedId },
       { $set: { ...validated.data, updatedAt: new Date() } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).lean();
     if (!doc) return fail("Supplier not found", 404);
     return ok({ supplier: serializeSupplier(doc) }, 200);

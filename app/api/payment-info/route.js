@@ -106,7 +106,7 @@ async function putHandler(request) {
   try {
     const conn = await connectToDatabase();
     const PaymentInfo = getPaymentInfoModel(conn);
-    const doc = await PaymentInfo.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true });
+    const doc = await PaymentInfo.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after', runValidators: true });
     if (!doc) return fail("Payment information not found", 404);
     return ok({ paymentInfo: serialize(doc) }, 200);
   } catch (e) {
@@ -138,7 +138,7 @@ async function deleteHandler(request) {
       const Order = getOrderModel(conn);
       const used = await Order.findOne({ paymentAccountId: id }).select("_id").lean();
       if (used) {
-        const doc = await PaymentInfo.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true, runValidators: true });
+        const doc = await PaymentInfo.findByIdAndUpdate(id, { $set: { isActive: false } }, { returnDocument: 'after', runValidators: true });
         if (!doc) return fail("Payment information not found", 404);
         return ok({ archived: true, disabled: true, id, paymentInfo: serialize(doc), message: "Account has historical payments — archived (deactivated) instead of deleted to preserve reports." }, 200);
       }

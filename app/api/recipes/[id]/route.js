@@ -81,7 +81,7 @@ async function deleteHandler(request, { params }) {
     const doc = await Recipe.findOneAndUpdate(
       { _id: sid },
       { $set: { isActive: false, updatedAt: new Date() } },
-      { new: true }
+      { returnDocument: 'after' }
     ).lean();
     if (!doc) return fail("Recipe not found", 404);
     return ok({ recipe: { _id: String(doc._id), isActive: doc.isActive } }, 200);

@@ -577,7 +577,7 @@ export async function updateMenuItem(prevState, formData) {
     }
     if (hasFasting) update.isFasting = parseBool(formData.get("isFasting"));
     if (hasNonFasting) update.isNonFasting = parseBool(formData.get("isNonFasting"));
-    const res = await MenuItem.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: false });
+    const res = await MenuItem.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after', runValidators: false });
     if (!res) return { success: false, error: "Failed to update � not found" };
     revalidateAll();
     return { success: true, message: "Menu item updated", itemId: String(res._id) };
@@ -644,7 +644,7 @@ export async function deleteMenuItem(formDataOrId) {
           inStock: false,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!res) return { success: false, error: "Item not found or already archived" };
     revalidateAll();

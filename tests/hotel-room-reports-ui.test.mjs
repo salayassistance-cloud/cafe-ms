@@ -43,12 +43,10 @@ describe("Room Reports route", () => {
     }
   });
 
-  test("has Hotel Report metadata and no POS sidebar dependency", () => {
+  test("has Hotel Report metadata", () => {
     assert.match(pageSource, /title: "Hotel Reports"/);
     assert.ok(!pageSource.includes("Bono Hotel"));
-    assert.ok(!pageSource.includes("ManagerSidebar"));
-    assert.match(shellSource, /href="\/hotel\/reception"/);
-    assert.match(shellSource, /href="\/hotel\/rooms"/);
+    assert.ok(shellSource.includes("ManagerSidebar"));
   });
 });
 
@@ -58,7 +56,7 @@ describe("Room Reports auth shell", () => {
     assert.match(shellSource, /const request = useHotelRequest\(\)/);
     assert.ok(!shellSource.includes("/api/hotel/auth/me"));
     assert.ok(!shellSource.includes("ReceptionLogin"));
-    assert.match(shellSource, /import HotelTopBar from "\.\/HotelTopBar"/);
+    assert.match(shellSource, /import ManagerSidebar from "@\/app\/components\/ManagerSidebar"/);
     assert.ok(!shellSource.includes("Sign out"), "the shared Hotel bar has no visible sign-out");
     assert.ok(!shellSource.includes("localStorage"));
     assert.ok(!shellSource.includes("sessionStorage"));
@@ -77,7 +75,7 @@ describe("Room Reports auth shell", () => {
     assert.match(shellSource, /const canReadReports = role === "MANAGER"/);
     assert.match(shellSource, /canReadReports \?/);
     assert.match(shellSource, /t\("reports\.managerOnlyTitle"\)/);
-    assert.match(shellSource, /<RoomReportsPanel request=\{request\} today=\{today\} \/>/);
+    assert.match(shellSource, /<RoomReportsPanel/);
   });
 });
 

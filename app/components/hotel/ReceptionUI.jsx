@@ -12,6 +12,7 @@
 // refunds, reports, or room management are fabricated here.
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   IconBedFilled,
   IconCalendarEvent,
@@ -54,10 +55,8 @@ const EMPTY_SUMMARY = {
 
 export default function ReceptionUI() {
   const { lang, t } = useHotelI18n();
-  // The /hotel server layout owns authentication and renders the shared PIN
-  // gate. This screen only renders with a verified session, so there is no
-  // per-page auth state, bootstrap request, or second login UI here.
   const request = useHotelRequest();
+  const role = "MANAGER";
 
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [summaryBusy, setSummaryBusy] = useState(false);
@@ -158,15 +157,23 @@ export default function ReceptionUI() {
         skipHref="#reception-main"
         skipLabelKey="reception.skip"
         actions={
-          <button
-            type="button"
-            className={BTN_SECONDARY}
-            onClick={() => setSummaryNonce((value) => value + 1)}
-            disabled={summaryBusy}
-          >
-            <IconRefresh className={`h-3.5 w-3.5 ${summaryBusy ? "animate-spin" : ""}`} aria-hidden="true" />
-            {t("common.refresh")}
-          </button>
+          <>
+            {role === "MANAGER" ? (
+              <Link href="/hotel/rooms" className={BTN_SECONDARY}>
+                <IconBedFilled className="h-3.5 w-3.5" aria-hidden="true" />
+                {t("top.roomManagement")}
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              onClick={() => setSummaryNonce((value) => value + 1)}
+              disabled={summaryBusy}
+            >
+              <IconRefresh className={`h-3.5 w-3.5 ${summaryBusy ? "animate-spin" : ""}`} aria-hidden="true" />
+              {t("common.refresh")}
+            </button>
+          </>
         }
       >
         <nav aria-label={t("reception.sections")} className="flex flex-wrap gap-2">

@@ -1,4 +1,4 @@
-// Hotel foundation tests — DB-free.
+// Hotel foundation tests â€” DB-free.
 //
 // No MongoDB connection is opened, no index is created, and no POS module is
 // imported. Authentication flows use plain in-memory stub connections.
@@ -10,13 +10,7 @@ import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 
-import {
-  HOTEL_DB_NAME,
-  HOTEL_SESSION_ABSOLUTE_MS,
-  HOTEL_SESSION_COOKIE,
-  HOTEL_SESSION_IDLE_MS,
-  HOTEL_SESSION_TOUCH_THROTTLE_MS,
-} from "../lib/hotel/constants.js";
+import { HOTEL_DB_NAME } from "../lib/hotel/constants.js";
 import {
   HOTEL_ERROR_CODES,
   HotelApiError,
@@ -28,17 +22,6 @@ import {
   canHotel,
   permissionsForHotelRole,
 } from "../lib/hotel/auth/authorization.js";
-import {
-  buildHotelSessionDoc,
-  computeHotelSessionTouch,
-  generateHotelSessionToken,
-  hashHotelSessionToken,
-  isHotelSessionTimeValid,
-  isHotelSessionToken,
-  isHotelSessionValid,
-  parseHotelSessionCookieHeader,
-} from "../lib/hotel/auth/session.js";
-import { authenticateHotelRequest } from "../lib/hotel/auth/service.js";
 import {
   sanitizeHotelAuditMetadata,
   getHotelRequestAuditMeta,
@@ -54,7 +37,6 @@ import { validateRoomTypePayload } from "../lib/hotel/validation.js";
 import { getRoomTypeModel } from "../lib/hotel/models/roomType.js";
 import { getRoomModel } from "../lib/hotel/models/room.js";
 import { getHotelUserModel } from "../lib/hotel/models/hotelUser.js";
-import { getHotelSessionModel } from "../lib/hotel/models/hotelSession.js";
 import { getHotelAuditLogModel } from "../lib/hotel/models/hotelAuditLog.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -145,14 +127,13 @@ describe("Hotel connection and model isolation (DB-free)", () => {
   });
 
   test("Hotel modules never import POS auth/database/session modules", () => {
+    // Phase 1: authorizedRequest.js is the single approved POS-auth seam.
+    const posAuthSeam = "lib/hotel/http/authorizedRequest.js";
     const files = [
       "lib/hotel/constants.js",
       "lib/hotel/config.js",
       "lib/hotel/errors.js",
       "lib/hotel/db/connection.js",
-      "lib/hotel/auth/service.js",
-      "lib/hotel/auth/session.js",
-      "lib/hotel/auth/csrf.js",
       "lib/hotel/auth/authorization.js",
       "lib/hotel/audit.js",
       "lib/hotel/dates.js",
@@ -185,7 +166,6 @@ describe("Hotel connection and model isolation (DB-free)", () => {
       "lib/hotel/models/hotelPayment.js",
       "lib/hotel/models/roomBookingLock.js",
       "lib/hotel/models/hotelUser.js",
-      "lib/hotel/models/hotelSession.js",
       "lib/hotel/models/hotelAuditLog.js",
     ];
     const allowedBareImports = new Set([
@@ -225,6 +205,11 @@ describe("Hotel connection and model isolation (DB-free)", () => {
 
       for (const specifier of specifiers) {
         if (specifier.startsWith(".")) {
+          // The single approved exception: the Hotel authorization seam reuses
+          // the canonical POS resolver instead of implementing a second one.
+          if (file === posAuthSeam && specifier === "../../security.js") {
+            continue;
+          }
           const resolved = posix.normalize(
             posix.join(posix.dirname(file), specifier)
           );
@@ -336,30 +321,15 @@ describe("Hotel connection and model isolation (DB-free)", () => {
 
     try {
       const HotelUser = getHotelUserModel(connection);
-      assert.equal(HotelUser.schema.path("passwordHash").options.select, false);
-      assert.equal(HotelUser.schema.path("pinHash").options.select, false);
-      assert.ok(!HotelUser.schema.path("passwordHash").options.required);
+      assert.equal(HotelUser.schema.path("passwordHash"), undefined);
+      assert.equal(HotelUser.schema.path("pinHash"), undefined);
       assert.deepEqual(HotelUser.schema.path("role").enumValues, [
         "MANAGER",
         "RECEPTIONIST",
       ]);
 
-      const HotelSession = getHotelSessionModel(connection);
-      assert.equal(HotelSession.schema.path("tokenHash").options.select, false);
-      assert.equal(HotelSession.schema.path("csrfHash").options.select, false);
-      assert.ok(
-        HotelSession.schema
-          .indexes()
-          .some(
-            ([keys, options]) =>
-              keys.expiresAt === 1 && options.expireAfterSeconds === 0
-          ),
-        "session TTL index is defined only"
-      );
-
       const HotelAuditLog = getHotelAuditLogModel(connection);
       assert.ok(HotelAuditLog.schema.path("metadata"));
-      assert.equal(mongoose.models.HotelSession, undefined);
       assert.equal(mongoose.models.HotelAuditLog, undefined);
     } finally {
       await connection.close();
@@ -401,233 +371,6 @@ describe("Hotel roles and permissions", () => {
         error.status === 403 &&
         error.code === HOTEL_ERROR_CODES.FORBIDDEN
     );
-  });
-});
-
-describe("Hotel session primitives", () => {
-  const now = Date.UTC(2026, 0, 15, 12, 0, 0);
-  const userId = new mongoose.Types.ObjectId();
-
-  function sessionDoc(overrides = {}) {
-    return {
-      _id: new mongoose.Types.ObjectId(),
-      hotelUserId: userId,
-      roleSnapshot: "MANAGER",
-      lastSeenAt: new Date(now),
-      expiresAt: new Date(now + HOTEL_SESSION_ABSOLUTE_MS),
-      idleExpiresAt: new Date(now + HOTEL_SESSION_IDLE_MS),
-      revokedAt: null,
-      revokeReason: null,
-      ...overrides,
-    };
-  }
-
-  test("tokens are opaque and stored only as HMAC hashes", () => {
-    const token = generateHotelSessionToken();
-    assert.equal(isHotelSessionToken(token), true);
-    assert.match(token, /^[A-Za-z0-9_-]{43}$/);
-
-    const first = hashHotelSessionToken(token);
-    const second = hashHotelSessionToken(token);
-    assert.match(first, /^[0-9a-f]{64}$/);
-    assert.equal(first, second);
-    assert.ok(!first.includes(token));
-
-    const doc = buildHotelSessionDoc({
-      hotelUserId: userId,
-      role: "MANAGER",
-      rawToken: token,
-      now,
-    });
-    assert.equal(doc.tokenHash, first);
-    assert.equal(doc.roleSnapshot, "MANAGER");
-    assert.match(doc.csrfHash, /^[0-9a-f]{64}$/);
-    assert.equal(doc.expiresAt.getTime(), now + HOTEL_SESSION_ABSOLUTE_MS);
-    assert.equal(doc.idleExpiresAt.getTime(), now + HOTEL_SESSION_IDLE_MS);
-    assert.ok(!JSON.stringify(doc).includes(token));
-  });
-
-  test("missing, short, or POS-shared secrets fail closed", () => {
-    const token = generateHotelSessionToken();
-    assert.throws(
-      () => withHotelSecret(undefined, () => hashHotelSessionToken(token)),
-      (error) => error instanceof HotelApiError && error.status === 503
-    );
-    assert.throws(
-      () => withHotelSecret("too-short", () => hashHotelSessionToken(token)),
-      (error) => error instanceof HotelApiError && error.status === 503
-    );
-    assert.throws(
-      () =>
-        withHotelSecret(process.env.AUTH_SECRET, () =>
-          hashHotelSessionToken(token)
-        ),
-      /must be different from AUTH_SECRET/
-    );
-  });
-
-  test("absolute and idle expiry are enforced", () => {
-    const session = sessionDoc();
-    assert.equal(isHotelSessionTimeValid(session, now + 1000).ok, true);
-    assert.equal(
-      isHotelSessionTimeValid(session, now + HOTEL_SESSION_IDLE_MS + 1).reason,
-      "IDLE_TIMEOUT"
-    );
-    assert.equal(
-      isHotelSessionTimeValid(session, now + HOTEL_SESSION_ABSOLUTE_MS + 1).code,
-      HOTEL_ERROR_CODES.SESSION_EXPIRED
-    );
-    assert.equal(
-      isHotelSessionTimeValid(sessionDoc({ revokedAt: new Date(now) }), now).ok,
-      false
-    );
-  });
-
-  test("live user state wins over the session role snapshot", () => {
-    const session = sessionDoc();
-    assert.equal(
-      isHotelSessionValid(session, { isActive: true, role: "MANAGER" }, now).ok,
-      true
-    );
-    assert.equal(
-      isHotelSessionValid(session, { isActive: true, role: "RECEPTIONIST" }, now)
-        .reason,
-      "ROLE_CHANGED"
-    );
-    assert.equal(
-      isHotelSessionValid(session, { isActive: false, role: "MANAGER" }, now)
-        .reason,
-      "ACCOUNT_DISABLED"
-    );
-  });
-
-  test("touch slides idle only within the absolute expiry", () => {
-    assert.equal(computeHotelSessionTouch(sessionDoc(), now + 1000), null);
-    const touched = computeHotelSessionTouch(
-      sessionDoc({ lastSeenAt: new Date(now - 2 * 60 * 1000) }),
-      now
-    );
-    assert.equal(touched.lastSeenAt.getTime(), now);
-    assert.equal(touched.idleExpiresAt.getTime(), now + HOTEL_SESSION_IDLE_MS);
-
-    const nearExpiry = computeHotelSessionTouch(
-      sessionDoc({
-        lastSeenAt: new Date(now - 2 * 60 * 1000),
-        idleExpiresAt: new Date(now - 1),
-        expiresAt: new Date(now + 60 * 1000),
-      }),
-      now
-    );
-    assert.equal(nearExpiry.idleExpiresAt.getTime(), now + 60 * 1000);
-    assert.ok(HOTEL_SESSION_TOUCH_THROTTLE_MS < HOTEL_SESSION_IDLE_MS);
-  });
-
-  test("cookie parser accepts only the Hotel cookie and opaque token", () => {
-    const token = generateHotelSessionToken();
-    assert.equal(
-      parseHotelSessionCookieHeader(
-        `theme=dark; ${HOTEL_SESSION_COOKIE}=${token}; bono_sess=pos-token`
-      ),
-      token
-    );
-    assert.equal(
-      parseHotelSessionCookieHeader(`bono_sess=${token}`),
-      null,
-      "POS cookie must never be accepted"
-    );
-    assert.equal(
-      parseHotelSessionCookieHeader(`${HOTEL_SESSION_COOKIE}=not-a-token`),
-      null
-    );
-  });
-});
-
-describe("Hotel request guard with in-memory stubs", () => {
-  const now = Date.now();
-  const user = {
-    _id: new mongoose.Types.ObjectId(),
-    email: "manager@example.com",
-    name: "Hotel Manager",
-    role: "MANAGER",
-    isActive: true,
-    lastLoginAt: null,
-  };
-
-  function buildConnection(liveUser, createdSessions) {
-    return {
-      createdSessions,
-      models: {
-        HotelUser: {
-          findById: () => ({
-            select: () => ({
-              lean: async () => liveUser,
-            }),
-          }),
-          updateOne: async () => ({ modifiedCount: 1 }),
-        },
-        HotelSession: {
-          findOne: (query) => ({
-            select: () => ({
-              lean: async () => {
-                const row = createdSessions.find(
-                  (entry) => entry.tokenHash === query.tokenHash
-                );
-                return row ? { ...row } : null;
-              },
-            }),
-          }),
-          updateOne: async () => ({ modifiedCount: 1 }),
-        },
-        HotelAuditLog: {
-          create: async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId() }),
-        },
-      },
-    };
-  }
-
-  function sessionFor(liveUser, role) {
-    const token = generateHotelSessionToken();
-    const doc = buildHotelSessionDoc({
-      hotelUserId: user._id,
-      role,
-      rawToken: token,
-      now,
-    });
-    const sessions = [{ ...doc, _id: new mongoose.Types.ObjectId() }];
-    return { token, connection: buildConnection(liveUser, sessions) };
-  }
-
-  test("route guard uses the live role and enforces permissions", async () => {
-    const manager = sessionFor(user, "MANAGER");
-    const managerAuth = await authenticateHotelRequest(
-      new Request("https://hotel.example/api/room-types", {
-        headers: { cookie: `${HOTEL_SESSION_COOKIE}=${manager.token}` },
-      }),
-      {
-        connect: manager.connection,
-        permission: HOTEL_PERMISSIONS.ROOM_TYPES_MANAGE,
-      }
-    );
-    assert.equal(managerAuth.ok, true);
-    assert.equal(managerAuth.role, "MANAGER");
-    assert.ok(managerAuth.permissions.includes(HOTEL_PERMISSIONS.ROOM_TYPES_MANAGE));
-
-    const receptionist = sessionFor(
-      { ...user, role: "RECEPTIONIST" },
-      "RECEPTIONIST"
-    );
-    const receptionistAuth = await authenticateHotelRequest(
-      new Request("https://hotel.example/api/room-types", {
-        headers: { cookie: `${HOTEL_SESSION_COOKIE}=${receptionist.token}` },
-      }),
-      {
-        connect: receptionist.connection,
-        permission: HOTEL_PERMISSIONS.ROOM_TYPES_MANAGE,
-      }
-    );
-    assert.equal(receptionistAuth.ok, false);
-    assert.equal(receptionistAuth.status, 403);
-    assert.equal(receptionistAuth.code, HOTEL_ERROR_CODES.FORBIDDEN);
   });
 });
 

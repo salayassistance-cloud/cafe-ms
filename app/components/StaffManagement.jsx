@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { safeFetchJson } from '@/lib/clientFetch';
 import { useLanguage } from '@/app/components/LanguageProvider';
-import LanguageToggle from '@/app/components/LanguageToggle';
-import ThemeToggleHome from '@/app/components/ThemeToggleHome';
+import ManagerTopControls from '@/app/components/ManagerTopControls';
 import {
   IconUsers,
   IconUserPlus,
@@ -43,12 +42,14 @@ function fmtStaffDateTime(value, lang) {
 
 
 
-const ROLES = ['WAITER', 'CASHIER', 'KITCHEN', 'BARISTA', 'HOT_DRINK', 'MANAGER'];
+const ROLES = ['WAITER', 'CASHIER', 'RECEPTION', 'KITCHEN', 'BARISTA', 'HOT_DRINK', 'MANAGER'];
+const INDIVIDUAL_ROLES = ['WAITER', 'CASHIER', 'RECEPTION'];
 
 function roleBadgeCls(role) {
   const r = String(role).toUpperCase();
   if (r === 'MANAGER') return 'bg-[#1E293B] text-white dark:bg-white dark:text-[#12131A]';
   if (r === 'CASHIER') return 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A] dark:bg-[#7C2D12] dark:text-[#FDBA74] dark:border-[#7C2D12]';
+  if (r === 'RECEPTION') return 'bg-[#ECFEFF] text-[#0E7490] border-[#A5F3FC] dark:bg-[#083344] dark:text-[#67E8F9] dark:border-[#155E75]';
   if (r === 'WAITER') return 'bg-[#FFD600]/20 text-[#8A6D00] border-[#FFD600]/30 dark:bg-[rgba(255,94,0,0.12)] dark:text-[#FF8A3D] dark:border-[#FF5E00]/20';
   if (r === 'KITCHEN') return 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0] dark:bg-[rgba(16,185,129,0.12)] dark:text-[#6EE7B7] dark:border-[#10B981]/20';
   if (r === 'BARISTA') return 'bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE] dark:bg-[#1E1B4B] dark:text-[#A5B4FC] dark:border-[#3730A3]';
@@ -67,6 +68,10 @@ export default function StaffManagement() {
   const roleLabel = (r) => ({
     WAITER: t('staffRoleWaiter'),
     CASHIER: t('staffRoleCashier'),
+    RECEPTION: (() => {
+      const label = t('staffRoleReception');
+      return label !== 'staffRoleReception' ? label : 'Reception';
+    })(),
     KITCHEN: t('staffRoleKitchen'),
     BARISTA: t('staffRoleBarista'),
     HOT_DRINK: t('staffRoleHotDrink'),
@@ -277,7 +282,7 @@ export default function StaffManagement() {
       setAddError(t('staffErrPinMatch'));
       return;
     }
-    if (!['WAITER', 'CASHIER'].includes(role)) {
+    if (!INDIVIDUAL_ROLES.includes(role)) {
       setAddError(t('staffErrRole'));
       return;
     }
@@ -289,7 +294,9 @@ export default function StaffManagement() {
         body: JSON.stringify({ name, username, pin, confirmPin: confirmPin, role }),
       });
       if (!res?.success) throw new Error(res?.error || res?.message || t('staffErrCreate'));
-      setSuccess(res?.data?.cashier ? `${t('staffRoleCashier')} ${res.data.cashier.username} ${t('staffCreatedOk')}` : `${t('staffRoleWaiter')} ${res.data.waiter.username} ${t('staffCreatedOk')}`);
+      const createdStaff = res?.data?.cashier || res?.data?.reception || res?.data?.waiter;
+      const createdRoleLabel = roleLabel(createdStaff?.role || role);
+      setSuccess(`${createdRoleLabel} ${createdStaff?.username || username} ${t('staffCreatedOk')}`);
       setShowAdd(false);
       setAddForm({ name: '', username: '', pin: '', confirmPin: '', role: 'WAITER' });
       fetchStaff();
@@ -350,7 +357,7 @@ export default function StaffManagement() {
     if (!toggleTarget) return;
     const wantActive = !toggleTarget.isActive;
     // For shared roles, backend will reject — we already filter UI but keep guard
-    if (!['WAITER', 'CASHIER'].includes(toggleTarget.role)) {
+    if (!INDIVIDUAL_ROLES.includes(toggleTarget.role)) {
       setError(t('staffErrToggleRole'));
       setToggleTarget(null);
       return;
@@ -425,21 +432,7 @@ export default function StaffManagement() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={fetchStaff} className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)] shadow-sm">
-                <IconRefresh size={16} className="mr-1.5 h-4 w-4" /> {t('staffRefresh')}
-              </button>
-              <LanguageToggle includeOromia={false} />
-              <Link
-                href="/"
-                aria-label={t('home')}
-                title={t('home')}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] text-[var(--c-muted)] shadow-sm hover:bg-[#F8FAFC] dark:hover:bg-[#252631]"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
-                </svg>
-              </Link>
-              <ThemeToggleHome />
+              <ManagerTopControls />
             </div>
           </div>
         </div>
@@ -581,6 +574,7 @@ export default function StaffManagement() {
                 <select value={addForm.role} onChange={(e) => setAddForm({ ...addForm, role: e.target.value })} className="h-9 w-full rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-sm font-medium text-[var(--c-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]/30">
                   <option value="WAITER">{roleLabel('WAITER')}</option>
                   <option value="CASHIER">{roleLabel('CASHIER')}</option>
+                  <option value="RECEPTION">{roleLabel('RECEPTION')}</option>
                 </select>
                 <p className="mt-1 text-[11px] font-medium text-[var(--c-muted)]">{t('staffIndividualRolesNote')}</p>
               </label>
@@ -689,7 +683,7 @@ export default function StaffManagement() {
                             )}
                             <button type="button" onClick={() => openEdit(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]"><IconEdit size={14} className="mr-1 h-3.5 w-3.5" />{t('edit')}</button>
                             <button type="button" onClick={() => setPinTarget(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-2.5 text-xs font-bold text-[var(--c-muted)]"><IconKey size={14} className="mr-1 h-3.5 w-3.5" />{t('staffPin')}</button>
-                            {['WAITER','CASHIER'].includes(s.role) ? (
+                            {INDIVIDUAL_ROLES.includes(s.role) ? (
                               s.isActive ? (
                                 <button type="button" onClick={() => setToggleTarget(s)} className="inline-flex h-7 items-center justify-center rounded-lg border border-[#FECACA] bg-white px-2.5 text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2]"><IconTrash size={14} className="mr-1 h-3.5 w-3.5" />{t('staffDisable')}</button>
                               ) : (
@@ -737,7 +731,7 @@ export default function StaffManagement() {
                       )}
                       <button type="button" onClick={() => openEdit(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]"><IconEdit size={16} className="mr-1.5 h-4 w-4" />{t('edit')}</button>
                       <button type="button" onClick={() => setPinTarget(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[var(--c-border-soft)] bg-white dark:bg-[#12131A] px-3 text-xs font-bold text-[var(--c-muted)]"><IconKey size={16} className="mr-1.5 h-4 w-4" />{t('staffPin')}</button>
-                      {['WAITER','CASHIER'].includes(s.role) && (
+                      {INDIVIDUAL_ROLES.includes(s.role) && (
                         s.isActive ? (
                           <button type="button" onClick={() => setToggleTarget(s)} className="flex-1 inline-flex h-9 items-center justify-center rounded-xl border border-[#FECACA] bg-white px-3 text-xs font-bold text-[#DC2626]">{t('staffDisable')}</button>
                         ) : (

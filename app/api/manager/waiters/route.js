@@ -9,6 +9,14 @@ import { checkRateLimit, RATE_LIMITS, retryAfterSeconds } from "@/lib/rateLimit"
 
 export const dynamic = "force-dynamic";
 
+const INDIVIDUAL_STAFF_ROLES = ["WAITER", "CASHIER", "RECEPTION"];
+
+function staffResponseKey(role) {
+  if (role === "CASHIER") return "cashier";
+  if (role === "RECEPTION") return "reception";
+  return "waiter";
+}
+
 // GET /api/manager/waiters — list waiter accounts (manager only)
 // Query ?status=active|trash|all (default all). Active = isActive !== false, Trash = isActive === false
 // Returns waiter accounts with id, name, role, isActive, waiterNumber (no pinHash)
@@ -87,8 +95,8 @@ async function postHandler(request) {
   // CREATE branch: has name+username+pin and no staffId — supports WAITER and CASHIER (manager can create CASHIER)
   const hasStaffId = !!(body.staffId || body.id);
   const rawRoleForCreate = body.role ? String(body.role).trim().toUpperCase() : "WAITER";
-  const createRole = ["WAITER", "CASHIER"].includes(rawRoleForCreate) ? rawRoleForCreate : null;
-  if (createRole && !["WAITER", "CASHIER"].includes(createRole)) return fail("Invalid role for creation (allowed: WAITER, CASHIER)", 400);
+  const createRole = INDIVIDUAL_STAFF_ROLES.includes(rawRoleForCreate) ? rawRoleForCreate : null;
+  if (createRole && !INDIVIDUAL_STAFF_ROLES.includes(createRole)) return fail("Invalid role for creation (allowed: WAITER, CASHIER, RECEPTION)", 400);
   const hasCreateFields = !!(body.name && body.username && body.pin);
   const isExplicitCreate = String(body.action || "").toLowerCase() === "create";
   if ((hasCreateFields && !hasStaffId) || isExplicitCreate) {
@@ -120,7 +128,7 @@ async function postHandler(request) {
 
     try {
       const doc = await Staff.create({ name, username, pinHash: hashPin(pin), role: createRole, isActive: true });
-      const key = createRole === "CASHIER" ? "cashier" : "waiter";
+      const key = staffResponseKey(createRole);
       return ok({ created: true, [key]: { id: String(doc._id), name: doc.name, username: doc.username, role: doc.role, isActive: true } }, 201);
     } catch (e) {
       if (e?.code === 11000) return fail("Username already exists.", 409);
@@ -141,13 +149,13 @@ async function postHandler(request) {
     const trimmed = String(rawName).trim();
     if (!trimmed) return fail("Invalid username", 400);
     const lower = trimmed.toLowerCase();
-    staff = await Staff.findOne({ username: lower, role: { $in: ["WAITER", "CASHIER"] } });
-    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
-    if (!staff) staff = await Staff.findOne({ name: trimmed, role: { $in: ["WAITER", "CASHIER"] } });
-    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
+    staff = await Staff.findOne({ username: lower, role: { $in: INDIVIDUAL_STAFF_ROLES } });
+    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: INDIVIDUAL_STAFF_ROLES } });
+    if (!staff) staff = await Staff.findOne({ name: trimmed, role: { $in: INDIVIDUAL_STAFF_ROLES } });
+    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: INDIVIDUAL_STAFF_ROLES } });
   }
   if (!staff) return fail("Staff not found", 404);
-  if (!["WAITER", "CASHIER"].includes(staff.role)) return fail("Only WAITER or CASHIER accounts can be disabled via this endpoint", 400);
+  if (!INDIVIDUAL_STAFF_ROLES.includes(staff.role)) return fail("Only WAITER, CASHIER, or RECEPTION accounts can be disabled via this endpoint", 400);
   if (staff.isActive === false) return fail("Account already disabled", 409);
 
   staff.isActive = false;
@@ -159,7 +167,7 @@ async function postHandler(request) {
     await revokeAllStaffSessions(conn, staff._id, "DISABLED");
   } catch {}
 
-  const key = staff.role === "CASHIER" ? "cashier" : "waiter";
+  const key = staffResponseKey(staff.role);
   return ok({ deleted: true, disabled: true, [key]: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, role: staff.role, isActive: false } }, 200);
 }
 
@@ -200,13 +208,13 @@ async function deleteHandler(request) {
     const trimmed = String(rawName).trim();
     if (!trimmed) return fail("Invalid username", 400);
     const lower = trimmed.toLowerCase();
-    staff = await Staff.findOne({ username: lower, role: { $in: ["WAITER", "CASHIER"] } });
-    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
-    if (!staff) staff = await Staff.findOne({ name: trimmed, role: { $in: ["WAITER", "CASHIER"] } });
-    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: ["WAITER", "CASHIER"] } });
+    staff = await Staff.findOne({ username: lower, role: { $in: INDIVIDUAL_STAFF_ROLES } });
+    if (!staff) staff = await Staff.findOne({ username: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: INDIVIDUAL_STAFF_ROLES } });
+    if (!staff) staff = await Staff.findOne({ name: trimmed, role: { $in: INDIVIDUAL_STAFF_ROLES } });
+    if (!staff) staff = await Staff.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" }, role: { $in: INDIVIDUAL_STAFF_ROLES } });
   }
   if (!staff) return fail("Staff not found", 404);
-  if (!["WAITER", "CASHIER"].includes(staff.role)) return fail("Only WAITER or CASHIER accounts can be disabled via this endpoint", 400);
+  if (!INDIVIDUAL_STAFF_ROLES.includes(staff.role)) return fail("Only WAITER, CASHIER, or RECEPTION accounts can be disabled via this endpoint", 400);
   if (staff.isActive === false) return fail("Account already disabled", 409);
   staff.isActive = false;
   await staff.save();
@@ -216,7 +224,7 @@ async function deleteHandler(request) {
     const { revokeAllStaffSessions } = await import("@/lib/sessionStore");
     await revokeAllStaffSessions(conn, staff._id, "DISABLED");
   } catch {}
-  const key = staff.role === "CASHIER" ? "cashier" : "waiter";
+  const key = staffResponseKey(staff.role);
   return ok({ deleted: true, disabled: true, [key]: { id: String(staff._id), name: staff.name, username: staff.username || staff.name, role: staff.role, isActive: false } }, 200);
 }
 

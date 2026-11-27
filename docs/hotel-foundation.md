@@ -101,8 +101,7 @@ deployment operation. **No indexes have been created on a live database.**
 
 | Model | Collection | Notes |
 | --- | --- | --- |
-| `HotelUser` | `hotel_users` | `MANAGER` / `RECEPTIONIST`, unique string `username`, scrypt `pinHash` (not selected by default), optional transitional `passwordHash`, active flag |
-| `HotelSession` | `hotel_sessions` | Opaque session row, only HMAC token hash and CSRF hash stored, absolute + idle expiry, revocation |
+| `HotelUser` | `hotel_users` | `MANAGER` / `RECEPTIONIST`, unique `email`, active flag (authentication removed) |
 | `HotelAuditLog` | `hotel_audit_logs` | Append-only audit foundation; raw IP, user agent, cookies, credentials, PINs, and tokens are not stored |
 | `RoomType` | `roomtypes` (Mongoose default) | Dedicated Hotel connection only; unique `code` index defined; never hard-deleted |
 | `Room` | `hotel_rooms` | Dedicated Hotel connection only; unique `roomNumber` index defined; embedded status history; never hard-deleted |
@@ -114,135 +113,6 @@ Indexes are **defined only** in the schemas. They are not applied automatically.
 `409 CONFLICT`, but the durable uniqueness guarantee requires an approved index
 deployment. Do not treat those checks as a substitute for the unique indexes
 under concurrent writes.
-
-## Authentication and session design
-
-- Reception credentials are a username plus exactly four ASCII digits. PINs use
-  Node `scrypt` (`N=32768`, `r=8`, `p=1`) with a random 16-byte salt and
-  constant-time comparison. Stored format is `scrypt$N$r$p$<salt>$<hash>`. Only
-  the derived hash is stored; the PIN is never persisted, returned, or logged.
-- A legacy email + `passwordHash` login remains available only as a transitional
-  path for accounts provisioned before PIN login. The Reception UI does not use
-  it. `passwordHash` is optional in the schema and is retained unchanged by PIN
-  rotation until separately retired.
-- There is no default user, default PIN, default password, or bootstrap bypass.
-- Login normalizes the username (trim + lowercase), verifies the PIN, checks the
-  live active flag, and creates an opaque 256-bit session token.
-- Usernames are 3-32 characters, start with a letter or digit, and contain only
-  lowercase letters, digits, dot, underscore, or hyphen after normalization.
-  A partial unique index enforces uniqueness only for real string usernames, so
-  legacy rows without one do not collide.
-- MongoDB stores only `HMAC-SHA256(HOTEL_SESSION_SECRET, token)`; the raw token
-  exists only in the browser cookie set by the login response.
-- Cookie flags: `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, no `Domain`.
-  The `__Host-` prefix requires HTTPS; localhost is treated as a secure context
-  by modern browsers. Plain-HTTP LAN origins are unsupported.
-- Absolute expiry is 8 hours. Idle expiry is 30 minutes and slides, but never
-  beyond the absolute expiry.
-- Every request reloads the live `HotelUser`. `roleSnapshot` is audit metadata
-  only. A disabled account or changed role revokes the session and requires a
-  new login.
-- Login failures use one generic response (`Invalid username or PIN`) to reduce
-  account enumeration, and the missing-user or no-PIN path performs a dummy PIN
-  verification to reduce timing differences. Wrong PIN, unknown username, and
-  inactive account are indistinguishable.
-- Changing a user's username/PIN revokes every live session for that user.
-
-### Authentication routes
-
-| Route | Method | Behavior |
-| --- | --- | --- |
-| `/api/hotel/auth/login` | `POST` | Validates Origin, rate limit, JSON body, and Hotel configuration; returns a safe user projection plus a one-time CSRF token and sets the session cookie |
-| `/api/hotel/auth/logout` | `POST` | Validates Origin and rate limit; requires the CSRF header for a live session; revokes the session and clears the cookie |
-| `/api/hotel/auth/me` | `GET` | Reloads the live user from the existing session and returns a safe user projection plus a fresh session-bound CSRF token; does not mutate business data |
-
-All three routes are `runtime = "nodejs"`, `dynamic = "force-dynamic"`, and use
-the Hotel `withHotelApi` wrapper. No POS route, middleware, auth, cookie, or
-database helper is imported. `proxy.js` matches `/api/:path*` and adds generic API
-`no-store` / `nosniff` headers plus same-host `OPTIONS` handling, but it performs
-no Hotel authentication or authorization. Every Hotel route enforces its own
-Origin, session, CSRF, and permission checks.
-
-Login request requirements:
-
-- `Content-Type: application/json`
-- A valid `Origin` header. It must exactly match the request origin or an entry
-  in `HOTEL_ALLOWED_ORIGINS`. A missing Origin is rejected.
-- Body: `{ "username": "...", "pin": "1234" }`
-- `pin` must be a JSON string of exactly four ASCII digits. A malformed body
-  returns `422 VALIDATION_ERROR` with field-scoped messages and no password or
-  PIN echo.
-- The transitional legacy body `{ "email": "...", "password": "..." }` still
-  works for existing accounts but is not used by the Reception UI.
-- Maximum body size: 8 KiB.
-
-A successful login response has this shape:
-
-```json
-{
-  "success": true,
-  "data": {
-    "user": { "id": "...", "email": "...", "username": "manager", "name": "...", "role": "MANAGER" },
-    "role": "MANAGER",
-    "csrfToken": "<one-time session-bound token>",
-    "session": { "expiresAt": "...", "idleExpiresAt": "..." }
-  },
-  "error": null
-}
-```
-
-The session token is only in the `__Host-bono_hotel_session` cookie and is never
-returned in JSON. The CSRF token is only in the JSON body and is never set as a
-cookie or written to `localStorage`. The client must retain it in memory and send
-it as `x-hotel-csrf-token` on logout and every future state-changing Hotel
-request.
-
-After a page reload, the client calls `GET /api/hotel/auth/me` with the existing
-cookie. The endpoint authenticates the session, reloads the live user and role,
-and returns the same safe user projection plus a fresh CSRF token. Rotation
-replaces the session's `csrfHash`, so the previous token stops working; the raw
-token is returned only in the JSON response. A disabled account, changed role,
-revoked session, or expired session returns `401` and cannot obtain a token.
-
-The bootstrap GET is read-only and accepts no body. A same-origin browser GET may
-omit `Origin`, so it is not mandatory; when `Origin` is present it must pass the
-same exact-origin/allowlist check as a mutation, and `Sec-Fetch-Site: cross-site`
-is rejected. `SameSite=Strict`, the absence of CORS grants, and `no-store`
-responses remain the primary boundaries. Existing mutation routes keep their
-mandatory Origin and CSRF checks unchanged. Logout with the bootstrapped token
-works after a reload.
-
-Logout is idempotent: a missing or invalid session cookie still returns success
-and clears the cookie. A live session without the correct CSRF header returns
-`403 CSRF_VALIDATION_FAILED` and is not revoked. Logout accepts no request body.
-
-### Request hardening
-
-- Exact Origin validation runs before any credential or database work for login,
-  logout, and any bootstrap request that supplies `Origin`. The read-only
-  bootstrap GET may omit `Origin`, but still rejects
-  `Sec-Fetch-Site: cross-site`; `SameSite=Strict` and the absence of CORS grants
-  are the boundary in that case.
-- Login is limited to 10 attempts per 15 minutes per client and, independently,
-  10 attempts per 15 minutes per submitted username; logout to 60 per 15
-  minutes. Successful login resets that client's and that username's login
-  buckets. Responses use `429` with `Retry-After`.
-- The per-username bucket is consumed for unknown usernames too, so it does not
-  become an account-enumeration oracle.
-- The limiter is in-memory and per process. It is not a global multi-instance
-  quota; use a shared store before horizontal scaling. Bucket keys hash the
-  scope and client/username identifier rather than storing raw IPs or usernames.
-- The limiter trusts proxy headers (`x-nf-client-connection-ip`, `x-real-ip`,
-  `x-forwarded-for`). The deployment proxy must overwrite them; this is
-  defense-in-depth, not a network boundary.
-- JSON bodies are size-bounded and must be plain objects. Malformed JSON returns
-  `400`, wrong media type `415`, oversized bodies `413`.
-- CSRF uses a random 256-bit token, HMAC-hashed with
-  `HOTEL_SESSION_SECRET` before storage. Only `csrfHash` is stored on the session
-  row, and it is excluded from normal queries.
-- Public errors use stable Hotel error codes and generic messages. No stack
-  traces, driver errors, URIs, credentials, tokens, PINs, or credential hashes
-  are returned or logged.
 
 ### Roles and permissions
 
@@ -280,11 +150,7 @@ const body = await readHotelJsonBody(request);
 const input = validateRoomTypePayload(body);
 ```
 
-`authorizeHotelRequest` calls `authenticateHotelRequest` with
-`requireCsrf: mutation` and the `x-hotel-csrf-token` header. A missing session
-returns `401`; a failed Origin or CSRF check returns `403`; a role without the
-permission returns `403 FORBIDDEN`. Denied permission and CSRF attempts are
-audited as `AUTH_ACCESS_DENIED`.
+`authorizeHotelRequest` resolves the Hotel database connection and enforces Origin checks on mutations; Hotel authentication and session checks have been removed.
 
 ## Room Types and Rooms API (PHASE 3)
 
@@ -732,7 +598,7 @@ the lock window remaining short.
 Voiding is a conditional, non-destructive `RECORDED -> VOIDED` transition. The
 row is retained, the folio is recalculated from the remaining active payments,
 and no amount or method can be edited. The void body accepts only an optional
-`reason`; financial fields are rejected. Reasons containing 13–19 consecutive
+`reason`; financial fields are rejected. Reasons containing 13â€“19 consecutive
 digits are rejected to avoid storing card or account numbers. A repeated void
 returns the unchanged `VOIDED` payment with `changed: false` and writes a
 separate replay audit. A payment in any other state cannot be voided.
@@ -745,96 +611,6 @@ record a reason such as `STAY_NOT_CHECKED_OUT`, `FOLIO_NOT_FINALIZED`,
 `OVERPAYMENT`, or `IDEMPOTENCY_KEY_CONFLICT`. Idempotency keys are hashed in
 audit metadata; card/bank secrets are never accepted. Audit writes remain best
 effort and never block the payment or void.
-
-## First-Manager provisioning
-
-There is no public registration route. The first `MANAGER` is created only by an
-explicit operator command, after the Hotel environment is configured:
-
-```bash
-node --env-file=.env.local scripts/hotel-provision-manager.mjs \
-  --email manager@example.com \
-  --username manager \
-  --name "Hotel Manager" \
-  --confirm
-```
-
-The command:
-
-- Refuses to run without `--confirm`.
-- Reads the four-digit PIN from `HOTEL_PROVISION_MANAGER_PIN` or prompts twice
-  with echo disabled. It never accepts a PIN as a command-line argument.
-- Validates email, name, username, and PIN before connecting to MongoDB.
-- Acquires a dedicated `_id` lock document in `hotel_provisioning_locks` so two
-  processes cannot provision concurrently. MongoDB's always-present unique
-  `_id` index is used; no schema index deployment is needed.
-- Refuses if **any** Manager exists, active or disabled. Recovery from a lost
-  Manager credential uses the rotation command below.
-- Creates the Manager with `username`, `pinHash`, `role: "MANAGER"`, and
-  `isActive: true`. No plaintext PIN or legacy password is created.
-- Writes a `FIRST_MANAGER_PROVISIONED` audit record containing only SHA-256
-  hashes of the email and username. If that audit write fails, the new Manager
-  is rolled back.
-- Never prints or logs the PIN, its hash, or credential material.
-
-Running this command writes to the Hotel database. Do not run it without
-explicit approval and a confirmed target database.
-
-## Credential rotation for existing Hotel users
-
-Accounts created before username + PIN login have no `pinHash`. There is **no
-automatic migration and no invented PIN**. An operator must rotate each account
-explicitly, one at a time, from a trusted terminal:
-
-```bash
-node --env-file=.env.local scripts/hotel-rotate-credentials.mjs \
-  --email receptionist@example.com \
-  --username reception \
-  --confirm
-```
-
-The rotation command:
-
-- Refuses to run without `--confirm`.
-- Reads the new four-digit PIN from `HOTEL_PROVISION_PIN` or prompts twice with
-  echo disabled. It never accepts a PIN as a command-line argument.
-- Validates email, username, and PIN before connecting to MongoDB.
-- Replaces only `username` and `pinHash` on the matching account; the role,
-  active flag, name, email, and any legacy password hash are left unchanged.
-- Relies on the partial unique username index to reject a username already
-  assigned to another account, returning `409 CONFLICT`.
-- Revokes every live Hotel session for that user, so a session opened with the
-  old credential cannot continue.
-- Writes a `HOTEL_USER_CREDENTIALS_ROTATED` audit record containing only SHA-256
-  hashes and the revoked-session count. It never prints or logs the PIN or hash.
-- Returns `404 NOT_FOUND` for an unknown email.
-
-An account without a `pinHash` cannot use PIN login; its users see the same
-generic `Invalid PIN` failure and must be rotated before signing in.
-Do not run either command without explicit approval and a confirmed target
-database.
-
-## Legacy Hotel staff management API - retired (Phase 1 cleanup)
-
-The standalone `/hotel/users` page, the `/api/hotel/users` route family, the
-hotel staff management handlers/service (`lib/hotel/http/staffHandlers.js`,
-`lib/hotel/services/staff.js`), the staff-management UI components, and the
-`hotel.staff.manage` permission were removed in the Phase 1 legacy cleanup.
-Username-based login, username credential rotation, and the username rate-limit
-path were removed at the same time. The PIN-based credential provisioning CLIs
-remain available but now accept only `--email`, `--name`, and a PIN.
-
-The role-scoped PIN login (`/api/hotel/auth/pin-login`) is now the sole
-interactive Hotel authentication path used by Reception, Room Management, and
-Room Reports. The legacy email/password path in `loginHotelUser` is retained
-only for pre-PIN accounts and has no UI consumer.
-
-Identity records (`hotel_users`) and all historical attribution fields
-(`actorUserId`, `createdBy`, `checkedInBy`, and similar) are preserved. The
-`username` field and its partial unique index remain in the schema as dormant
-legacy data; removing them is a separately approved database migration and is
-explicitly out of scope for this phase. No database records, indexes, or
-collections were created, modified, or deleted.
 
 ## Hotel index deployment
 
@@ -879,14 +655,14 @@ The expected set is 37 schema indexes across 10 collections: `hotel_users`,
 
 Phase 3 adds an explicit opt-in real-database harness:
 
-- `tests/hotel-integration.test.mjs` — guarded lifecycle and integration
+- `tests/hotel-integration.test.mjs` â€” guarded lifecycle and integration
   scenarios.
-- `tests/helpers/hotel-integration-harness.mjs` — DB-free opt-in inspection,
+- `tests/helpers/hotel-integration-harness.mjs` â€” DB-free opt-in inspection,
   runtime mapping, run-scoped fixtures, redaction, read-only index polling,
   cleanup argument validation, and ownership-marker reading.
-- `tests/hotel-integration-cleanup.mjs` — the separate, explicit cleanup
+- `tests/hotel-integration-cleanup.mjs` â€” the separate, explicit cleanup
   command.
-- `tests/hotel-integration-harness.test.mjs` — DB-free tests for the harness.
+- `tests/hotel-integration-harness.test.mjs` â€” DB-free tests for the harness.
 
 The real integration command is **NOT RUN**. No live MongoDB was contacted
 while this phase was implemented. The DB-free harness tests and the existing
@@ -1091,7 +867,7 @@ a transaction; use a transaction where an audit record is legally required.
    Rotate every pre-existing Hotel account through the credential-rotation
    command before expecting PIN login to succeed for it.
 4. Run integration tests against a separate, throwaway MongoDB instance,
-   container, or port — not another database name on a shared cluster — using
+   container, or port â€” not another database name on a shared cluster â€” using
    test-only environment values and `HOTEL_INDEX_DEPLOY_ENV=disposable` for any
    index-deployment check. Cover
    login, logout, session bootstrap/reload, CSRF, rate limiting, expiry, disabled
@@ -1159,17 +935,17 @@ creating any denormalized report store. All three responses are produced by a
 single service (`lib/hotel/services/reports.js`), so the on-screen summary, CSV,
 and PDF exports always reconcile:
 
-- `GET /api/hotel/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` — JSON
+- `GET /api/hotel/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` â€” JSON
   (`hotelSuccess` envelope), `hotel.reports.read` (manager-only), read-only
   (no Origin/CSRF), exact query allowlist `["from", "to"]`.
-- `GET /api/hotel/reports/summary/export?from=...&to=...` — the same
+- `GET /api/hotel/reports/summary/export?from=...&to=...` â€” the same
   aggregation rendered as RFC 4180 CSV (`text/csv; charset=utf-8`, UTF-8 BOM,
   `no-store`, `Content-Disposition: attachment`, `nosniff`, RFC 4180
   quote-doubling, and formula-injection guarding on `=`, `+`, `-`, `@`, tab,
   CR). The export groups report metadata, summary metrics, daily detail, live
   inventory, payment methods, and coverage; internal field names, database IDs,
   and raw definitions are not exported.
-- `GET /api/hotel/reports/summary/export/pdf?from=...&to=...` — the same
+- `GET /api/hotel/reports/summary/export/pdf?from=...&to=...` â€” the same
   aggregation rendered as a monochrome A4 portrait PDF with the same manager
   permission, query allowlist, date validation, `no-store`, `nosniff`, and a
   dated attachment filename. The PDF contains the title, selected range,
@@ -1209,7 +985,7 @@ Contract details:
   bounded payment lookup for the outstanding balance); no `.aggregate()`
   pipeline and no unbounded scan is used.
 
-Index needs (defined in schemas, deployment still pending — see the index
+Index needs (defined in schemas, deployment still pending â€” see the index
 deployment section above): the report queries lean on the existing
 `Stay { checkedInAt: -1 }` / `{ status: 1, checkedInAt: 1 }`-style range
 filters plus payment/reservation range filters. A dedicated `Room` index over
